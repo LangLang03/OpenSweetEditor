@@ -196,6 +196,16 @@ namespace SweetEditor {
 	}
 
 	/// <summary>
+	/// Scrollbar geometry configuration.
+	/// </summary>
+	public class ScrollbarConfig {
+		/// <summary>Scrollbar thickness in pixels (default 10.0)</summary>
+		public float Thickness { get; set; } = 10.0f;
+		/// <summary>Minimum scrollbar thumb length in pixels (default 24.0)</summary>
+		public float MinThumb { get; set; } = 24.0f;
+	}
+
+	/// <summary>
 	/// Construction-time immutable options for EditorCore.
 	/// Fields mirror the C++ EditorOptions struct.
 	/// Binary layout (LE): f32 touch_slop, i64 double_tap_timeout, i64 long_press_ms, u64 max_undo_stack_size
@@ -1040,6 +1050,12 @@ namespace SweetEditor {
 		/// <summary>Bracket-match highlight rectangles (bracket near caret + matching bracket).</summary>
 		[JsonPropertyName("bracket_highlight_rects")]
 		public List<BracketHighlightRect> BracketHighlightRects { get; set; }
+		/// <summary>Vertical scrollbar render model.</summary>
+		[JsonPropertyName("vertical_scrollbar")]
+		public ScrollbarModel VerticalScrollbar { get; set; }
+		/// <summary>Horizontal scrollbar render model.</summary>
+		[JsonPropertyName("horizontal_scrollbar")]
+		public ScrollbarModel HorizontalScrollbar { get; set; }
 	}
 
 	/// <summary>
@@ -1127,6 +1143,36 @@ namespace SweetEditor {
 		/// <summary>Rectangle height</summary>
 		[JsonPropertyName("height")]
 		public float Height { get; set; }
+	}
+
+	/// <summary>
+	/// Scrollbar rectangle geometry (track/thumb).
+	/// </summary>
+	public struct ScrollbarRect {
+		/// <summary>Rectangle top-left corner.</summary>
+		[JsonPropertyName("origin")]
+		public PointF Origin { get; set; }
+		/// <summary>Rectangle width.</summary>
+		[JsonPropertyName("width")]
+		public float Width { get; set; }
+		/// <summary>Rectangle height.</summary>
+		[JsonPropertyName("height")]
+		public float Height { get; set; }
+	}
+
+	/// <summary>
+	/// Scrollbar render model for one axis.
+	/// </summary>
+	public struct ScrollbarModel {
+		/// <summary>Whether scrollbar is visible.</summary>
+		[JsonPropertyName("visible")]
+		public bool Visible { get; set; }
+		/// <summary>Track rectangle.</summary>
+		[JsonPropertyName("track")]
+		public ScrollbarRect Track { get; set; }
+		/// <summary>Thumb rectangle.</summary>
+		[JsonPropertyName("thumb")]
+		public ScrollbarRect Thumb { get; set; }
 	}
 
 	/// <summary>
@@ -1329,6 +1375,9 @@ namespace SweetEditor {
 		[DllImport(LibraryName, EntryPoint = "editor_set_handle_config", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern void SetHandleConfig(IntPtr handle, float radius, float centerDist, float lineWidth, float touchPadding, float dragYOffset);
 
+		[DllImport(LibraryName, EntryPoint = "editor_set_scrollbar_config", CallingConvention = CallingConvention.Cdecl)]
+		internal static extern void SetScrollbarConfig(IntPtr handle, float thickness, float minThumb);
+
 		[DllImport(LibraryName, EntryPoint = "editor_get_position_rect", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern void GetPositionRect(IntPtr handle, nuint line, nuint column, ref float outX, ref float outY, ref float outHeight);
 
@@ -1488,6 +1537,7 @@ namespace SweetEditor {
 		private readonly IntPtr nativeHandle;
 		private TextMeasurer measurer;
 		private HandleConfig _handleConfig = new HandleConfig();
+		private ScrollbarConfig _scrollbarConfig = new ScrollbarConfig();
 		private GCHandle textMeasurerGCHandle;
 		private GCHandle inlayHintMeasurerGCHandle;
 		private GCHandle iconMeasurerGCHandle;
@@ -1973,6 +2023,22 @@ namespace SweetEditor {
 		/// <summary>Gets the current handle configuration.</summary>
 		public HandleConfig GetHandleConfig() {
 			return _handleConfig;
+		}
+
+		#endregion
+
+		#region Scrollbar Config
+
+		/// <summary>Sets scrollbar geometry configuration.</summary>
+		/// <param name="config">ScrollbarConfig instance</param>
+		public void SetScrollbarConfig(ScrollbarConfig config) {
+			_scrollbarConfig = config;
+			NativeMethods.SetScrollbarConfig(nativeHandle, config.Thickness, config.MinThumb);
+		}
+
+		/// <summary>Gets the current scrollbar geometry configuration.</summary>
+		public ScrollbarConfig GetScrollbarConfig() {
+			return _scrollbarConfig;
 		}
 
 		#endregion

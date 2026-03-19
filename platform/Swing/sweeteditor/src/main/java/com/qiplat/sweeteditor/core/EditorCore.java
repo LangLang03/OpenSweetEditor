@@ -22,6 +22,7 @@ public class EditorCore implements AutoCloseable {
     private final long nativeHandle;
     private final Arena arena;
     private HandleConfig handleConfig = new HandleConfig();
+    private ScrollbarConfig scrollbarConfig = new ScrollbarConfig();
 
     public interface TextMeasureCallback {
         float measureTextWidth(MemorySegment textPtr, int fontStyle);
@@ -402,6 +403,32 @@ public class EditorCore implements AutoCloseable {
 
     public HandleConfig getHandleConfig() {
         return handleConfig;
+    }
+
+    // ===================== Scrollbar Config =====================
+
+    /** Scrollbar geometry configuration */
+    public static class ScrollbarConfig {
+        public final float thickness;
+        public final float minThumb;
+
+        public ScrollbarConfig() {
+            this(10.0f, 24.0f);
+        }
+
+        public ScrollbarConfig(float thickness, float minThumb) {
+            this.thickness = thickness;
+            this.minThumb = minThumb;
+        }
+    }
+
+    public void setScrollbarConfig(ScrollbarConfig config) {
+        this.scrollbarConfig = config;
+        EditorNative.setScrollbarConfig(nativeHandle, config.thickness, config.minThumb);
+    }
+
+    public ScrollbarConfig getScrollbarConfig() {
+        return scrollbarConfig;
     }
 
     // ===================== Position/Coordinate Query =====================

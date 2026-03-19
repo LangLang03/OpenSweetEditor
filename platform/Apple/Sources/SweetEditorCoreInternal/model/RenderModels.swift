@@ -21,6 +21,8 @@ struct EditorRenderModel: Codable {
     let fold_arrow_x: Float
     let linked_editing_rects: [LinkedEditingRect]
     let bracket_highlight_rects: [BracketHighlightRect]
+    let vertical_scrollbar: ScrollbarModel
+    let horizontal_scrollbar: ScrollbarModel
 }
 
 struct PointData: Codable {
@@ -185,6 +187,18 @@ struct BracketHighlightRect: Codable {
     let origin: PointData
     let width: Float
     let height: Float
+}
+
+struct ScrollbarRect: Codable {
+    let origin: PointData
+    let width: Float
+    let height: Float
+}
+
+struct ScrollbarModel: Codable {
+    let visible: Bool
+    let track: ScrollbarRect
+    let thumb: ScrollbarRect
 }
 
 enum GuideDirection: String, Codable {

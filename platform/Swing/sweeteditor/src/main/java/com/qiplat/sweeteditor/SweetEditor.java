@@ -64,8 +64,6 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
     private static final int MOD_CTRL = 2;
     private static final int MOD_ALT = 4;
     private static final int MOD_META = 8;
-    private static final float SCROLLBAR_THICKNESS = 10.0f;
-    private static final float SCROLLBAR_MIN_THUMB = 24.0f;
 
     private EditorCore editorCore;
     private EditorTheme currentTheme;
@@ -91,22 +89,6 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
     private static final int EDGE_SCROLL_INTERVAL_MS = 16;
     private Timer edgeScrollTimer;
     private boolean edgeScrollActive = false;
-
-    private ScrollMetrics scrollMetrics;
-    private final Rectangle2D.Float verticalScrollbarTrack = new Rectangle2D.Float();
-    private final Rectangle2D.Float verticalScrollbarThumb = new Rectangle2D.Float();
-    private final Rectangle2D.Float horizontalScrollbarTrack = new Rectangle2D.Float();
-    private final Rectangle2D.Float horizontalScrollbarThumb = new Rectangle2D.Float();
-    private boolean draggingVerticalScrollbar = false;
-    private boolean draggingHorizontalScrollbar = false;
-    private float scrollbarDragStartMouseX = 0;
-    private float scrollbarDragStartMouseY = 0;
-    private float scrollbarDragStartScrollX = 0;
-    private float scrollbarDragStartScrollY = 0;
-    private float scrollbarDragTravelX = 0;
-    private float scrollbarDragTravelY = 0;
-    private float scrollbarDragMaxScrollX = 0;
-    private float scrollbarDragMaxScrollY = 0;
 
     // Event bus
     private final EditorEventBus eventBus = new EditorEventBus();
@@ -548,7 +530,7 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
         drawCursor(g2, renderModel);
         drawGutterOverlay(g2, renderModel);
         drawLineNumbers(g2, renderModel);
-        drawScrollbars(g2);
+        drawScrollbars(g2, renderModel);
 
         // Completion panel cursor following
         if (completionPopupController != null && renderModel.cursor != null && renderModel.cursor.position != null) {
@@ -728,123 +710,70 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
         }
     }
 
-    private void drawScrollbars(Graphics2D g) {
-        updateScrollbarGeometry();
-        boolean hasVertical = verticalScrollbarTrack.width > 0 && verticalScrollbarTrack.height > 0;
-        boolean hasHorizontal = horizontalScrollbarTrack.width > 0 && horizontalScrollbarTrack.height > 0;
+    private void drawScrollbars(Graphics2D g, EditorRenderModel model) {
+        ScrollbarModel vertical = model.verticalScrollbar;
+        ScrollbarModel horizontal = model.horizontalScrollbar;
+
+        boolean hasVertical = vertical != null
+                && vertical.visible
+                && vertical.track != null
+                && vertical.thumb != null
+                && vertical.track.width > 0
+                && vertical.track.height > 0;
+        boolean hasHorizontal = horizontal != null
+                && horizontal.visible
+                && horizontal.track != null
+                && horizontal.thumb != null
+                && horizontal.track.width > 0
+                && horizontal.track.height > 0;
         if (!hasVertical && !hasHorizontal) {
             return;
         }
 
         Color trackColor = withAlpha(currentTheme.splitLineColor, 72);
         Color thumbColor = withAlpha(currentTheme.lineNumberColor, 170);
-        Color activeThumbColor = withAlpha(currentTheme.lineNumberColor, 220);
+
+        float verticalTrackX = 0f;
+        float verticalTrackY = 0f;
+        float verticalTrackWidth = 0f;
+        float horizontalTrackY = 0f;
+        float horizontalTrackHeight = 0f;
 
         if (hasVertical) {
+            float trackX = vertical.track.origin != null ? vertical.track.origin.x : 0f;
+            float trackY = vertical.track.origin != null ? vertical.track.origin.y : 0f;
+            float thumbX = vertical.thumb.origin != null ? vertical.thumb.origin.x : 0f;
+            float thumbY = vertical.thumb.origin != null ? vertical.thumb.origin.y : 0f;
+            verticalTrackX = trackX;
+            verticalTrackY = trackY;
+            verticalTrackWidth = vertical.track.width;
             g.setColor(trackColor);
-            g.fill(verticalScrollbarTrack);
-            g.setColor(draggingVerticalScrollbar ? activeThumbColor : thumbColor);
-            g.fill(new RoundRectangle2D.Float(
-                    verticalScrollbarThumb.x,
-                    verticalScrollbarThumb.y,
-                    verticalScrollbarThumb.width,
-                    verticalScrollbarThumb.height,
-                    SCROLLBAR_THICKNESS,
-                    SCROLLBAR_THICKNESS));
+            g.fill(new Rectangle2D.Float(trackX, trackY, vertical.track.width, vertical.track.height));
+            g.setColor(thumbColor);
+            g.fill(new Rectangle2D.Float(thumbX, thumbY, vertical.thumb.width, vertical.thumb.height));
         }
 
         if (hasHorizontal) {
+            float trackX = horizontal.track.origin != null ? horizontal.track.origin.x : 0f;
+            float trackY = horizontal.track.origin != null ? horizontal.track.origin.y : 0f;
+            float thumbX = horizontal.thumb.origin != null ? horizontal.thumb.origin.x : 0f;
+            float thumbY = horizontal.thumb.origin != null ? horizontal.thumb.origin.y : 0f;
+            horizontalTrackY = trackY;
+            horizontalTrackHeight = horizontal.track.height;
             g.setColor(trackColor);
-            g.fill(horizontalScrollbarTrack);
-            g.setColor(draggingHorizontalScrollbar ? activeThumbColor : thumbColor);
-            g.fill(new RoundRectangle2D.Float(
-                    horizontalScrollbarThumb.x,
-                    horizontalScrollbarThumb.y,
-                    horizontalScrollbarThumb.width,
-                    horizontalScrollbarThumb.height,
-                    SCROLLBAR_THICKNESS,
-                    SCROLLBAR_THICKNESS));
+            g.fill(new Rectangle2D.Float(trackX, trackY, horizontal.track.width, horizontal.track.height));
+            g.setColor(thumbColor);
+            g.fill(new Rectangle2D.Float(thumbX, thumbY, horizontal.thumb.width, horizontal.thumb.height));
         }
 
         if (hasVertical && hasHorizontal) {
             g.setColor(trackColor);
             g.fillRect(
-                    (int) verticalScrollbarTrack.x,
-                    (int) horizontalScrollbarTrack.y,
-                    (int) verticalScrollbarTrack.width,
-                    (int) horizontalScrollbarTrack.height);
+                    (int) verticalTrackX,
+                    (int) horizontalTrackY,
+                    (int) verticalTrackWidth,
+                    (int) horizontalTrackHeight);
         }
-    }
-
-    private void updateScrollbarGeometry() {
-        if (scrollMetrics == null) {
-            resetScrollbarRects();
-            return;
-        }
-
-        float width = getWidth();
-        float height = getHeight();
-        if (width <= 0 || height <= 0) {
-            resetScrollbarRects();
-            return;
-        }
-
-        boolean showVertical = scrollMetrics.canScrollY();
-        boolean showHorizontal = scrollMetrics.canScrollX();
-
-        float verticalTrackX = width - SCROLLBAR_THICKNESS;
-        float verticalTrackHeight = height - (showHorizontal ? SCROLLBAR_THICKNESS : 0.0f);
-        if (showVertical && verticalTrackHeight > 0.0f) {
-            verticalScrollbarTrack.setRect(verticalTrackX, 0.0f, SCROLLBAR_THICKNESS, verticalTrackHeight);
-            float viewport = Math.max(1.0f, scrollMetrics.viewportHeight());
-            float contentSpan = Math.max(viewport, scrollMetrics.maxScrollY() + viewport);
-            float thumbHeight = Math.max(SCROLLBAR_MIN_THUMB, verticalTrackHeight * viewport / contentSpan);
-            thumbHeight = Math.min(thumbHeight, verticalTrackHeight);
-            float travel = Math.max(0.0f, verticalTrackHeight - thumbHeight);
-            float ratio = scrollMetrics.maxScrollY() <= 0.0f ? 0.0f : (scrollMetrics.scrollY() / scrollMetrics.maxScrollY());
-            ratio = clamp01(ratio);
-            float thumbY = travel <= 0.0f ? 0.0f : (travel * ratio);
-            verticalScrollbarThumb.setRect(verticalTrackX, thumbY, SCROLLBAR_THICKNESS, thumbHeight);
-        } else {
-            verticalScrollbarTrack.setRect(0, 0, 0, 0);
-            verticalScrollbarThumb.setRect(0, 0, 0, 0);
-        }
-
-        float horizontalTrackX = Math.max(0.0f, scrollMetrics.textAreaX());
-        float horizontalTrackWidth = width - horizontalTrackX - (showVertical ? SCROLLBAR_THICKNESS : 0.0f);
-        float horizontalTrackY = height - SCROLLBAR_THICKNESS;
-        if (showHorizontal && horizontalTrackWidth > 0.0f && horizontalTrackY >= 0.0f) {
-            horizontalScrollbarTrack.setRect(horizontalTrackX, horizontalTrackY, horizontalTrackWidth, SCROLLBAR_THICKNESS);
-            float viewport = Math.max(1.0f, scrollMetrics.textAreaWidth());
-            float contentSpan = Math.max(viewport, scrollMetrics.maxScrollX() + viewport);
-            float thumbWidth = Math.max(SCROLLBAR_MIN_THUMB, horizontalTrackWidth * viewport / contentSpan);
-            thumbWidth = Math.min(thumbWidth, horizontalTrackWidth);
-            float travel = Math.max(0.0f, horizontalTrackWidth - thumbWidth);
-            float ratio = scrollMetrics.maxScrollX() <= 0.0f ? 0.0f : (scrollMetrics.scrollX() / scrollMetrics.maxScrollX());
-            ratio = clamp01(ratio);
-            float thumbX = horizontalTrackX + (travel <= 0.0f ? 0.0f : (travel * ratio));
-            horizontalScrollbarThumb.setRect(thumbX, horizontalTrackY, thumbWidth, SCROLLBAR_THICKNESS);
-        } else {
-            horizontalScrollbarTrack.setRect(0, 0, 0, 0);
-            horizontalScrollbarThumb.setRect(0, 0, 0, 0);
-        }
-    }
-
-    private void resetScrollbarRects() {
-        verticalScrollbarTrack.setRect(0, 0, 0, 0);
-        verticalScrollbarThumb.setRect(0, 0, 0, 0);
-        horizontalScrollbarTrack.setRect(0, 0, 0, 0);
-        horizontalScrollbarThumb.setRect(0, 0, 0, 0);
-    }
-
-    private static float clamp01(float value) {
-        if (value < 0.0f) return 0.0f;
-        if (value > 1.0f) return 1.0f;
-        return value;
-    }
-
-    private static float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     private static Color withAlpha(int argb, int alpha) {
@@ -1037,10 +966,6 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
             @Override
             public void mousePressed(MouseEvent e) {
                 requestFocusInWindow();
-                if (SwingUtilities.isLeftMouseButton(e) && handleScrollbarMousePressed(e)) {
-                    e.consume();
-                    return;
-                }
                 int mods = getModifiers(e);
                 if (SwingUtilities.isLeftMouseButton(e)) {
                     handleGesture(MOUSE_DOWN, e.getX(), e.getY(), mods, 0, 0, 1);
@@ -1051,10 +976,6 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                if (SwingUtilities.isLeftMouseButton(e) && handleScrollbarMouseReleased()) {
-                    e.consume();
-                    return;
-                }
                 if (SwingUtilities.isLeftMouseButton(e)) {
                     handleGesture(MOUSE_UP, e.getX(), e.getY(), getModifiers(e), 0, 0, 1);
                 }
@@ -1064,10 +985,6 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
         addMouseMotionListener(new MouseMotionAdapter() {
             @Override
             public void mouseDragged(MouseEvent e) {
-                if (handleScrollbarMouseDragged(e)) {
-                    e.consume();
-                    return;
-                }
                 if (SwingUtilities.isLeftMouseButton(e)) {
                     handleGesture(MOUSE_MOVE, e.getX(), e.getY(), getModifiers(e), 0, 0, 1);
                 }
@@ -1273,113 +1190,6 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
         if (result != null) {
             fireGestureEvents(result, new Point((int) x, (int) y));
             updateEdgeScrollTimer(result.needsEdgeScroll);
-        }
-    }
-
-    private boolean handleScrollbarMousePressed(MouseEvent e) {
-        updateScrollbarGeometry();
-        float x = e.getX();
-        float y = e.getY();
-
-        if (verticalScrollbarThumb.contains(x, y)) {
-            draggingVerticalScrollbar = true;
-            draggingHorizontalScrollbar = false;
-            scrollbarDragStartMouseY = y;
-            scrollbarDragStartScrollY = scrollMetrics != null ? scrollMetrics.scrollY() : 0.0f;
-            scrollbarDragTravelY = Math.max(0.0f, verticalScrollbarTrack.height - verticalScrollbarThumb.height);
-            scrollbarDragMaxScrollY = scrollMetrics != null ? Math.max(0.0f, scrollMetrics.maxScrollY()) : 0.0f;
-            return true;
-        }
-
-        if (horizontalScrollbarThumb.contains(x, y)) {
-            draggingHorizontalScrollbar = true;
-            draggingVerticalScrollbar = false;
-            scrollbarDragStartMouseX = x;
-            scrollbarDragStartScrollX = scrollMetrics != null ? scrollMetrics.scrollX() : 0.0f;
-            scrollbarDragTravelX = Math.max(0.0f, horizontalScrollbarTrack.width - horizontalScrollbarThumb.width);
-            scrollbarDragMaxScrollX = scrollMetrics != null ? Math.max(0.0f, scrollMetrics.maxScrollX()) : 0.0f;
-            return true;
-        }
-
-        if (scrollMetrics != null && verticalScrollbarTrack.contains(x, y)) {
-            if (verticalScrollbarTrack.height > 0.0f && scrollMetrics.maxScrollY() > 0.0f) {
-                float travel = Math.max(0.0f, verticalScrollbarTrack.height - verticalScrollbarThumb.height);
-                float ratio = travel <= 0.0f
-                        ? 0.0f
-                        : clamp01((y - verticalScrollbarTrack.y - verticalScrollbarThumb.height * 0.5f) / travel);
-                float targetY = ratio * scrollMetrics.maxScrollY();
-                setScrollFromScrollbar(scrollMetrics.scrollX(), targetY);
-            }
-            return true;
-        }
-
-        if (scrollMetrics != null && horizontalScrollbarTrack.contains(x, y)) {
-            if (horizontalScrollbarTrack.width > 0.0f && scrollMetrics.maxScrollX() > 0.0f) {
-                float travel = Math.max(0.0f, horizontalScrollbarTrack.width - horizontalScrollbarThumb.width);
-                float ratio = travel <= 0.0f
-                        ? 0.0f
-                        : clamp01((x - horizontalScrollbarTrack.x - horizontalScrollbarThumb.width * 0.5f) / travel);
-                float targetX = ratio * scrollMetrics.maxScrollX();
-                setScrollFromScrollbar(targetX, scrollMetrics.scrollY());
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    private boolean handleScrollbarMouseDragged(MouseEvent e) {
-        if (!draggingVerticalScrollbar && !draggingHorizontalScrollbar) {
-            return false;
-        }
-        if (scrollMetrics == null) {
-            return true;
-        }
-
-        if (draggingVerticalScrollbar) {
-            float targetY = scrollbarDragStartScrollY;
-            if (scrollbarDragTravelY > 0.0f && scrollbarDragMaxScrollY > 0.0f) {
-                float delta = e.getY() - scrollbarDragStartMouseY;
-                targetY += delta * scrollbarDragMaxScrollY / scrollbarDragTravelY;
-            }
-            targetY = clamp(targetY, 0.0f, scrollMetrics.maxScrollY());
-            setScrollFromScrollbar(scrollMetrics.scrollX(), targetY);
-            return true;
-        }
-
-        if (draggingHorizontalScrollbar) {
-            float targetX = scrollbarDragStartScrollX;
-            if (scrollbarDragTravelX > 0.0f && scrollbarDragMaxScrollX > 0.0f) {
-                float delta = e.getX() - scrollbarDragStartMouseX;
-                targetX += delta * scrollbarDragMaxScrollX / scrollbarDragTravelX;
-            }
-            targetX = clamp(targetX, 0.0f, scrollMetrics.maxScrollX());
-            setScrollFromScrollbar(targetX, scrollMetrics.scrollY());
-            return true;
-        }
-
-        return false;
-    }
-
-    private boolean handleScrollbarMouseReleased() {
-        if (!draggingVerticalScrollbar && !draggingHorizontalScrollbar) {
-            return false;
-        }
-        draggingVerticalScrollbar = false;
-        draggingHorizontalScrollbar = false;
-        return true;
-    }
-
-    private void setScrollFromScrollbar(float scrollX, float scrollY) {
-        editorCore.setScroll(scrollX, scrollY);
-        resetCursorBlink();
-        flush();
-        if (scrollMetrics != null) {
-            eventBus.publish(new ScrollChangedEvent(scrollMetrics.scrollX(), scrollMetrics.scrollY()));
-        }
-        decorationProviderManager.onScrollChanged();
-        if (completionPopupController != null && completionPopupController.isShowing() && completionProviderManager != null) {
-            completionProviderManager.dismiss();
         }
     }
 
@@ -1638,8 +1448,6 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
     public void flush() {
         editorCore.resetMeasurer();
         renderModel = editorCore.buildRenderModel();
-        scrollMetrics = editorCore.getScrollMetrics();
-        updateScrollbarGeometry();
         repaint();
     }
 

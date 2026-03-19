@@ -17,6 +17,8 @@ import com.qiplat.sweeteditor.core.visual.LinkedEditingRect;
 import com.qiplat.sweeteditor.core.visual.PointF;
 import com.qiplat.sweeteditor.core.visual.SelectionHandle;
 import com.qiplat.sweeteditor.core.visual.SelectionRect;
+import com.qiplat.sweeteditor.core.visual.ScrollbarModel;
+import com.qiplat.sweeteditor.core.visual.ScrollbarRect;
 import com.qiplat.sweeteditor.core.visual.ScrollMetrics;
 import com.qiplat.sweeteditor.core.foundation.TextPosition;
 import com.qiplat.sweeteditor.core.foundation.TextRange;
@@ -173,6 +175,12 @@ final class ProtocolDecoder {
         model.foldArrowX = data.getFloat();
         model.linkedEditingRects = readLinkedEditingRects(data);
         model.bracketHighlightRects = readBracketHighlightRects(data);
+        model.verticalScrollbar = defaultScrollbarModel();
+        model.horizontalScrollbar = defaultScrollbarModel();
+        if (data.remaining() >= 72) {
+            model.verticalScrollbar = readScrollbarModel(data);
+            model.horizontalScrollbar = readScrollbarModel(data);
+        }
         return model;
     }
 
@@ -393,5 +401,37 @@ final class ProtocolDecoder {
             rects.add(readBracketHighlightRect(data));
         }
         return rects;
+    }
+
+    private static ScrollbarRect defaultScrollbarRect() {
+        ScrollbarRect rect = new ScrollbarRect();
+        rect.origin = new PointF();
+        rect.width = 0f;
+        rect.height = 0f;
+        return rect;
+    }
+
+    private static ScrollbarModel defaultScrollbarModel() {
+        ScrollbarModel model = new ScrollbarModel();
+        model.visible = false;
+        model.track = defaultScrollbarRect();
+        model.thumb = defaultScrollbarRect();
+        return model;
+    }
+
+    private static ScrollbarRect readScrollbarRect(ByteBuffer data) {
+        ScrollbarRect rect = new ScrollbarRect();
+        rect.origin = readPoint(data);
+        rect.width = data.getFloat();
+        rect.height = data.getFloat();
+        return rect;
+    }
+
+    private static ScrollbarModel readScrollbarModel(ByteBuffer data) {
+        ScrollbarModel scrollbar = new ScrollbarModel();
+        scrollbar.visible = data.getInt() != 0;
+        scrollbar.track = readScrollbarRect(data);
+        scrollbar.thumb = readScrollbarRect(data);
+        return scrollbar;
     }
 }

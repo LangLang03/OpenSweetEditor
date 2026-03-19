@@ -454,6 +454,9 @@ public final class EditorNative {
                     ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT,
                     ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT));
 
+    private static final MethodHandle SET_SCROLLBAR_CONFIG = downcall("editor_set_scrollbar_config",
+            FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT));
+
     private static final MethodHandle GET_CURSOR_RECT = downcall("editor_get_cursor_rect",
             FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -870,6 +873,12 @@ public final class EditorNative {
                                        float lineWidth, float touchPadding, float dragYOffset) {
         invokeVoid(() -> {
             SET_HANDLE_CONFIG.invokeExact(handle, radius, centerDist, lineWidth, touchPadding, dragYOffset);
+        });
+    }
+
+    public static void setScrollbarConfig(long handle, float thickness, float minThumb) {
+        invokeVoid(() -> {
+            SET_SCROLLBAR_CONFIG.invokeExact(handle, thickness, minThumb);
         });
     }
 

@@ -212,6 +212,16 @@ EDITOR_API void editor_set_line_spacing(intptr_t editor_handle, float add, float
 ///             - PointF origin
 ///             - f32 width
 ///             - f32 height
+///         25. (optional append-only tail) ScrollbarModel vertical_scrollbar
+///         26. (optional append-only tail) ScrollbarModel horizontal_scrollbar
+///             ScrollbarModel layout:
+///             - i32 visible
+///             - ScrollbarRect track
+///             - ScrollbarRect thumb
+///             ScrollbarRect layout:
+///             - PointF origin
+///             - f32 width
+///             - f32 height
 ///         Call free_binary_data after use; returns NULL on failure
 EDITOR_API const uint8_t* build_editor_render_model(intptr_t editor_handle, size_t* out_size);
 
@@ -555,6 +565,15 @@ EDITOR_API int editor_get_auto_indent_mode(intptr_t editor_handle);
 EDITOR_API void editor_set_handle_config(intptr_t editor_handle,
     float radius, float center_dist, float line_width,
     float touch_padding, float drag_y_offset);
+
+#pragma endregion
+
+#pragma region Scrollbar Config
+
+/// Set scrollbar geometry configuration
+/// @param thickness Scrollbar thickness in pixels (default 10.0)
+/// @param min_thumb Minimum scrollbar thumb length in pixels (default 24.0)
+EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle, float thickness, float min_thumb);
 
 #pragma endregion
 

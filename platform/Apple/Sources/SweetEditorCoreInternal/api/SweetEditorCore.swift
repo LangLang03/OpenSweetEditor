@@ -1226,6 +1226,32 @@ class SweetEditorCore {
         return BracketHighlightRect(origin: origin, width: width, height: height)
     }
 
+    private func defaultScrollbarRect() -> ScrollbarRect {
+        ScrollbarRect(origin: PointData(x: 0, y: 0), width: 0, height: 0)
+    }
+
+    private func defaultScrollbarModel() -> ScrollbarModel {
+        ScrollbarModel(visible: false, track: defaultScrollbarRect(), thumb: defaultScrollbarRect())
+    }
+
+    private func readScrollbarRect(_ reader: inout BinaryReader) -> ScrollbarRect? {
+        guard let origin = readPointData(&reader),
+              let width = reader.readFloat(),
+              let height = reader.readFloat() else {
+            return nil
+        }
+        return ScrollbarRect(origin: origin, width: width, height: height)
+    }
+
+    private func readScrollbarModel(_ reader: inout BinaryReader) -> ScrollbarModel? {
+        guard let visible = reader.readInt32(),
+              let track = readScrollbarRect(&reader),
+              let thumb = readScrollbarRect(&reader) else {
+            return nil
+        }
+        return ScrollbarModel(visible: visible != 0, track: track, thumb: thumb)
+    }
+
     private func readEditorRenderModel(_ data: Data) -> EditorRenderModel? {
         var reader = BinaryReader(data: data)
         guard let splitX = reader.readFloat(),
@@ -1303,6 +1329,17 @@ class SweetEditorCore {
             bracketHighlightRects.append(rect)
         }
 
+        var verticalScrollbar = defaultScrollbarModel()
+        var horizontalScrollbar = defaultScrollbarModel()
+        if reader.data.count - reader.offset >= 72 {
+            guard let vertical = readScrollbarModel(&reader),
+                  let horizontal = readScrollbarModel(&reader) else {
+                return nil
+            }
+            verticalScrollbar = vertical
+            horizontalScrollbar = horizontal
+        }
+
         return EditorRenderModel(
             split_x: splitX,
             scroll_x: scrollX,
@@ -1321,7 +1358,9 @@ class SweetEditorCore {
             max_gutter_icons: UInt32(bitPattern: maxGutterIcons),
             fold_arrow_x: foldArrowX,
             linked_editing_rects: linkedEditingRects,
-            bracket_highlight_rects: bracketHighlightRects
+            bracket_highlight_rects: bracketHighlightRects,
+            vertical_scrollbar: verticalScrollbar,
+            horizontal_scrollbar: horizontalScrollbar
         )
     }
 

@@ -325,24 +325,6 @@ namespace SweetEditor {
 
 		// TextRenderer flags for consistent measuring/drawing.
 		private static readonly TextFormatFlags TextMeasureDrawFlags = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
-		private const float ScrollbarThickness = 10f;
-		private const float ScrollbarMinThumb = 24f;
-		private ScrollMetrics scrollMetrics;
-		private bool hasScrollMetrics = false;
-		private RectangleF verticalScrollbarTrackRect = RectangleF.Empty;
-		private RectangleF verticalScrollbarThumbRect = RectangleF.Empty;
-		private RectangleF horizontalScrollbarTrackRect = RectangleF.Empty;
-		private RectangleF horizontalScrollbarThumbRect = RectangleF.Empty;
-		private bool draggingVerticalScrollbar = false;
-		private bool draggingHorizontalScrollbar = false;
-		private float scrollbarDragStartMouseX = 0f;
-		private float scrollbarDragStartMouseY = 0f;
-		private float scrollbarDragStartScrollX = 0f;
-		private float scrollbarDragStartScrollY = 0f;
-		private float scrollbarDragTravelX = 0f;
-		private float scrollbarDragTravelY = 0f;
-		private float scrollbarDragMaxScrollX = 0f;
-		private float scrollbarDragMaxScrollY = 0f;
 		private readonly MeasurePerfStats perfMeasureStats = new MeasurePerfStats();
 		private readonly PerfOverlay perfOverlay = new PerfOverlay();
 
@@ -1113,7 +1095,7 @@ namespace SweetEditor {
 			perf.Mark(PerfStepRecorder.StepGutter);
 			DrawLineNumbers(e.Graphics, renderModel);
 			perf.Mark(PerfStepRecorder.StepLineNumber);
-			DrawScrollbars(e.Graphics);
+			DrawScrollbars(e.Graphics, renderModel);
 			perf.Mark(PerfStepRecorder.StepScrollbar);
 			UpdateCompletionPopupCursorAnchor();
 			perf.Mark(PerfStepRecorder.StepPopup);
@@ -1332,10 +1314,6 @@ namespace SweetEditor {
 		protected override void OnMouseDown(MouseEventArgs e) {
 			using var perf = StartInputPerf($"OnMouseDown({e.Button})");
 			Focus();
-			if (e.Button == MouseButtons.Left && HandleScrollbarMouseDown(e)) {
-				base.OnMouseDown(e);
-				return;
-			}
 			Modifier mods = GetCurrentModifiers();
 			if (e.Button == MouseButtons.Left) {
 				GestureResult gestureResult = editorCore.HandleGestureEvent(new GestureEvent {
@@ -1362,10 +1340,6 @@ namespace SweetEditor {
 
 		protected override void OnMouseMove(MouseEventArgs e) {
 			using var perf = StartInputPerf($"OnMouseMove({e.Button})");
-			if (HandleScrollbarMouseMove(e)) {
-				base.OnMouseMove(e);
-				return;
-			}
 			if (e.Button == MouseButtons.Left) {
 				Modifier mods = GetCurrentModifiers();
 				GestureResult gestureResult = editorCore.HandleGestureEvent(new GestureEvent {
@@ -1383,10 +1357,6 @@ namespace SweetEditor {
 
 		protected override void OnMouseUp(MouseEventArgs e) {
 			using var perf = StartInputPerf($"OnMouseUp({e.Button})");
-			if (e.Button == MouseButtons.Left && HandleScrollbarMouseUp()) {
-				base.OnMouseUp(e);
-				return;
-			}
 			if (e.Button == MouseButtons.Left) {
 				Modifier mods = GetCurrentModifiers();
 				GestureResult gestureResult = editorCore.HandleGestureEvent(new GestureEvent {
@@ -1415,114 +1385,6 @@ namespace SweetEditor {
 			FireGestureEvents(gestureResult, new System.Drawing.PointF(e.X, e.Y));
 			Flush();
 			base.OnMouseWheel(e);
-		}
-
-		private bool HandleScrollbarMouseDown(MouseEventArgs e) {
-			UpdateScrollbarGeometry();
-			System.Drawing.PointF point = new System.Drawing.PointF(e.X, e.Y);
-
-			if (verticalScrollbarThumbRect.Contains(point)) {
-				draggingVerticalScrollbar = true;
-				draggingHorizontalScrollbar = false;
-				scrollbarDragStartMouseY = e.Y;
-				scrollbarDragStartScrollY = hasScrollMetrics ? scrollMetrics.ScrollY : 0f;
-				scrollbarDragTravelY = Math.Max(0f, verticalScrollbarTrackRect.Height - verticalScrollbarThumbRect.Height);
-				scrollbarDragMaxScrollY = hasScrollMetrics ? Math.Max(0f, scrollMetrics.MaxScrollY) : 0f;
-				Capture = true;
-				return true;
-			}
-
-			if (horizontalScrollbarThumbRect.Contains(point)) {
-				draggingHorizontalScrollbar = true;
-				draggingVerticalScrollbar = false;
-				scrollbarDragStartMouseX = e.X;
-				scrollbarDragStartScrollX = hasScrollMetrics ? scrollMetrics.ScrollX : 0f;
-				scrollbarDragTravelX = Math.Max(0f, horizontalScrollbarTrackRect.Width - horizontalScrollbarThumbRect.Width);
-				scrollbarDragMaxScrollX = hasScrollMetrics ? Math.Max(0f, scrollMetrics.MaxScrollX) : 0f;
-				Capture = true;
-				return true;
-			}
-
-			if (hasScrollMetrics && verticalScrollbarTrackRect.Contains(point)) {
-				if (verticalScrollbarTrackRect.Height > 0f && scrollMetrics.MaxScrollY > 0f) {
-					float travel = Math.Max(0f, verticalScrollbarTrackRect.Height - verticalScrollbarThumbRect.Height);
-					float ratio = travel <= 0f
-						? 0f
-						: Clamp01((e.Y - verticalScrollbarTrackRect.Y - verticalScrollbarThumbRect.Height * 0.5f) / travel);
-					float targetY = ratio * scrollMetrics.MaxScrollY;
-					SetScrollFromScrollbar(scrollMetrics.ScrollX, targetY);
-				}
-				return true;
-			}
-
-			if (hasScrollMetrics && horizontalScrollbarTrackRect.Contains(point)) {
-				if (horizontalScrollbarTrackRect.Width > 0f && scrollMetrics.MaxScrollX > 0f) {
-					float travel = Math.Max(0f, horizontalScrollbarTrackRect.Width - horizontalScrollbarThumbRect.Width);
-					float ratio = travel <= 0f
-						? 0f
-						: Clamp01((e.X - horizontalScrollbarTrackRect.X - horizontalScrollbarThumbRect.Width * 0.5f) / travel);
-					float targetX = ratio * scrollMetrics.MaxScrollX;
-					SetScrollFromScrollbar(targetX, scrollMetrics.ScrollY);
-				}
-				return true;
-			}
-
-			return false;
-		}
-
-		private bool HandleScrollbarMouseMove(MouseEventArgs e) {
-			if (!draggingVerticalScrollbar && !draggingHorizontalScrollbar) {
-				return false;
-			}
-			if (!hasScrollMetrics) {
-				return true;
-			}
-
-			if (draggingVerticalScrollbar) {
-				float targetY = scrollbarDragStartScrollY;
-				if (scrollbarDragTravelY > 0f && scrollbarDragMaxScrollY > 0f) {
-					float delta = e.Y - scrollbarDragStartMouseY;
-					targetY += delta * scrollbarDragMaxScrollY / scrollbarDragTravelY;
-				}
-				targetY = Clamp(targetY, 0f, scrollMetrics.MaxScrollY);
-				SetScrollFromScrollbar(scrollMetrics.ScrollX, targetY);
-				return true;
-			}
-
-			if (draggingHorizontalScrollbar) {
-				float targetX = scrollbarDragStartScrollX;
-				if (scrollbarDragTravelX > 0f && scrollbarDragMaxScrollX > 0f) {
-					float delta = e.X - scrollbarDragStartMouseX;
-					targetX += delta * scrollbarDragMaxScrollX / scrollbarDragTravelX;
-				}
-				targetX = Clamp(targetX, 0f, scrollMetrics.MaxScrollX);
-				SetScrollFromScrollbar(targetX, scrollMetrics.ScrollY);
-				return true;
-			}
-
-			return false;
-		}
-
-		private bool HandleScrollbarMouseUp() {
-			if (!draggingVerticalScrollbar && !draggingHorizontalScrollbar) {
-				return false;
-			}
-			draggingVerticalScrollbar = false;
-			draggingHorizontalScrollbar = false;
-			Capture = false;
-			return true;
-		}
-
-		private void SetScrollFromScrollbar(float scrollX, float scrollY) {
-			editorCore.SetScroll(scrollX, scrollY);
-			Flush();
-			if (hasScrollMetrics) {
-				ScrollChanged?.Invoke(this, new ScrollChangedEventArgs(scrollMetrics.ScrollX, scrollMetrics.ScrollY));
-			}
-			decorationProviderManager?.OnScrollChanged();
-			if (completionPopupController != null && completionPopupController.IsShowing) {
-				completionProviderManager?.Dismiss();
-			}
 		}
 
 		private void InitEdgeScrollTimer() {
@@ -1598,131 +1460,56 @@ namespace SweetEditor {
 			}
 		}
 
-		private void DrawScrollbars(Graphics g) {
-			UpdateScrollbarGeometry();
-			bool hasVertical = verticalScrollbarTrackRect.Width > 0 && verticalScrollbarTrackRect.Height > 0;
-			bool hasHorizontal = horizontalScrollbarTrackRect.Width > 0 && horizontalScrollbarTrackRect.Height > 0;
+		private void DrawScrollbars(Graphics g, EditorRenderModel model) {
+			ScrollbarModel vertical = model.VerticalScrollbar;
+			ScrollbarModel horizontal = model.HorizontalScrollbar;
+			bool hasVertical = vertical.Visible && vertical.Track.Width > 0 && vertical.Track.Height > 0;
+			bool hasHorizontal = horizontal.Visible && horizontal.Track.Width > 0 && horizontal.Track.Height > 0;
 			if (!hasVertical && !hasHorizontal) return;
 
 			using var trackBrush = new SolidBrush(WithAlpha(currentTheme.SplitLineColor, 72));
 			using var thumbBrush = new SolidBrush(WithAlpha(currentTheme.LineNumberColor, 170));
-			using var activeThumbBrush = new SolidBrush(WithAlpha(currentTheme.LineNumberColor, 220));
+			RectangleF verticalTrackRect = RectangleF.Empty;
+			RectangleF horizontalTrackRect = RectangleF.Empty;
 
 			if (hasVertical) {
-				g.FillRectangle(trackBrush, verticalScrollbarTrackRect);
-				using var path = CreateRoundedRectPath(verticalScrollbarThumbRect, ScrollbarThickness * 0.5f);
-				g.FillPath(draggingVerticalScrollbar ? activeThumbBrush : thumbBrush, path);
+				verticalTrackRect = new RectangleF(
+					vertical.Track.Origin.X,
+					vertical.Track.Origin.Y,
+					vertical.Track.Width,
+					vertical.Track.Height);
+				RectangleF verticalThumbRect = new RectangleF(
+					vertical.Thumb.Origin.X,
+					vertical.Thumb.Origin.Y,
+					vertical.Thumb.Width,
+					vertical.Thumb.Height);
+				g.FillRectangle(trackBrush, verticalTrackRect);
+				g.FillRectangle(thumbBrush, verticalThumbRect);
 			}
 
 			if (hasHorizontal) {
-				g.FillRectangle(trackBrush, horizontalScrollbarTrackRect);
-				using var path = CreateRoundedRectPath(horizontalScrollbarThumbRect, ScrollbarThickness * 0.5f);
-				g.FillPath(draggingHorizontalScrollbar ? activeThumbBrush : thumbBrush, path);
+				horizontalTrackRect = new RectangleF(
+					horizontal.Track.Origin.X,
+					horizontal.Track.Origin.Y,
+					horizontal.Track.Width,
+					horizontal.Track.Height);
+				RectangleF horizontalThumbRect = new RectangleF(
+					horizontal.Thumb.Origin.X,
+					horizontal.Thumb.Origin.Y,
+					horizontal.Thumb.Width,
+					horizontal.Thumb.Height);
+				g.FillRectangle(trackBrush, horizontalTrackRect);
+				g.FillRectangle(thumbBrush, horizontalThumbRect);
 			}
 
 			if (hasVertical && hasHorizontal) {
 				var corner = new RectangleF(
-					verticalScrollbarTrackRect.X,
-					horizontalScrollbarTrackRect.Y,
-					verticalScrollbarTrackRect.Width,
-					horizontalScrollbarTrackRect.Height);
+					verticalTrackRect.X,
+					horizontalTrackRect.Y,
+					verticalTrackRect.Width,
+					horizontalTrackRect.Height);
 				g.FillRectangle(trackBrush, corner);
 			}
-		}
-
-		private void UpdateScrollbarGeometry() {
-			if (!hasScrollMetrics || ClientSize.Width <= 0 || ClientSize.Height <= 0) {
-				ResetScrollbarRects();
-				return;
-			}
-
-			bool showVertical = scrollMetrics.CanScrollY;
-			bool showHorizontal = scrollMetrics.CanScrollX;
-
-			float width = ClientSize.Width;
-			float height = ClientSize.Height;
-
-			float verticalTrackHeight = height - (showHorizontal ? ScrollbarThickness : 0f);
-			if (showVertical && verticalTrackHeight > 0f) {
-				verticalScrollbarTrackRect = new RectangleF(
-					width - ScrollbarThickness,
-					0f,
-					ScrollbarThickness,
-					verticalTrackHeight);
-				float viewport = Math.Max(1f, scrollMetrics.ViewportHeight);
-				float contentSpan = Math.Max(viewport, scrollMetrics.MaxScrollY + viewport);
-				float thumbHeight = Math.Max(ScrollbarMinThumb, verticalTrackHeight * viewport / contentSpan);
-				thumbHeight = Math.Min(thumbHeight, verticalTrackHeight);
-				float travel = Math.Max(0f, verticalTrackHeight - thumbHeight);
-				float ratio = scrollMetrics.MaxScrollY <= 0f ? 0f : Clamp01(scrollMetrics.ScrollY / scrollMetrics.MaxScrollY);
-				float thumbY = travel <= 0f ? 0f : travel * ratio;
-				verticalScrollbarThumbRect = new RectangleF(
-					verticalScrollbarTrackRect.X,
-					thumbY,
-					ScrollbarThickness,
-					thumbHeight);
-			} else {
-				verticalScrollbarTrackRect = RectangleF.Empty;
-				verticalScrollbarThumbRect = RectangleF.Empty;
-			}
-
-			float horizontalTrackX = Math.Max(0f, scrollMetrics.TextAreaX);
-			float horizontalTrackWidth = width - horizontalTrackX - (showVertical ? ScrollbarThickness : 0f);
-			float horizontalTrackY = height - ScrollbarThickness;
-			if (showHorizontal && horizontalTrackWidth > 0f && horizontalTrackY >= 0f) {
-				horizontalScrollbarTrackRect = new RectangleF(
-					horizontalTrackX,
-					horizontalTrackY,
-					horizontalTrackWidth,
-					ScrollbarThickness);
-				float viewport = Math.Max(1f, scrollMetrics.TextAreaWidth);
-				float contentSpan = Math.Max(viewport, scrollMetrics.MaxScrollX + viewport);
-				float thumbWidth = Math.Max(ScrollbarMinThumb, horizontalTrackWidth * viewport / contentSpan);
-				thumbWidth = Math.Min(thumbWidth, horizontalTrackWidth);
-				float travel = Math.Max(0f, horizontalTrackWidth - thumbWidth);
-				float ratio = scrollMetrics.MaxScrollX <= 0f ? 0f : Clamp01(scrollMetrics.ScrollX / scrollMetrics.MaxScrollX);
-				float thumbX = horizontalTrackX + (travel <= 0f ? 0f : travel * ratio);
-				horizontalScrollbarThumbRect = new RectangleF(
-					thumbX,
-					horizontalTrackY,
-					thumbWidth,
-					ScrollbarThickness);
-			} else {
-				horizontalScrollbarTrackRect = RectangleF.Empty;
-				horizontalScrollbarThumbRect = RectangleF.Empty;
-			}
-		}
-
-		private void ResetScrollbarRects() {
-			verticalScrollbarTrackRect = RectangleF.Empty;
-			verticalScrollbarThumbRect = RectangleF.Empty;
-			horizontalScrollbarTrackRect = RectangleF.Empty;
-			horizontalScrollbarThumbRect = RectangleF.Empty;
-		}
-
-		private static GraphicsPath CreateRoundedRectPath(RectangleF rect, float radius) {
-			var path = new GraphicsPath();
-			if (rect.Width <= 0f || rect.Height <= 0f || radius <= 0f) {
-				path.AddRectangle(rect);
-				return path;
-			}
-			float d = radius * 2f;
-			path.AddArc(rect.X, rect.Y, d, d, 180, 90);
-			path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
-			path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
-			path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
-			path.CloseFigure();
-			return path;
-		}
-
-		private static float Clamp01(float value) {
-			if (value < 0f) return 0f;
-			if (value > 1f) return 1f;
-			return value;
-		}
-
-		private static float Clamp(float value, float min, float max) {
-			return Math.Max(min, Math.Min(max, value));
 		}
 
 		private static Color WithAlpha(Color color, int alpha) {
@@ -2294,9 +2081,6 @@ namespace SweetEditor {
 
 			renderModel = editorCore.BuildRenderModel();
 			perf.Mark(PerfStepRecorder.StepBuild);
-			scrollMetrics = editorCore.GetScrollMetrics();
-			hasScrollMetrics = true;
-			UpdateScrollbarGeometry();
 			perf.Mark(PerfStepRecorder.StepMetrics);
 			UpdateCompletionPopupCursorAnchor();
 			perf.Mark(PerfStepRecorder.StepAnchor);

@@ -62,6 +62,7 @@ public class EditorCore {
     private long mNativeHandle;
     @Nullable private Document mDocument;
     private HandleConfig mHandleConfig = new HandleConfig();
+    private ScrollbarConfig mScrollbarConfig = new ScrollbarConfig();
 
     public EditorCore(TextMeasurer measurer, EditorOptions options) {
         ByteBuffer optionsBuf = ProtocolEncoder.packEditorOptions(options);
@@ -609,6 +610,28 @@ public class EditorCore {
      */
     public HandleConfig getHandleConfig() {
         return mHandleConfig;
+    }
+
+    // ==================== Scrollbar Config ====================
+
+    /**
+     * Sets the scrollbar geometry configuration.
+     *
+     * @param config ScrollbarConfig instance
+     */
+    public void setScrollbarConfig(ScrollbarConfig config) {
+        if (mNativeHandle == 0) return;
+        mScrollbarConfig = config;
+        nativeSetScrollbarConfig(mNativeHandle, config.thickness, config.minThumb);
+    }
+
+    /**
+     * Gets the current scrollbar configuration (cached in Java side).
+     *
+     * @return Current ScrollbarConfig
+     */
+    public ScrollbarConfig getScrollbarConfig() {
+        return mScrollbarConfig;
     }
 
     // ==================== Position Coordinate Query ====================
@@ -1677,6 +1700,9 @@ public class EditorCore {
 
     @CriticalNative
     private static native void nativeSetHandleConfig(long handle, float radius, float centerDist, float lineWidth, float touchPadding, float dragYOffset);
+
+    @CriticalNative
+    private static native void nativeSetScrollbarConfig(long handle, float thickness, float minThumb);
 
     @FastNative
     private static native float[] nativeGetPositionRect(long handle, int line, int column);

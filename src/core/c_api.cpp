@@ -224,6 +224,18 @@ static void appendBracketHighlightRect(std::vector<uint8_t>& buffer, const Brack
   appendF32(buffer, rect.height);
 }
 
+static void appendScrollbarRect(std::vector<uint8_t>& buffer, const ScrollbarRect& rect) {
+  appendPoint(buffer, rect.origin);
+  appendF32(buffer, rect.width);
+  appendF32(buffer, rect.height);
+}
+
+static void appendScrollbarModel(std::vector<uint8_t>& buffer, const ScrollbarModel& scrollbar) {
+  appendBool(buffer, scrollbar.visible);
+  appendScrollbarRect(buffer, scrollbar.track);
+  appendScrollbarRect(buffer, scrollbar.thumb);
+}
+
 static const uint8_t* editorRenderModelToBinary(const EditorRenderModel& model, size_t* out_size) {
   std::vector<uint8_t> buffer;
   buffer.reserve(1024);
@@ -272,6 +284,10 @@ static const uint8_t* editorRenderModelToBinary(const EditorRenderModel& model, 
   for (const auto& rect : model.bracket_highlight_rects) {
     appendBracketHighlightRect(buffer, rect);
   }
+
+  // Optional payload tail (append-only): scrollbar render models.
+  appendScrollbarModel(buffer, model.vertical_scrollbar);
+  appendScrollbarModel(buffer, model.horizontal_scrollbar);
 
   return allocBinaryPayload(buffer.data(), buffer.size(), out_size);
 }
@@ -1103,6 +1119,21 @@ void editor_set_handle_config(intptr_t editor_handle,
   config.touch_padding = touch_padding;
   config.drag_y_offset = drag_y_offset;
   editor_core->setHandleConfig(config);
+}
+
+#pragma endregion
+
+#pragma region Scrollbar Config
+
+void editor_set_scrollbar_config(intptr_t editor_handle, float thickness, float min_thumb) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr) {
+    return;
+  }
+  ScrollbarConfig config;
+  config.thickness = thickness;
+  config.min_thumb = min_thumb;
+  editor_core->setScrollbarConfig(config);
 }
 
 #pragma endregion

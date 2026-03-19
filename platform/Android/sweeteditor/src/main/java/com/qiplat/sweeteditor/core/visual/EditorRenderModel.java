@@ -79,4 +79,12 @@ public class EditorRenderModel {
     /** Bracket pair highlight rectangle list (bracket near cursor + matching bracket). */
     @SerializedName("bracket_highlight_rects")
     public List<BracketHighlightRect> bracketHighlightRects;
+
+    /** Vertical scrollbar render model. */
+    @SerializedName("vertical_scrollbar")
+    public ScrollbarModel verticalScrollbar;
+
+    /** Horizontal scrollbar render model. */
+    @SerializedName("horizontal_scrollbar")
+    public ScrollbarModel horizontalScrollbar;
 }

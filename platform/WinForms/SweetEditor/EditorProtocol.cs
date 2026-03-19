@@ -715,6 +715,36 @@ namespace SweetEditor {
 			return true;
 		}
 
+		internal static bool TryReadScrollbarRect(ReadOnlySpan<byte> data, ref int offset, out ScrollbarRect rect) {
+			rect = default;
+			if (!TryReadPointF(data, ref offset, out PointF origin) ||
+				!TryReadFloat(data, ref offset, out float width) ||
+				!TryReadFloat(data, ref offset, out float height)) {
+				return false;
+			}
+			rect = new ScrollbarRect {
+				Origin = origin,
+				Width = width,
+				Height = height,
+			};
+			return true;
+		}
+
+		internal static bool TryReadScrollbarModel(ReadOnlySpan<byte> data, ref int offset, out ScrollbarModel scrollbar) {
+			scrollbar = default;
+			if (!TryReadInt32(data, ref offset, out int visible) ||
+				!TryReadScrollbarRect(data, ref offset, out ScrollbarRect track) ||
+				!TryReadScrollbarRect(data, ref offset, out ScrollbarRect thumb)) {
+				return false;
+			}
+			scrollbar = new ScrollbarModel {
+				Visible = visible != 0,
+				Track = track,
+				Thumb = thumb,
+			};
+			return true;
+		}
+
 		internal static EditorRenderModel CreateEmptyRenderModel() {
 			return new EditorRenderModel {
 				VisualLines = new List<VisualLine>(),
@@ -723,6 +753,8 @@ namespace SweetEditor {
 				DiagnosticDecorations = new List<DiagnosticDecoration>(),
 				LinkedEditingRects = new List<LinkedEditingRect>(),
 				BracketHighlightRects = new List<BracketHighlightRect>(),
+				VerticalScrollbar = default,
+				HorizontalScrollbar = default,
 			};
 		}
 
@@ -839,6 +871,18 @@ namespace SweetEditor {
 				bracketHighlightRects.Add(rect);
 			}
 			model.BracketHighlightRects = bracketHighlightRects;
+
+			// Optional append-only tail: vertical/horizontal scrollbar models.
+			if (offset < data.Length) {
+				int savedOffset = offset;
+				if (TryReadScrollbarModel(data, ref offset, out ScrollbarModel verticalScrollbar) &&
+					TryReadScrollbarModel(data, ref offset, out ScrollbarModel horizontalScrollbar)) {
+					model.VerticalScrollbar = verticalScrollbar;
+					model.HorizontalScrollbar = horizontalScrollbar;
+				} else {
+					offset = savedOffset;
+				}
+			}
 			return model;
 		}
 

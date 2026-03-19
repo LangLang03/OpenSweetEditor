@@ -20,6 +20,12 @@ namespace NS_SWEETEDITOR {
            ch > 0x7F; // Treat non-ASCII characters as word characters (supports CJK, etc.)
   }
 
+  static bool pointInScrollbarRect(const PointF& point, const ScrollbarRect& rect) {
+    if (rect.width <= 0.0f || rect.height <= 0.0f) return false;
+    return point.x >= rect.origin.x && point.x <= rect.origin.x + rect.width
+        && point.y >= rect.origin.y && point.y <= rect.origin.y + rect.height;
+  }
+
 #pragma region [Class: EditorOptions]
   TouchConfig EditorOptions::simpleAsTouchConfig() const {
     return TouchConfig {touch_slop, double_tap_timeout, long_press_ms};
@@ -30,7 +36,12 @@ namespace NS_SWEETEDITOR {
   }
 
   U8String EditorSettings::dump() const {
-    return "EditorSettings {max_scale = " + std::to_string(max_scale) + ", read_only = " + (read_only ? "true" : "false") + ", enable_composition = " + (enable_composition ? "true" : "false") + "}";
+    return "EditorSettings {max_scale = " + std::to_string(max_scale)
+        + ", read_only = " + (read_only ? "true" : "false")
+        + ", enable_composition = " + (enable_composition ? "true" : "false")
+        + ", scrollbar.thickness = " + std::to_string(scrollbar.thickness)
+        + ", scrollbar.min_thumb = " + std::to_string(scrollbar.min_thumb)
+        + "}";
   }
 #pragma endregion
 
@@ -46,6 +57,14 @@ namespace NS_SWEETEDITOR {
   void EditorCore::setHandleConfig(const HandleConfig& config) {
     m_settings_.handle = config;
     LOGD("EditorCore::setHandleConfig(), radius = %.1f, center_dist = %.1f", config.radius, config.center_dist);
+  }
+
+  void EditorCore::setScrollbarConfig(const ScrollbarConfig& config) {
+    m_settings_.scrollbar.thickness = std::max(1.0f, config.thickness);
+    m_settings_.scrollbar.min_thumb = std::max(m_settings_.scrollbar.thickness, config.min_thumb);
+    normalizeScrollState();
+    LOGD("EditorCore::setScrollbarConfig(), thickness = %.1f, min_thumb = %.1f",
+         m_settings_.scrollbar.thickness, m_settings_.scrollbar.min_thumb);
   }
 
   void EditorCore::loadDocument(const Ptr<Document>& document) {
@@ -127,6 +146,7 @@ namespace NS_SWEETEDITOR {
     buildDiagnosticDecorations(model, line_height);
     buildLinkedEditingRects(model, line_height);
     buildBracketHighlightRects(model, line_height);
+    buildScrollbarModel(model);
   }
 
   ViewState EditorCore::getViewState() const {
@@ -157,6 +177,72 @@ namespace NS_SWEETEDITOR {
     return metrics;
   }
 
+  void EditorCore::computeScrollbarModels(ScrollbarModel& vertical, ScrollbarModel& horizontal) const {
+    vertical = ScrollbarModel{};
+    horizontal = ScrollbarModel{};
+    if (!m_viewport_.valid() || m_text_layout_ == nullptr) {
+      return;
+    }
+
+    const float scrollbar_thickness = std::max(1.0f, m_settings_.scrollbar.thickness);
+    const float scrollbar_min_thumb = std::max(scrollbar_thickness, m_settings_.scrollbar.min_thumb);
+
+    const ScrollBounds bounds = m_text_layout_->getScrollBounds();
+    const bool show_vertical = bounds.max_scroll_y > 0.0f;
+    const bool show_horizontal = bounds.max_scroll_x > 0.0f;
+    const float viewport_width = m_viewport_.width;
+    const float viewport_height = m_viewport_.height;
+
+    const float vertical_track_x = viewport_width - scrollbar_thickness;
+    const float vertical_track_height = viewport_height - (show_horizontal ? scrollbar_thickness : 0.0f);
+    if (show_vertical && vertical_track_height > 0.0f) {
+      vertical.visible = true;
+      vertical.track.origin = {vertical_track_x, 0.0f};
+      vertical.track.width = scrollbar_thickness;
+      vertical.track.height = vertical_track_height;
+
+      const float viewport = std::max(1.0f, viewport_height);
+      const float content_span = std::max(viewport, bounds.max_scroll_y + viewport);
+      float thumb_height = std::max(scrollbar_min_thumb, vertical_track_height * viewport / content_span);
+      thumb_height = std::min(thumb_height, vertical_track_height);
+      const float travel = std::max(0.0f, vertical_track_height - thumb_height);
+      const float ratio = bounds.max_scroll_y <= 0.0f
+        ? 0.0f
+        : std::clamp(m_view_state_.scroll_y / bounds.max_scroll_y, 0.0f, 1.0f);
+      const float thumb_y = travel <= 0.0f ? 0.0f : travel * ratio;
+      vertical.thumb.origin = {vertical_track_x, thumb_y};
+      vertical.thumb.width = scrollbar_thickness;
+      vertical.thumb.height = thumb_height;
+    }
+
+    const float horizontal_track_x = std::max(0.0f, bounds.text_area_x);
+    const float horizontal_track_width = viewport_width - horizontal_track_x - (show_vertical ? scrollbar_thickness : 0.0f);
+    const float horizontal_track_y = viewport_height - scrollbar_thickness;
+    if (show_horizontal && horizontal_track_width > 0.0f && horizontal_track_y >= 0.0f) {
+      horizontal.visible = true;
+      horizontal.track.origin = {horizontal_track_x, horizontal_track_y};
+      horizontal.track.width = horizontal_track_width;
+      horizontal.track.height = scrollbar_thickness;
+
+      const float viewport = std::max(1.0f, bounds.text_area_width);
+      const float content_span = std::max(viewport, bounds.max_scroll_x + viewport);
+      float thumb_width = std::max(scrollbar_min_thumb, horizontal_track_width * viewport / content_span);
+      thumb_width = std::min(thumb_width, horizontal_track_width);
+      const float travel = std::max(0.0f, horizontal_track_width - thumb_width);
+      const float ratio = bounds.max_scroll_x <= 0.0f
+        ? 0.0f
+        : std::clamp(m_view_state_.scroll_x / bounds.max_scroll_x, 0.0f, 1.0f);
+      const float thumb_x = horizontal_track_x + (travel <= 0.0f ? 0.0f : travel * ratio);
+      horizontal.thumb.origin = {thumb_x, horizontal_track_y};
+      horizontal.thumb.width = thumb_width;
+      horizontal.thumb.height = scrollbar_thickness;
+    }
+  }
+
+  void EditorCore::buildScrollbarModel(EditorRenderModel& model) const {
+    computeScrollbarModels(model.vertical_scrollbar, model.horizontal_scrollbar);
+  }
+
   LayoutMetrics& EditorCore::getLayoutMetrics() const {
     return m_text_layout_->getLayoutMetrics();
   }
@@ -172,9 +258,155 @@ namespace NS_SWEETEDITOR {
     result.view_scale = m_view_state_.scale;
   }
 
+  bool EditorCore::handleScrollbarGesture(const GestureEvent& event, GestureResult& result) {
+    if (m_text_layout_ == nullptr || !m_viewport_.valid()) {
+      return false;
+    }
+    // While dragging selection handles, ignore scrollbar hit-test.
+    if (m_dragging_handle_ != HandleDragTarget::NONE
+        && m_dragging_scrollbar_ == ScrollbarDragTarget::NONE) {
+      return false;
+    }
+
+    const auto consume = [&](GestureType type) {
+      result.type = type;
+      fillGestureResult(result);
+      return true;
+    };
+
+    ScrollbarModel vertical;
+    ScrollbarModel horizontal;
+    computeScrollbarModels(vertical, horizontal);
+    const ScrollBounds bounds = m_text_layout_->getScrollBounds();
+
+    switch (event.type) {
+    case EventType::TOUCH_DOWN:
+    case EventType::MOUSE_DOWN: {
+      if (event.points.empty()) return false;
+      const PointF& point = event.points[0];
+
+      if (vertical.visible && pointInScrollbarRect(point, vertical.thumb)) {
+        m_dragging_scrollbar_ = ScrollbarDragTarget::VERTICAL;
+        m_scrollbar_drag_start_point_ = point;
+        m_scrollbar_drag_start_scroll_y_ = m_view_state_.scroll_y;
+        m_scrollbar_drag_travel_y_ = std::max(0.0f, vertical.track.height - vertical.thumb.height);
+        m_scrollbar_drag_max_scroll_y_ = std::max(0.0f, bounds.max_scroll_y);
+        m_edge_scroll_.active = false;
+        m_gesture_handler_->resetState();
+        return consume(GestureType::UNDEFINED);
+      }
+
+      if (horizontal.visible && pointInScrollbarRect(point, horizontal.thumb)) {
+        m_dragging_scrollbar_ = ScrollbarDragTarget::HORIZONTAL;
+        m_scrollbar_drag_start_point_ = point;
+        m_scrollbar_drag_start_scroll_x_ = m_view_state_.scroll_x;
+        m_scrollbar_drag_travel_x_ = std::max(0.0f, horizontal.track.width - horizontal.thumb.width);
+        m_scrollbar_drag_max_scroll_x_ = std::max(0.0f, bounds.max_scroll_x);
+        m_edge_scroll_.active = false;
+        m_gesture_handler_->resetState();
+        return consume(GestureType::UNDEFINED);
+      }
+
+      if (vertical.visible && pointInScrollbarRect(point, vertical.track)) {
+        if (vertical.track.height > 0.0f && bounds.max_scroll_y > 0.0f) {
+          const float travel = std::max(0.0f, vertical.track.height - vertical.thumb.height);
+          const float ratio = travel <= 0.0f
+            ? 0.0f
+            : std::clamp((point.y - vertical.track.origin.y - vertical.thumb.height * 0.5f) / travel, 0.0f, 1.0f);
+          m_view_state_.scroll_y = ratio * bounds.max_scroll_y;
+          normalizeScrollState();
+          m_edge_scroll_.active = false;
+          return consume(GestureType::SCROLL);
+        }
+        return consume(GestureType::UNDEFINED);
+      }
+
+      if (horizontal.visible && pointInScrollbarRect(point, horizontal.track)) {
+        if (horizontal.track.width > 0.0f && bounds.max_scroll_x > 0.0f) {
+          const float travel = std::max(0.0f, horizontal.track.width - horizontal.thumb.width);
+          const float ratio = travel <= 0.0f
+            ? 0.0f
+            : std::clamp((point.x - horizontal.track.origin.x - horizontal.thumb.width * 0.5f) / travel, 0.0f, 1.0f);
+          m_view_state_.scroll_x = ratio * bounds.max_scroll_x;
+          normalizeScrollState();
+          m_edge_scroll_.active = false;
+          return consume(GestureType::SCROLL);
+        }
+        return consume(GestureType::UNDEFINED);
+      }
+      return false;
+    }
+
+    case EventType::TOUCH_MOVE:
+    case EventType::MOUSE_MOVE: {
+      if (m_dragging_scrollbar_ == ScrollbarDragTarget::NONE) {
+        return false;
+      }
+      if (event.points.empty()) {
+        return consume(GestureType::UNDEFINED);
+      }
+      const PointF& point = event.points[0];
+      if (m_dragging_scrollbar_ == ScrollbarDragTarget::VERTICAL) {
+        float target_y = m_scrollbar_drag_start_scroll_y_;
+        if (m_scrollbar_drag_travel_y_ > 0.0f && m_scrollbar_drag_max_scroll_y_ > 0.0f) {
+          const float delta = point.y - m_scrollbar_drag_start_point_.y;
+          target_y += delta * m_scrollbar_drag_max_scroll_y_ / m_scrollbar_drag_travel_y_;
+        }
+        m_view_state_.scroll_y = std::clamp(target_y, 0.0f, bounds.max_scroll_y);
+        normalizeScrollState();
+        m_edge_scroll_.active = false;
+        return consume(GestureType::SCROLL);
+      }
+      if (m_dragging_scrollbar_ == ScrollbarDragTarget::HORIZONTAL) {
+        float target_x = m_scrollbar_drag_start_scroll_x_;
+        if (m_scrollbar_drag_travel_x_ > 0.0f && m_scrollbar_drag_max_scroll_x_ > 0.0f) {
+          const float delta = point.x - m_scrollbar_drag_start_point_.x;
+          target_x += delta * m_scrollbar_drag_max_scroll_x_ / m_scrollbar_drag_travel_x_;
+        }
+        m_view_state_.scroll_x = std::clamp(target_x, 0.0f, bounds.max_scroll_x);
+        normalizeScrollState();
+        m_edge_scroll_.active = false;
+        return consume(GestureType::SCROLL);
+      }
+      return consume(GestureType::UNDEFINED);
+    }
+
+    case EventType::TOUCH_POINTER_DOWN: {
+      if (m_dragging_scrollbar_ != ScrollbarDragTarget::NONE) {
+        m_dragging_scrollbar_ = ScrollbarDragTarget::NONE;
+        m_gesture_handler_->resetState();
+        return consume(GestureType::UNDEFINED);
+      }
+      return false;
+    }
+
+    case EventType::TOUCH_UP:
+    case EventType::MOUSE_UP:
+    case EventType::TOUCH_CANCEL: {
+      if (m_dragging_scrollbar_ == ScrollbarDragTarget::NONE) {
+        return false;
+      }
+      m_dragging_scrollbar_ = ScrollbarDragTarget::NONE;
+      m_view_state_.scroll_x = std::round(m_view_state_.scroll_x);
+      m_view_state_.scroll_y = std::round(m_view_state_.scroll_y);
+      normalizeScrollState();
+      m_edge_scroll_.active = false;
+      m_gesture_handler_->resetState();
+      return consume(GestureType::UNDEFINED);
+    }
+
+    default:
+      return false;
+    }
+  }
+
   GestureResult EditorCore::handleGestureEvent(const GestureEvent& event) {
     PERF_TIMER("handleGestureEvent");
     GestureResult gesture_result;
+
+    if (handleScrollbarGesture(event, gesture_result)) {
+      return gesture_result;
+    }
 
     // On TOUCH_DOWN / MOUSE_DOWN, check whether the cursor handle was pressed
     if (event.type == EventType::TOUCH_DOWN || event.type == EventType::MOUSE_DOWN) {

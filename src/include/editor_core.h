@@ -49,6 +49,14 @@ namespace NS_SWEETEDITOR {
     float drag_y_offset {50.0f};
   };
 
+  /// Scrollbar geometry configuration
+  struct ScrollbarConfig {
+    /// Scrollbar track/thumb thickness in pixels
+    float thickness {10.0f};
+    /// Minimum thumb length in pixels
+    float min_thumb {24.0f};
+  };
+
   /// Runtime-mutable editor settings (modified via individual setters)
   struct EditorSettings {
     /// Max scale factor
@@ -61,6 +69,8 @@ namespace NS_SWEETEDITOR {
     bool enable_composition {false};
     /// Selection handle configuration
     HandleConfig handle;
+    /// Scrollbar geometry configuration
+    ScrollbarConfig scrollbar;
 
     U8String dump() const;
   };
@@ -145,6 +155,10 @@ namespace NS_SWEETEDITOR {
     /// Set selection handle configuration at runtime
     /// @param config Handle appearance and touch parameters
     void setHandleConfig(const HandleConfig& config);
+
+    /// Set scrollbar geometry configuration at runtime
+    /// @param config Scrollbar thickness/min-thumb parameters
+    void setScrollbarConfig(const ScrollbarConfig& config);
 
     /// Load text content
     /// @param document Document instance
@@ -605,6 +619,22 @@ namespace NS_SWEETEDITOR {
     /// Drag target for selection handle
     enum class HandleDragTarget { NONE, START, END };
     HandleDragTarget m_dragging_handle_ {HandleDragTarget::NONE};
+
+    /// Drag target for scrollbar interaction
+    enum class ScrollbarDragTarget { NONE, VERTICAL, HORIZONTAL };
+    ScrollbarDragTarget m_dragging_scrollbar_ {ScrollbarDragTarget::NONE};
+    /// Scrollbar drag start pointer position (screen coordinates)
+    PointF m_scrollbar_drag_start_point_;
+    /// Scroll value at drag start
+    float m_scrollbar_drag_start_scroll_x_ {0};
+    float m_scrollbar_drag_start_scroll_y_ {0};
+    /// Thumb travel distance in pixels
+    float m_scrollbar_drag_travel_x_ {0};
+    float m_scrollbar_drag_travel_y_ {0};
+    /// Max scroll range cached at drag start
+    float m_scrollbar_drag_max_scroll_x_ {0};
+    float m_scrollbar_drag_max_scroll_y_ {0};
+
     /// Cached screen positions of selection handles (for hit test, updated each buildRenderModel frame)
     PointF m_cached_start_handle_pos_;
     PointF m_cached_end_handle_pos_;
@@ -702,6 +732,15 @@ namespace NS_SWEETEDITOR {
 
     /// Generate render decorations from diagnostic data in DecorationManager
     void buildDiagnosticDecorations(EditorRenderModel& model, float line_height);
+
+    /// Handle scrollbar click/drag gestures in core; return true when consumed
+    bool handleScrollbarGesture(const GestureEvent& event, GestureResult& result);
+
+    /// Compute vertical/horizontal scrollbar models from current view state
+    void computeScrollbarModels(ScrollbarModel& vertical, ScrollbarModel& horizontal) const;
+
+    /// Build scrollbar geometry in render model
+    void buildScrollbarModel(EditorRenderModel& model) const;
 
     /// Sync fold state in DecorationManager to each LogicalLine.is_fold_hidden
     void syncFoldState();

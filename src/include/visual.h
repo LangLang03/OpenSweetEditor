@@ -213,6 +213,26 @@ namespace NS_SWEETEDITOR {
     bool is_active {false};
   };
 
+  /// Scrollbar rectangle (track/thumb geometry in screen coordinates)
+  struct ScrollbarRect {
+    /// Top-left corner of rectangle
+    PointF origin;
+    /// Rectangle width
+    float width {0};
+    /// Rectangle height
+    float height {0};
+  };
+
+  /// Scrollbar render model (one axis)
+  struct ScrollbarModel {
+    /// Whether scrollbar is visible for this axis
+    bool visible {false};
+    /// Scrollbar track rectangle
+    ScrollbarRect track;
+    /// Scrollbar thumb rectangle
+    ScrollbarRect thumb;
+  };
+
   /// Editor render model
   struct EditorRenderModel {
     /// Line-number split x position
@@ -251,6 +271,10 @@ namespace NS_SWEETEDITOR {
     Vector<LinkedEditingRect> linked_editing_rects;
     /// Bracket-pair highlight rectangle list (bracket near cursor + matching bracket, usually 0 or 2)
     Vector<BracketHighlightRect> bracket_highlight_rects;
+    /// Vertical scrollbar render model
+    ScrollbarModel vertical_scrollbar;
+    /// Horizontal scrollbar render model
+    ScrollbarModel horizontal_scrollbar;
 
     U8String dump() const;
     U8String toJson() const;
@@ -386,7 +410,9 @@ namespace NS_SWEETEDITOR {
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GuideSegment, direction, type, style, start, end, arrow_end)
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(LinkedEditingRect, origin, width, height, is_active)
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(BracketHighlightRect, origin, width, height)
-  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(EditorRenderModel, split_x, scroll_x, scroll_y, viewport_width, viewport_height, current_line, lines, cursor, selection_rects, selection_start_handle, selection_end_handle, composition_decoration, guide_segments, diagnostic_decorations, max_gutter_icons, fold_arrow_x, linked_editing_rects, bracket_highlight_rects)
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ScrollbarRect, origin, width, height)
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ScrollbarModel, visible, track, thumb)
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(EditorRenderModel, split_x, scroll_x, scroll_y, viewport_width, viewport_height, current_line, lines, cursor, selection_rects, selection_start_handle, selection_end_handle, composition_decoration, guide_segments, diagnostic_decorations, max_gutter_icons, fold_arrow_x, linked_editing_rects, bracket_highlight_rects, vertical_scrollbar, horizontal_scrollbar)
   NLOHMANN_JSON_SERIALIZE_ENUM(FoldArrowMode, {
     {FoldArrowMode::AUTO, "AUTO"},
     {FoldArrowMode::ALWAYS, "ALWAYS"},

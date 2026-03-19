@@ -407,6 +407,10 @@ public:
     editor_set_handle_config(static_cast<intptr_t>(handle), radius, centerDist, lineWidth, touchPadding, dragYOffset);
   }
 
+  static void setScrollbarConfig(jlong handle, jfloat thickness, jfloat minThumb) {
+    editor_set_scrollbar_config(static_cast<intptr_t>(handle), thickness, minThumb);
+  }
+
   static jfloatArray getPositionRect(JNIEnv* env, jclass clazz, jlong handle, jint line, jint column) {
     jfloatArray result = env->NewFloatArray(3);
     float x = 0;
@@ -819,6 +823,7 @@ public:
       {"nativeSetAutoIndentMode", "(JI)V", (void*) setAutoIndentMode},
       {"nativeGetAutoIndentMode", "(J)I", (void*) getAutoIndentMode},
       {"nativeSetHandleConfig", "(JFFFFF)V", (void*) setHandleConfig},
+      {"nativeSetScrollbarConfig", "(JFF)V", (void*) setScrollbarConfig},
       {"nativeGetPositionRect", "(JII)[F", (void*) getPositionRect},
       {"nativeGetCursorRect", "(J)[F", (void*) getCursorRect},
       {"nativeRegisterStyle", "(JIIII)V", (void*) registerStyle},
