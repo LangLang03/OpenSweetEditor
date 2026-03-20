@@ -230,18 +230,6 @@ namespace SweetEditor {
 	/// </summary>
 	[Designer("System.Windows.Forms.Design.ControlDesigner, System.Design")]
 	public class EditorControl : Control {
-		/// <summary>
-		/// Editor icon provider interface.
-		/// Host code implements this interface to provide icon images for gutter icons and InlayHint ICON rendering.
-		/// </summary>
-		public interface EditorIconProvider {
-			/// <summary>
-			/// Returns the icon image for the given icon ID.
-			/// Return <c>null</c> to skip rendering.
-			/// </summary>
-			Image? GetIconImage(int iconId);
-		}
-
 		#region Events
 		/// <summary>Text changed event.</summary>
 		public event EventHandler<TextChangedEventArgs> TextChanged;
@@ -282,8 +270,8 @@ namespace SweetEditor {
 
 		#endregion
 
-		// Current theme (default dark).
 		private EditorTheme currentTheme = EditorTheme.Dark();
+		private EditorRenderer renderer;
 
 		// Win32 IME message constants.
 		private const int WM_IME_STARTCOMPOSITION = 0x010D;
@@ -299,30 +287,12 @@ namespace SweetEditor {
 		[DllImport("imm32.dll", CharSet = CharSet.Unicode)]
 		private static extern int ImmGetCompositionString(IntPtr hIMC, int dwIndex, byte[] lpBuf, int dwBufLen);
 
-		private const float BaseTextFontSize = 11f;
-		private const float BaseInlayHintFontSize = 9.5f;
-		private const string BaseTextFontFamily = "Consolas";
-		private const string BaseInlayHintFontFamily = "Segoe UI";
 		private EditorCore editorCore;
-		private Font regularFont = new Font(BaseTextFontFamily, BaseTextFontSize, FontStyle.Regular);
-		private Font boldFont = new Font(BaseTextFontFamily, BaseTextFontSize, FontStyle.Bold);
-		private Font italicFont = new Font(BaseTextFontFamily, BaseTextFontSize, FontStyle.Italic);
-		private Font boldItalicFont = new Font(BaseTextFontFamily, BaseTextFontSize, FontStyle.Bold | FontStyle.Italic);
-		// InlayHint font set.
-		private Font inlayHintFont = new Font(BaseInlayHintFontFamily, BaseInlayHintFontSize, FontStyle.Regular);
-		private Font inlayHintBoldFont = new Font(BaseInlayHintFontFamily, BaseInlayHintFontSize, FontStyle.Bold);
-		private Font inlayHintItalicFont = new Font(BaseInlayHintFontFamily, BaseInlayHintFontSize, FontStyle.Italic);
-		private Font inlayHintBoldItalicFont = new Font(BaseInlayHintFontFamily, BaseInlayHintFontSize, FontStyle.Bold | FontStyle.Italic);
-		private Graphics textGraphics;
 		private EditorRenderModel? renderModel;
-		private int currentDrawingLineNumber = -1;
-		private EditorIconProvider? editorIconProvider;
 		private DecorationProviderManager? decorationProviderManager;
 		private CompletionProviderManager? completionProviderManager;
 		private CompletionPopupController? completionPopupController;
 		private NewLineActionProviderManager? newLineActionProviderManager;
-		// Brush cache to avoid per-run allocations.
-		private readonly Dictionary<int, SolidBrush> brushCache = new Dictionary<int, SolidBrush>();
 		private int lastMeasureDpi;
 		private LanguageConfiguration? languageConfiguration;
 		/// <summary>
@@ -331,90 +301,12 @@ namespace SweetEditor {
 		/// </summary>
 		public IEditorMetadata? Metadata { get; set; }
 
-		// TextRenderer flags for consistent measuring/drawing.
-		private static readonly TextFormatFlags TextMeasureDrawFlags = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix;
 		private EditorSettings? settings;
-		private readonly MeasurePerfStats perfMeasureStats = new MeasurePerfStats();
-		private readonly PerfOverlay perfOverlay = new PerfOverlay();
 
 		// Edge-scroll timer for auto-scrolling during mouse drag selection
 		private const int EdgeScrollIntervalMs = 16;
 		private System.Windows.Forms.Timer? edgeScrollTimer;
 		private bool edgeScrollActive = false;
-
-		private SolidBrush GetOrCreateBrush(int argb) {
-			if (!brushCache.TryGetValue(argb, out var b)) {
-				b = new SolidBrush(System.Drawing.Color.FromArgb(argb));
-				brushCache[argb] = b;
-			}
-			return b;
-		}
-
-		private void LogBuildPerfSummary(PerfStepRecorder perf) {
-			if (!EditorPerf.Enabled) return;
-			double totalMs = EditorPerf.TicksToMs(perf.TotalTicks);
-			double buildMs = perf.GetStepMs(PerfStepRecorder.StepBuild);
-			bool shouldLog = totalMs >= EditorPerf.WarnBuildMs || buildMs >= EditorPerf.WarnBuildMs || perfMeasureStats.ShouldLogBuild();
-			if (!shouldLog) return;
-			Debug.WriteLine(
-				$"[PERF][Build] total={totalMs:F2}ms " +
-				$"{PerfStepRecorder.StepPrep}={perf.GetStepMs(PerfStepRecorder.StepPrep):F2}ms " +
-				$"{PerfStepRecorder.StepBuild}={buildMs:F2}ms " +
-				$"{PerfStepRecorder.StepMetrics}={perf.GetStepMs(PerfStepRecorder.StepMetrics):F2}ms " +
-				$"{PerfStepRecorder.StepAnchor}={perf.GetStepMs(PerfStepRecorder.StepAnchor):F2}ms " +
-				$"{PerfStepRecorder.StepInvalidate}={perf.GetStepMs(PerfStepRecorder.StepInvalidate):F2}ms " +
-				$"| {perfMeasureStats.BuildSummary()}");
-		}
-
-		private void LogPaintPerfSummary(PerfStepRecorder perf) {
-			if (!EditorPerf.Enabled) return;
-			double totalMs = EditorPerf.TicksToMs(perf.TotalTicks);
-			if (totalMs < EditorPerf.WarnPaintMs && !perf.AnyStepOver(EditorPerf.WarnPaintStepMs)) return;
-			Debug.WriteLine(
-				$"[PERF][Paint] total={totalMs:F2}ms " +
-				$"{PerfStepRecorder.StepClear}={perf.GetStepMs(PerfStepRecorder.StepClear):F2}ms " +
-				$"{PerfStepRecorder.StepCurrent}={perf.GetStepMs(PerfStepRecorder.StepCurrent):F2}ms " +
-				$"{PerfStepRecorder.StepSelection}={perf.GetStepMs(PerfStepRecorder.StepSelection):F2}ms " +
-				$"{PerfStepRecorder.StepLines}={perf.GetStepMs(PerfStepRecorder.StepLines):F2}ms " +
-				$"{PerfStepRecorder.StepGuides}={perf.GetStepMs(PerfStepRecorder.StepGuides):F2}ms " +
-				$"{PerfStepRecorder.StepComposition}={perf.GetStepMs(PerfStepRecorder.StepComposition):F2}ms " +
-				$"{PerfStepRecorder.StepDiagnostics}={perf.GetStepMs(PerfStepRecorder.StepDiagnostics):F2}ms " +
-				$"{PerfStepRecorder.StepLinkedEditing}={perf.GetStepMs(PerfStepRecorder.StepLinkedEditing):F2}ms " +
-				$"{PerfStepRecorder.StepBracket}={perf.GetStepMs(PerfStepRecorder.StepBracket):F2}ms " +
-				$"{PerfStepRecorder.StepCursor}={perf.GetStepMs(PerfStepRecorder.StepCursor):F2}ms " +
-				$"{PerfStepRecorder.StepGutter}={perf.GetStepMs(PerfStepRecorder.StepGutter):F2}ms " +
-				$"{PerfStepRecorder.StepLineNumber}={perf.GetStepMs(PerfStepRecorder.StepLineNumber):F2}ms " +
-				$"{PerfStepRecorder.StepScrollbar}={perf.GetStepMs(PerfStepRecorder.StepScrollbar):F2}ms " +
-				$"{PerfStepRecorder.StepPopup}={perf.GetStepMs(PerfStepRecorder.StepPopup):F2}ms");
-		}
-
-		private void RecordInputPerf(string tag, double elapsedMs) {
-			perfOverlay.RecordInput(tag, elapsedMs);
-		}
-
-		private PerfScope StartInputPerf(string tag) {
-			return PerfScope.Start(tag, EditorPerf.WarnInputMs, RecordInputPerf);
-		}
-
-		// Select main font by style flags.
-		private Font GetFontByStyle(int fontStyle) {
-			bool isBold = (fontStyle & FONT_STYLE_BOLD) != 0;
-			bool isItalic = (fontStyle & FONT_STYLE_ITALIC) != 0;
-			if (isBold && isItalic) return boldItalicFont;
-			if (isBold) return boldFont;
-			if (isItalic) return italicFont;
-			return regularFont;
-		}
-
-		// Select inlay-hint font by style flags.
-		private Font GetInlayHintFontByStyle(int fontStyle) {
-			bool isBold = (fontStyle & FONT_STYLE_BOLD) != 0;
-			bool isItalic = (fontStyle & FONT_STYLE_ITALIC) != 0;
-			if (isBold && isItalic) return inlayHintBoldItalicFont;
-			if (isBold) return inlayHintBoldFont;
-			if (isItalic) return inlayHintItalicFont;
-			return inlayHintFont;
-		}
 
 		public EditorControl() {
 			InitializeComponent();
@@ -444,6 +336,7 @@ namespace SweetEditor {
 		/// </summary>
 		public void ApplyTheme(EditorTheme theme) {
 			currentTheme = theme;
+			renderer.ApplyTheme(theme);
 			this.BackColor = currentTheme.BackgroundColor;
 			this.ForeColor = currentTheme.TextColor;
 
@@ -459,12 +352,12 @@ namespace SweetEditor {
 
 		/// <summary>Enables or disables the performance overlay.</summary>
 		public void SetPerfOverlayEnabled(bool enabled) {
-			perfOverlay.SetEnabled(enabled);
+			renderer.SetPerfOverlayEnabled(enabled);
 			Invalidate();
 		}
 
 		/// <summary>Returns whether the performance overlay is enabled.</summary>
-		public bool IsPerfOverlayEnabled() => perfOverlay.IsEnabled;
+		public bool IsPerfOverlayEnabled() => renderer.IsPerfOverlayEnabled;
 
 		/// <summary>Gets the centralized editor settings.</summary>
 		public EditorSettings Settings => settings;
@@ -777,8 +670,8 @@ namespace SweetEditor {
 		#region Public API - Gutter Icons
 
  /// <summary>Sets editor icon provider.</summary>
-		public void SetEditorIconProvider(EditorIconProvider? provider) {
-			editorIconProvider = provider;
+		public void SetEditorIconProvider(EditorRenderer.EditorIconProvider? provider) {
+			renderer.SetEditorIconProvider(provider);
 			Flush();
 		}
 
@@ -982,24 +875,19 @@ namespace SweetEditor {
 					 ControlStyles.ResizeRedraw, true);
 			SetStyle(ControlStyles.StandardDoubleClick, false);
 			this.DoubleBuffered = true;
+			renderer = new EditorRenderer(currentTheme);
 			this.BackColor = currentTheme.BackgroundColor;
 			this.ForeColor = currentTheme.TextColor;
-			this.Font = regularFont;
+			this.Font = renderer.RegularFont;
 			this.TabStop = true;
 			if (IsDesignMode()) {
 				return;
 			}
-			textGraphics = CreateGraphics();
-			textGraphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+			renderer.RecreateTextGraphics(this);
 			var doubleClickSize = SystemInformation.DoubleClickSize;
 			float clickSlop = Math.Max(20f, Math.Max(doubleClickSize.Width, doubleClickSize.Height));
 			int doubleClickTime = SystemInformation.DoubleClickTime;
-			editorCore = new EditorCore(new EditorCore.TextMeasurer {
-				MeasureTextWidth = OnMeasureText,
-				MeasureInlayHintWidth = OnMeasureInlayHintText,
-				MeasureIconWidth = OnMeasureIconWidth,
-				GetFontMetrics = OnGetFontMetrics
-			}, new EditorOptions { TouchSlop = clickSlop, DoubleTapTimeout = doubleClickTime });
+			editorCore = new EditorCore(renderer.GetTextMeasurer(), new EditorOptions { TouchSlop = clickSlop, DoubleTapTimeout = doubleClickTime });
 			decorationProviderManager = new DecorationProviderManager(this);
 
 			// Completion manager and popup controller.
@@ -1023,63 +911,15 @@ namespace SweetEditor {
 		protected override void OnHandleCreated(EventArgs e) {
 			base.OnHandleCreated(e);
 			if (IsDesignMode() || editorCore == null) return;
-			// Recreate measuring graphics after handle exists to align with actual DPI.
-			RecreateTextGraphicsAndResetMeasurer();
-			// Force one rebuild so pre-handle zero-width measurements are cleared.
+			renderer.RecreateTextGraphics(this);
+			editorCore.ResetMeasurer();
 			Flush();
 		}
 
 		protected override void OnPaint(PaintEventArgs e) {
 			base.OnPaint(e);
-			var perf = PerfStepRecorder.Start();
-			e.Graphics.Clear(currentTheme.BackgroundColor);
-			perf.Mark(PerfStepRecorder.StepClear);
-
-			if (this.renderModel == null) {
-				perf.Finish();
-				EditorPerf.LogSlow("OnPaint(no-model)", perf.TotalTicks, EditorPerf.WarnPaintMs);
-				perfOverlay.RecordDraw(perf);
-				perfOverlay.Draw(e.Graphics, ClientSize.Width);
-				return;
-			}
-			e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-			e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-			EditorRenderModel renderModel = (EditorRenderModel)this.renderModel;
-
-			DrawCurrentLineHighlight(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepCurrent);
-			DrawSelectionRects(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepSelection);
-			DrawLines(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepLines);
-			DrawGuideSegments(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepGuides);
-			if (renderModel.CompositionDecoration.Active) {
-				DrawCompositionDecoration(e.Graphics, renderModel.CompositionDecoration);
-				perf.Mark(PerfStepRecorder.StepComposition);
-			}
-			DrawDiagnosticDecorations(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepDiagnostics);
-			DrawLinkedEditingRects(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepLinkedEditing);
-			DrawBracketHighlightRects(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepBracket);
-			DrawCursor(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepCursor);
-			DrawGutterOverlay(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepGutter);
-			DrawLineNumbers(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepLineNumber);
-			DrawScrollbars(e.Graphics, renderModel);
-			perf.Mark(PerfStepRecorder.StepScrollbar);
+			renderer.Render(e.Graphics, renderModel, currentTheme, ClientSize);
 			UpdateCompletionPopupCursorAnchor();
-			perf.Mark(PerfStepRecorder.StepPopup);
-
-			perf.Finish();
-			LogPaintPerfSummary(perf);
-			perfOverlay.RecordDraw(perf);
-			perfOverlay.Draw(e.Graphics, ClientSize.Width);
 		}
 
 		protected override void OnResize(EventArgs e) {
@@ -1397,474 +1237,6 @@ namespace SweetEditor {
 			return mods;
 		}
 
-		/// <summary>Gets font ascent.</summary>
-		private static float GetFontAscent(Graphics g, Font font) {
-			int designAscent = font.FontFamily.GetCellAscent(font.Style);
-			int designEmHeight = font.FontFamily.GetEmHeight(font.Style);
-			// points -> pixels: px = pt * dpi / 72
-			float pixelAscent = designAscent * font.SizeInPoints * g.DpiY / (designEmHeight * 72f);
-			return pixelAscent;
-		}
-
-		#region Rendering
-
-		private void DrawLines(Graphics g, EditorRenderModel model) {
-			List<VisualLine> lines = model.VisualLines;
-			if (lines == null) return;
-			foreach (var line in lines) {
-				if (line.Runs == null) continue;
-				foreach (var run in line.Runs) {
-					DrawVisualRun(g, run);
-				}
-			}
-		}
-
-		private void DrawGutterOverlay(Graphics g, EditorRenderModel model) {
-			if (model.SplitX <= 0) return;
-			using var brush = new SolidBrush(currentTheme.BackgroundColor);
-			g.FillRectangle(brush, 0, 0, model.SplitX, this.ClientSize.Height);
-			DrawCurrentLineHighlight(g, model, model.SplitX);
-			DrawLineSplit(g, model.SplitX);
-		}
-
-		private void DrawLineNumbers(Graphics g, EditorRenderModel model) {
-			List<VisualLine> lines = model.VisualLines;
-			if (lines == null) return;
-			currentDrawingLineNumber = -1;
-			foreach (var line in lines) {
-				DrawLineNumber(g, line, model);
-			}
-		}
-
-		private void DrawScrollbars(Graphics g, EditorRenderModel model) {
-			ScrollbarModel vertical = model.VerticalScrollbar;
-			ScrollbarModel horizontal = model.HorizontalScrollbar;
-			bool hasVertical = vertical.Visible && vertical.Track.Width > 0 && vertical.Track.Height > 0;
-			bool hasHorizontal = horizontal.Visible && horizontal.Track.Width > 0 && horizontal.Track.Height > 0;
-			if (!hasVertical && !hasHorizontal) return;
-
-			using var trackBrush = new SolidBrush(currentTheme.ScrollbarTrackColor);
-			using var thumbBrush = new SolidBrush(currentTheme.ScrollbarThumbColor);
-			RectangleF verticalTrackRect = RectangleF.Empty;
-			RectangleF horizontalTrackRect = RectangleF.Empty;
-
-			if (hasVertical) {
-				verticalTrackRect = new RectangleF(
-					vertical.Track.Origin.X,
-					vertical.Track.Origin.Y,
-					vertical.Track.Width,
-					vertical.Track.Height);
-				RectangleF verticalThumbRect = new RectangleF(
-					vertical.Thumb.Origin.X,
-					vertical.Thumb.Origin.Y,
-					vertical.Thumb.Width,
-					vertical.Thumb.Height);
-				g.FillRectangle(trackBrush, verticalTrackRect);
-				g.FillRectangle(thumbBrush, verticalThumbRect);
-			}
-
-			if (hasHorizontal) {
-				horizontalTrackRect = new RectangleF(
-					horizontal.Track.Origin.X,
-					horizontal.Track.Origin.Y,
-					horizontal.Track.Width,
-					horizontal.Track.Height);
-				RectangleF horizontalThumbRect = new RectangleF(
-					horizontal.Thumb.Origin.X,
-					horizontal.Thumb.Origin.Y,
-					horizontal.Thumb.Width,
-					horizontal.Thumb.Height);
-				g.FillRectangle(trackBrush, horizontalTrackRect);
-				g.FillRectangle(thumbBrush, horizontalThumbRect);
-			}
-
-			if (hasVertical && hasHorizontal) {
-				var corner = new RectangleF(
-					verticalTrackRect.X,
-					horizontalTrackRect.Y,
-					verticalTrackRect.Width,
-					horizontalTrackRect.Height);
-				g.FillRectangle(trackBrush, corner);
-			}
-		}
-
-		private void DrawLineNumber(Graphics g, VisualLine visualLine, EditorRenderModel model) {
-			if (visualLine.WrapIndex != 0 || visualLine.IsPhantomLine) return;
-			PointF position = visualLine.LineNumberPosition;
-			float topY = position.Y - GetFontAscent(g, regularFont);
-			float lineHeight = regularFont.GetHeight(g);
-			List<int>? gutterIconIds = visualLine.GutterIconIds;
-		bool hasIcons = editorIconProvider != null && gutterIconIds is { Count: > 0 };
-			int newLineNumber = visualLine.LogicalLine + 1;
-			if (model.MaxGutterIcons == 0 && hasIcons) {
-				List<int> iconIds = gutterIconIds!;
-				DrawOverlayGutterIcon(g, iconIds[0], position.X, topY, lineHeight);
-				currentDrawingLineNumber = newLineNumber;
-			} else if (newLineNumber != currentDrawingLineNumber) {
-				var rect = new Rectangle((int)position.X, (int)topY, 120, (int)Math.Ceiling(regularFont.GetHeight(g)));
-				TextRenderer.DrawText(g, newLineNumber.ToString(), regularFont, rect, currentTheme.LineNumberColor, TextMeasureDrawFlags);
-				currentDrawingLineNumber = newLineNumber;
-			}
-
-			if (hasIcons && model.MaxGutterIcons != 0) {
-				List<int> iconIds = gutterIconIds!;
-				float iconRight = model.FoldArrowX > 0 ? model.FoldArrowX - lineHeight * 0.5f : model.SplitX - 2f;
-				int maxIcons = model.MaxGutterIcons > 0
-					? Math.Min(iconIds.Count, model.MaxGutterIcons)
-					: iconIds.Count;
-				for (int i = maxIcons - 1; i >= 0; i--) {
-					int iconId = iconIds[i];
-					if (DrawGutterIcon(g, iconId, iconRight - lineHeight, topY, lineHeight, lineHeight)) {
-						iconRight -= lineHeight;
-					}
-				}
-			}
-
-			if (visualLine.FoldState != FoldState.NONE) {
-				float halfSize = lineHeight * 0.2f;
-				float centerX = model.FoldArrowX > 0 ? model.FoldArrowX : model.SplitX - lineHeight * 0.5f;
-				float centerY = topY + lineHeight * 0.5f;
-
-				using var path = new GraphicsPath();
-				using var pen = new Pen(currentTheme.LineNumberColor, Math.Max(1f, lineHeight * 0.1f)) {
-					StartCap = LineCap.Round,
-					EndCap = LineCap.Round,
-					LineJoin = LineJoin.Round
-				};
-
-				if (visualLine.FoldState == FoldState.COLLAPSED) {
-					path.AddLines([
-						new System.Drawing.PointF(centerX - halfSize * 0.5f, centerY - halfSize),
-						new System.Drawing.PointF(centerX + halfSize * 0.5f, centerY),
-						new System.Drawing.PointF(centerX - halfSize * 0.5f, centerY + halfSize)
-					]);
-				} else {
-					path.AddLines([
-						new System.Drawing.PointF(centerX - halfSize, centerY - halfSize * 0.5f),
-						new System.Drawing.PointF(centerX, centerY + halfSize * 0.5f),
-						new System.Drawing.PointF(centerX + halfSize, centerY - halfSize * 0.5f)
-					]);
-				}
-				g.DrawPath(pen, path);
-			}
-		}
-
-		private void DrawLineSplit(Graphics g, float x) {
-			using var pen = new Pen(currentTheme.SplitLineColor, 1f);
-			g.DrawLine(pen, x, 0, x, this.ClientSize.Height);
-		}
-
-		private void DrawOverlayGutterIcon(Graphics g, int iconId, float x, float y, float size) {
-			DrawGutterIcon(g, iconId, x, y, size, size);
-		}
-
-		private bool DrawGutterIcon(Graphics g, int iconId, float x, float y, float width, float height) {
-		Image? image = editorIconProvider?.GetIconImage(iconId);
-			if (image == null) return false;
-			InterpolationMode oldInterpolation = g.InterpolationMode;
-			g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-			g.DrawImage(image, x, y, width, height);
-			g.InterpolationMode = oldInterpolation;
-			return true;
-		}
-
-		private void DrawVisualRun(Graphics g, VisualRun visualRun) {
-			string text = visualRun.Text;
-			string drawTextContent = text ?? string.Empty;
-			bool hasText = !string.IsNullOrEmpty(text);
-			if (!hasText && visualRun.Type != VisualRunType.INLAY_HINT) return;
-			// InlayHint uses dedicated fonts, others use main fonts.
-			Font font = (visualRun.Type == VisualRunType.INLAY_HINT)
-				? GetInlayHintFontByStyle(visualRun.Style.FontStyle)
-				: GetFontByStyle(visualRun.Style.FontStyle);
-			Color color = (visualRun.Style.Color != 0)
-				? Color.FromArgb(visualRun.Style.Color)
-				: currentTheme.TextColor;
-
-			// C++ run.y is baseline; convert to top.
-			float ascent = GetFontAscent(g, font);
-			float topY = visualRun.Y - ascent;
-			int lineHeight = (int)Math.Ceiling(font.GetHeight(g));
-
-			// Re-measure with current graphics to avoid stale/zero widths.
-			Size measuredSize = TextRenderer.MeasureText(g, drawTextContent, font, new Size(int.MaxValue, int.MaxValue), TextMeasureDrawFlags);
-			int drawWidth = Math.Max((int)Math.Ceiling(visualRun.Width), measuredSize.Width);
-			if (drawWidth < 1) drawWidth = 1;
-
-			// Draw fold-placeholder: semi-transparent rounded background + "…" text.
-			if (visualRun.Type == VisualRunType.FOLD_PLACEHOLDER) {
-				float mgn = visualRun.Margin;
-				float fontHeight = font.GetHeight(g);
-				float bgLeft = visualRun.X + mgn;
-				float bgTop = topY;
-				float bgWidth = visualRun.Width - mgn * 2;
-				float bgHeight = fontHeight;
-				float radius = fontHeight * 0.2f;
-				using (var bgBrush = new SolidBrush(currentTheme.FoldPlaceholderBgColor)) {
-					DrawRoundedRect(g, bgBrush, bgLeft, bgTop, bgWidth, bgHeight, radius);
-				}
-				float textX = visualRun.X + mgn + visualRun.Padding;
-				int foldW = Math.Max(1, (int)Math.Ceiling(visualRun.Width - mgn * 2 - visualRun.Padding * 2));
-				foldW = Math.Max(foldW, measuredSize.Width);
-				var foldRect = new Rectangle((int)textX, (int)topY, foldW, lineHeight);
-				Color foldColor = currentTheme.FoldPlaceholderTextColor;
-				TextRenderer.DrawText(g, drawTextContent, font, foldRect, foldColor, TextMeasureDrawFlags);
-			}
-			// Draw inlay-hint rounded background and inner text padding.
-			else if (visualRun.Type == VisualRunType.INLAY_HINT) {
-				float mgn = visualRun.Margin;
-				float fontHeight = font.GetHeight(g);
-				float bgLeft = visualRun.X + mgn;
-				float bgTop = topY;
-				float bgWidth = visualRun.Width - mgn * 2; // includes margins, paddings, and text width
-				float bgHeight = fontHeight;
-
-				if (visualRun.ColorValue != 0) {
- // COLOR :, background, padding, rectangle
-					float blockSize = fontHeight;
-					float colorLeft = visualRun.X + mgn;
-					float colorTop = topY;
-					using (var colorBrush = new SolidBrush(Color.FromArgb(visualRun.ColorValue))) {
-						g.FillRectangle(colorBrush, colorLeft, colorTop, blockSize, blockSize);
-					}
-				} else {
- // TEXT / ICON : background + content
-					float radius = fontHeight * 0.2f;
-					using (var bgBrush = new SolidBrush(currentTheme.InlayHintBgColor)) {
-						DrawRoundedRect(g, bgBrush, bgLeft, bgTop, bgWidth, bgHeight, radius);
-					}
-				if (visualRun.IconId > 0 && editorIconProvider != null) {
-						float iconSize = Math.Min(bgWidth, bgHeight);
-						float iconLeft = bgLeft + (bgWidth - iconSize) * 0.5f;
-						float iconTop2 = bgTop + (bgHeight - iconSize) * 0.5f;
-						DrawGutterIcon(g, visualRun.IconId, iconLeft, iconTop2, iconSize, iconSize);
-					} else if (hasText) {
-						float textX = visualRun.X + mgn + visualRun.Padding;
-						int inlayW = Math.Max(1, (int)Math.Ceiling(visualRun.Width - mgn * 2 - visualRun.Padding * 2));
-						inlayW = Math.Max(inlayW, measuredSize.Width);
-						var inlayRect = new Rectangle((int)textX, (int)topY, inlayW, lineHeight);
-						TextRenderer.DrawText(g, drawTextContent, font, inlayRect, color, TextMeasureDrawFlags);
-					}
-				}
-			} else {
- // background (/)
-				if (visualRun.Style.BackgroundColor != 0) {
-					using var bgBrush = new SolidBrush(Color.FromArgb(visualRun.Style.BackgroundColor));
-					g.FillRectangle(bgBrush, visualRun.X, topY, drawWidth, lineHeight);
-				}
-				var rect = new Rectangle((int)visualRun.X, (int)topY, drawWidth, lineHeight);
-				Color drawColor = visualRun.Type == VisualRunType.PHANTOM_TEXT
-					? Color.FromArgb(128, color)
-					: color;
-				TextRenderer.DrawText(g, drawTextContent, font, rect, drawColor, TextMeasureDrawFlags);
-			}
-
-			// Draw strikethrough around x-height center.
-			if ((visualRun.Style.FontStyle & FONT_STYLE_STRIKETHROUGH) != 0) {
-				float strikeY = topY + ascent * 0.5f;
-				using var pen = new Pen(color, 1f);
-				g.DrawLine(pen, visualRun.X, strikeY, visualRun.X + visualRun.Width, strikeY);
-			}
-		}
-
-		/// <summary>Draw rounded rect.</summary>
-		private static void DrawRoundedRect(Graphics g, Brush brush, float x, float y, float width, float height, float radius) {
-			if (radius <= 0) {
-				g.FillRectangle(brush, x, y, width, height);
-				return;
-			}
-			using (var path = new GraphicsPath()) {
-				float d = radius * 2;
-				path.AddArc(x, y, d, d, 180, 90);
-				path.AddArc(x + width - d, y, d, d, 270, 90);
-				path.AddArc(x + width - d, y + height - d, d, d, 0, 90);
-				path.AddArc(x, y + height - d, d, d, 90, 90);
-				path.CloseFigure();
-				g.FillPath(brush, path);
-			}
-		}
-
-		/// <summary>Draw current line highlight.</summary>
-		private void DrawCurrentLineHighlight(Graphics g, EditorRenderModel model) {
-			DrawCurrentLineHighlight(g, model, ClientSize.Width);
-		}
-
-		private void DrawCurrentLineHighlight(Graphics g, EditorRenderModel model, float width) {
-			if (model.VisualLines == null || model.VisualLines.Count == 0) return;
-			float lineH = model.Cursor.Height > 0 ? model.Cursor.Height : regularFont.GetHeight(g);
-			using var brush = new SolidBrush(currentTheme.CurrentLineColor);
-			g.FillRectangle(brush, 0, model.CurrentLine.Y, width, lineH);
-		}
-
-		/// <summary>Draw selection rects.</summary>
-		private void DrawSelectionRects(Graphics g, EditorRenderModel model) {
-			if (model.SelectionRects == null || model.SelectionRects.Count == 0) return;
-			using var brush = new SolidBrush(currentTheme.SelectionColor);
-			foreach (var rect in model.SelectionRects) {
-				g.FillRectangle(brush, rect.Origin.X, rect.Origin.Y, rect.Width, rect.Height);
-			}
-		}
-
-		/// <summary>Draw cursor.</summary>
-		private void DrawCursor(Graphics g, EditorRenderModel model) {
-			if (!model.Cursor.Visible) return;
-			using var brush = new SolidBrush(currentTheme.CursorColor);
-			g.FillRectangle(brush, model.Cursor.Position.X, model.Cursor.Position.Y, 2f, model.Cursor.Height);
-		}
-
-		/// <summary>Draw composition decoration.</summary>
-		private void DrawCompositionDecoration(Graphics g, CompositionDecoration comp) {
-			float y = comp.Origin.Y + comp.Height;
-			using var pen = new Pen(currentTheme.CompositionColor, 2f);
-			g.DrawLine(pen, comp.Origin.X, y, comp.Origin.X + comp.Width, y);
-		}
-
-		/// <summary>Draw diagnostic decorations.</summary>
-		private void DrawDiagnosticDecorations(Graphics g, EditorRenderModel model) {
-			if (model.DiagnosticDecorations == null || model.DiagnosticDecorations.Count == 0) return;
-
-			foreach (var diag in model.DiagnosticDecorations) {
-				var color = diag.Color != 0
-					? System.Drawing.Color.FromArgb(diag.Color)
-					: diag.Severity switch {
-						0 => System.Drawing.Color.FromArgb(255, 255, 0, 0),      // ERROR: red
-						1 => System.Drawing.Color.FromArgb(255, 255, 204, 0),    // WARNING: yellow
-						2 => System.Drawing.Color.FromArgb(255, 97, 181, 237),   // INFO: blue
-						_ => System.Drawing.Color.FromArgb(178, 153, 153, 153),  // HINT: gray 70%
-					};
-
-				float startX = diag.Origin.X;
-				float endX = startX + diag.Width;
-				float baseY = diag.Origin.Y + diag.Height - 1f;
-
-				using var pen = new Pen(color, 3.0f);
-
-				if (diag.Severity == 3) {
-					// HINT: dashed straight underline
-					pen.DashPattern = [3f, 2f];
-					g.DrawLine(pen, startX, baseY, endX, baseY);
-				} else {
-					// ERROR/WARNING/INFO: smooth arc wavy line
-					float halfWave = 7f;
-					float amplitude = 3.5f;
-					using var path = new GraphicsPath();
-					float x = startX;
-					int step = 0;
-					while (x < endX) {
-						float nextX = Math.Min(x + halfWave, endX);
-						float midX = (x + nextX) / 2f;
-						float peakY = (step % 2 == 0) ? baseY - amplitude : baseY + amplitude;
-						// Quadratic bezier → cubic: ctrl = Q, P0→P1 endpoints
-						float c1x = x + 2f / 3f * (midX - x);
-						float c1y = baseY + 2f / 3f * (peakY - baseY);
-						float c2x = nextX + 2f / 3f * (midX - nextX);
-						float c2y = baseY + 2f / 3f * (peakY - baseY);
-						var p0 = step == 0
-							? new System.Drawing.PointF(x, baseY)
-							: path.GetLastPoint();
-						path.AddBezier(p0,
-							new System.Drawing.PointF(c1x, c1y),
-							new System.Drawing.PointF(c2x, c2y),
-							new System.Drawing.PointF(nextX, baseY));
-						x = nextX;
-						step++;
-					}
-					g.DrawPath(pen, path);
-				}
-			}
-		}
-
-		/// <summary>Draw linked editing rects.</summary>
-		private void DrawLinkedEditingRects(Graphics g, EditorRenderModel model) {
-			if (model.LinkedEditingRects == null || model.LinkedEditingRects.Count == 0) return;
-			foreach (var rect in model.LinkedEditingRects) {
-				if (rect.IsActive) {
-					// Active tab stop: semi-transparent fill + thicker border
-					using var fillBrush = new SolidBrush(System.Drawing.Color.FromArgb(30, 86, 156, 214));
-					g.FillRectangle(fillBrush, rect.Origin.X, rect.Origin.Y, rect.Width, rect.Height);
-					using var pen = new Pen(System.Drawing.Color.FromArgb(204, 86, 156, 214), 2f);
-					g.DrawRectangle(pen, rect.Origin.X, rect.Origin.Y, rect.Width, rect.Height);
-				} else {
-					// Inactive tab stop: border only
-					using var pen = new Pen(System.Drawing.Color.FromArgb(102, 86, 156, 214), 1f);
-					g.DrawRectangle(pen, rect.Origin.X, rect.Origin.Y, rect.Width, rect.Height);
-				}
-			}
-		}
-
-		/// <summary>Draw bracket highlight rects.</summary>
-		private void DrawBracketHighlightRects(Graphics g, EditorRenderModel model) {
-			if (model.BracketHighlightRects == null || model.BracketHighlightRects.Count == 0) return;
-			foreach (var rect in model.BracketHighlightRects) {
-				// Background fill (semi-transparent gold)
-				using var fillBrush = new SolidBrush(System.Drawing.Color.FromArgb(48, 255, 215, 0));
-				g.FillRectangle(fillBrush, rect.Origin.X, rect.Origin.Y, rect.Width, rect.Height);
-				// Border (gold)
-				using var pen = new Pen(System.Drawing.Color.FromArgb(204, 255, 215, 0), 1.5f);
-				g.DrawRectangle(pen, rect.Origin.X, rect.Origin.Y, rect.Width, rect.Height);
-			}
-		}
-
-		/// <summary>Draw guide segments.</summary>
-		private void DrawGuideSegments(Graphics g, EditorRenderModel model) {
-			if (model.GuideSegments == null || model.GuideSegments.Count == 0) return;
-			foreach (var seg in model.GuideSegments) {
-				var color = seg.Type switch {
-					GuideType.SEPARATOR => currentTheme.SeparatorColor,
-					_ => currentTheme.GuideColor
-				};
-				float lineWidth = seg.Type == GuideType.INDENT ? 1f : 1.2f;
-				using var pen = new Pen(color, lineWidth);
-
-				if (seg.ArrowEnd) {
-					float dpiScale = g.DpiX / 96f;
-					float arrowLen = (seg.Type == GuideType.FLOW ? 9f : 8f) * dpiScale;
-					float arrowAngle = (float)(Math.PI * 28.0 / 180.0);
-					float arrowDepth = (float)(arrowLen * Math.Cos(arrowAngle));
-					float dx = seg.End.X - seg.Start.X;
-					float dy = seg.End.Y - seg.Start.Y;
-					float len = (float)Math.Sqrt(dx * dx + dy * dy);
-					float trim = arrowDepth + lineWidth * 0.5f;
-					if (len > trim) {
-						float ratio = (len - trim) / len;
-						float lineEndX = seg.Start.X + dx * ratio;
-						float lineEndY = seg.Start.Y + dy * ratio;
-						g.DrawLine(pen, seg.Start.X, seg.Start.Y, lineEndX, lineEndY);
-					}
-					DrawArrowHead(g, color, seg.Start, seg.End, arrowLen, arrowAngle);
-				} else {
-					g.DrawLine(pen, seg.Start.X, seg.Start.Y, seg.End.X, seg.End.Y);
-				}
-			}
-		}
-
-		/// <summary>Draw arrow head.</summary>
-		private static void DrawArrowHead(Graphics g, System.Drawing.Color color, PointF from, PointF to, float arrowLen, float arrowAngle) {
-			float dx = to.X - from.X;
-			float dy = to.Y - from.Y;
-			float len = (float)Math.Sqrt(dx * dx + dy * dy);
-			if (len < 1f) return;
-			float ux = dx / len;
-			float uy = dy / len;
-			float cosA = (float)Math.Cos(arrowAngle);
-			float sinA = (float)Math.Sin(arrowAngle);
-			float ax1 = to.X - arrowLen * (ux * cosA - uy * sinA);
-			float ay1 = to.Y - arrowLen * (uy * cosA + ux * sinA);
-			float ax2 = to.X - arrowLen * (ux * cosA + uy * sinA);
-			float ay2 = to.Y - arrowLen * (uy * cosA - ux * sinA);
-
-			using var brush = new SolidBrush(color);
-			using var path = new GraphicsPath();
-			path.AddPolygon([
-				new System.Drawing.PointF(to.X, to.Y),
-				new System.Drawing.PointF(ax1, ay1),
-				new System.Drawing.PointF(ax2, ay2)
-			]);
-			g.FillPath(brush, path);
-		}
-
-		#endregion
-
 		#region Event Dispatching
 
 		/// <summary>Fire gesture events.</summary>
@@ -2035,21 +1407,19 @@ namespace SweetEditor {
 
 			if (!IsDesignMode() && IsHandleCreated && editorCore != null) {
 				int dpi = DeviceDpi;
-				if (dpi != lastMeasureDpi) {
-					RecreateTextGraphicsAndResetMeasurer();
+			if (dpi != lastMeasureDpi) {
+					renderer.RecreateTextGraphics(this);
+					editorCore.ResetMeasurer();
 					lastMeasureDpi = dpi;
 				}
-				// Ensure measurer has a valid DC.
-				if (textGraphics == null) {
-					textGraphics = CreateGraphics();
-					textGraphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-					// Text width cache stays valid across normal rebuilds; only reset after DC/DPI changes.
+				if (renderer.GetTextGraphics() == null) {
+					renderer.RecreateTextGraphics(this);
 					editorCore.ResetMeasurer();
 				}
-				perf.Mark(PerfStepRecorder.StepPrep);
+			perf.Mark(PerfStepRecorder.StepPrep);
 			}
 
-			perfMeasureStats.Reset();
+			renderer.PerfMeasureStats.Reset();
 
 			renderModel = editorCore.BuildRenderModel();
 			perf.Mark(PerfStepRecorder.StepBuild);
@@ -2059,8 +1429,8 @@ namespace SweetEditor {
 			Invalidate();
 			perf.Mark(PerfStepRecorder.StepInvalidate);
 			perf.Finish();
-			LogBuildPerfSummary(perf);
-			perfOverlay.RecordBuild(perf, perfMeasureStats.BuildSummary());
+			renderer.LogBuildPerfSummary(perf);
+			renderer.PerfOverlay.RecordBuild(perf, renderer.PerfMeasureStats.BuildSummary());
 		}
 
 		private void UpdateCompletionPopupCursorAnchor() {
@@ -2075,88 +1445,16 @@ namespace SweetEditor {
 		/// <summary>Internal accessor for SyncPlatformScale, used by <see cref="EditorSettings"/>.</summary>
 		internal void SyncPlatformScaleInternal(float scale) => SyncPlatformScale(scale);
 
-		/// <summary>Sync platform-side fonts and measurer to the latest scale.</summary>
 		private void SyncPlatformScale(float scale) {
-			if (scale <= 0f) return;
-
-			float textSize = Math.Max(1f, BaseTextFontSize * scale);
-			float inlaySize = Math.Max(1f, BaseInlayHintFontSize * scale);
-
-			regularFont.Dispose();
-			boldFont.Dispose();
-			italicFont.Dispose();
-			boldItalicFont.Dispose();
-			inlayHintFont.Dispose();
-			inlayHintBoldFont.Dispose();
-			inlayHintItalicFont.Dispose();
-			inlayHintBoldItalicFont.Dispose();
-
-			regularFont = new Font(BaseTextFontFamily, textSize, FontStyle.Regular);
-			boldFont = new Font(BaseTextFontFamily, textSize, FontStyle.Bold);
-			italicFont = new Font(BaseTextFontFamily, textSize, FontStyle.Italic);
-			boldItalicFont = new Font(BaseTextFontFamily, textSize, FontStyle.Bold | FontStyle.Italic);
-			inlayHintFont = new Font(BaseInlayHintFontFamily, inlaySize, FontStyle.Regular);
-			inlayHintBoldFont = new Font(BaseInlayHintFontFamily, inlaySize, FontStyle.Bold);
-			inlayHintItalicFont = new Font(BaseInlayHintFontFamily, inlaySize, FontStyle.Italic);
-			inlayHintBoldItalicFont = new Font(BaseInlayHintFontFamily, inlaySize, FontStyle.Bold | FontStyle.Italic);
-
-			Font = regularFont;
+			renderer.SyncPlatformScale(scale);
+			Font = renderer.RegularFont;
 			if (editorCore != null) {
 				editorCore.ResetMeasurer();
 			}
 		}
 
-		/// <summary>Recreate text graphics and reset measurer.</summary>
-		private void RecreateTextGraphicsAndResetMeasurer() {
-			textGraphics?.Dispose();
-			textGraphics = CreateGraphics();
-			textGraphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-			editorCore.ResetMeasurer();
-			// Rebuild is deferred; next model build will use updated DPI.
-		}
-
-		private float OnMeasureText(string text, int fontStyle) {
-			if (string.IsNullOrEmpty(text)) return 0f;
-			long startTicks = PerfScope.StartTicks();
-			Font font = GetFontByStyle(fontStyle);
-			if (textGraphics == null) return 0f;
-			Size sz = TextRenderer.MeasureText(textGraphics, text, font, new Size(int.MaxValue, int.MaxValue), TextMeasureDrawFlags);
-			float w = sz.Width;
-			// Fallback when measured width is non-positive.
-			if (w <= 0)
-				w = (float)TextRenderer.MeasureText(textGraphics, text, regularFont, new Size(int.MaxValue, int.MaxValue), TextMeasureDrawFlags).Width;
-			perfMeasureStats.RecordText(PerfScope.ElapsedTicks(startTicks), text.Length, fontStyle);
-			return w;
-		}
-
-		private float OnMeasureInlayHintText(string text) {
-			long startTicks = PerfScope.StartTicks();
-			if (textGraphics == null) return 0f;
-			float width = (float)TextRenderer.MeasureText(textGraphics, text, inlayHintFont, new Size(int.MaxValue, int.MaxValue), TextMeasureDrawFlags).Width;
-			perfMeasureStats.RecordInlay(PerfScope.ElapsedTicks(startTicks), text?.Length ?? 0);
-			return width;
-		}
-
-		private float OnMeasureIconWidth(int iconId) {
-			// Default icon is square with width equal to font height.
-			long startTicks = PerfScope.StartTicks();
-			float width = textGraphics != null
-				? regularFont.GetHeight(textGraphics)
-				: regularFont.GetHeight();
-			perfMeasureStats.RecordIcon(PerfScope.ElapsedTicks(startTicks), iconId);
-			return width;
-		}
-
-		private void OnGetFontMetrics(IntPtr arrPtr, UIntPtr length) {
-			int designAscent = regularFont.FontFamily.GetCellAscent(regularFont.Style);
-			int designDescent = regularFont.FontFamily.GetCellDescent(regularFont.Style);
-			int designEmHeight = regularFont.FontFamily.GetEmHeight(regularFont.Style);
-			float emSizeInPoints = regularFont.SizeInPoints;
-			// points -> pixels: px = pt * dpi / 72
-			float pixelAscent = designAscent * emSizeInPoints * textGraphics.DpiY / (designEmHeight * 72f);
-			float pixelDescent = designDescent * emSizeInPoints * textGraphics.DpiY / (designEmHeight * 72f);
-			float[] metrics = [-pixelAscent, pixelDescent];
-			Marshal.Copy(metrics, 0, arrPtr, metrics.Length);
+		private PerfScope StartInputPerf(string tag) {
+			return renderer.StartInputPerf(tag);
 		}
 
 		private static bool IsDesignMode() {
@@ -2175,7 +1473,7 @@ namespace SweetEditor {
 
 		protected override void Dispose(bool disposing) {
 			if (disposing) {
-				perfOverlay.Dispose();
+				renderer?.Dispose();
 			}
 			base.Dispose(disposing);
 		}

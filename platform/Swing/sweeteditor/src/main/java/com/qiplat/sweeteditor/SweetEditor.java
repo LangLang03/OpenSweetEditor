@@ -3,7 +3,6 @@ package com.qiplat.sweeteditor;
 import com.qiplat.sweeteditor.completion.*;
 import com.qiplat.sweeteditor.core.Document;
 import com.qiplat.sweeteditor.core.EditorCore;
-import com.qiplat.sweeteditor.core.EditorNative;
 import com.qiplat.sweeteditor.core.EditorOptions;
 import com.qiplat.sweeteditor.core.adornment.*;
 import com.qiplat.sweeteditor.core.foundation.*;
@@ -20,12 +19,7 @@ import com.qiplat.sweeteditor.event.*;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.awt.font.FontRenderContext;
-import java.awt.font.LineMetrics;
-import java.awt.geom.*;
 import java.awt.im.InputMethodRequests;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.text.AttributedCharacterIterator;
 import java.text.AttributedString;
 import java.util.List;
@@ -36,21 +30,7 @@ import java.util.Map;
  * <p>
  * Based on {@link EditorCore} C++ engine providing code editing, syntax highlighting, code folding, InlayHint, etc.
  */
-public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallback {
-
-    /**
-     * Editor icon provider interface.
-     * Platform-side implements this interface to provide icon Image for gutter icons and InlayHint ICON type rendering.
-     */
-    public interface EditorIconProvider {
-        /**
-         * Return the corresponding Image for the given icon ID.
-         *
-         * @param iconId Icon ID (passed by setLineGutterIcons / InlayHint.iconId)
-         * @return Icon Image, return null to skip rendering
-         */
-        Image getIconImage(int iconId);
-    }
+public class SweetEditor extends JPanel {
 
     // Event type constants (aligned with C++ EventType)
     private static final int MOUSE_DOWN = 7;
@@ -68,22 +48,10 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
     private EditorCore editorCore;
     private EditorTheme currentTheme;
     private EditorRenderModel renderModel;
-    private EditorIconProvider editorIconProvider;
-
-    private Font regularFont;
-    private Font boldFont;
-    private Font italicFont;
-    private Font boldItalicFont;
-    private Font inlayHintFont;
-    private Font inlayHintBoldFont;
-    private Font inlayHintItalicFont;
-    private Font inlayHintBoldItalicFont;
-    private final Font baseRegularFont;
-    private final Font baseInlayHintFont;
+    private EditorRenderer renderer;
 
     private Timer cursorBlinkTimer;
     private boolean cursorVisible = true;
-    private int currentDrawingLineNumber = -1;
 
     // Edge-scroll timer for auto-scrolling during mouse drag selection
     private static final int EDGE_SCROLL_INTERVAL_MS = 16;
@@ -110,11 +78,9 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
         setFocusTraversalKeysEnabled(false);
         setDoubleBuffered(true);
 
-        baseRegularFont = findMonospaceFont(14);
-        baseInlayHintFont = new Font("SansSerif", Font.PLAIN, 12);
-        syncPlatformScale(1.0f);
+        renderer = new EditorRenderer(theme);
 
-        editorCore = new EditorCore(this, new EditorOptions(20.0f, 300));
+        editorCore = new EditorCore(renderer.getTextMeasureCallback(), new EditorOptions(20.0f, 300));
 
         // Completion manager and popup controller
         completionProviderManager = new CompletionProviderManager(this);
@@ -129,7 +95,8 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
             editorCore.registerStyle(entry.getKey(), v[0], v[1]);
         }
 
-        setBackground(argbToColor(currentTheme.backgroundColor));
+        setBackground(EditorRenderer.argbToColor(currentTheme.backgroundColor));
+        setFont(renderer.getRegularFont());
         setupEventListeners();
         setupCursorBlink();
         setupEdgeScrollTimer();
@@ -155,7 +122,8 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
 
     public void applyTheme(EditorTheme theme) {
         this.currentTheme = theme;
-        setBackground(argbToColor(theme.backgroundColor));
+        renderer.applyTheme(theme);
+        setBackground(EditorRenderer.argbToColor(theme.backgroundColor));
         for (var entry : theme.syntaxStyles.entrySet()) {
             int[] v = entry.getValue();
             editorCore.registerStyle(entry.getKey(), v[0], v[1]);
@@ -380,15 +348,15 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
      *
      * @param provider Icon provider, pass null to remove
      */
-    public void setEditorIconProvider(EditorIconProvider provider) {
-        this.editorIconProvider = provider;
+    public void setEditorIconProvider(EditorRenderer.EditorIconProvider provider) {
+        renderer.setEditorIconProvider(provider);
     }
 
     /**
      * Get the current editor icon provider.
      */
-    public EditorIconProvider getEditorIconProvider() {
-        return editorIconProvider;
+    public EditorRenderer.EditorIconProvider getEditorIconProvider() {
+        return renderer.getEditorIconProvider();
     }
 
     // ==================== Extension Provider API ====================
@@ -445,51 +413,7 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
         eventBus.unsubscribe(eventType, listener);
     }
 
-    // ===================== TextMeasureCallback =====================
 
-    @Override
-    public float measureTextWidth(MemorySegment textPtr, int fontStyle) {
-        String text = EditorNative.readUtf16String(textPtr);
-        if (text == null || text.isEmpty()) return 0f;
-        Font font = getFontByStyle(fontStyle);
-        FontRenderContext frc = getFontRenderContext();
-        return (float) font.getStringBounds(text, frc).getWidth();
-    }
-
-    @Override
-    public float measureInlayHintWidth(MemorySegment textPtr) {
-        String text = EditorNative.readUtf16String(textPtr);
-        if (text == null || text.isEmpty()) return 0f;
-        FontRenderContext frc = getFontRenderContext();
-        return (float) inlayHintFont.getStringBounds(text, frc).getWidth();
-    }
-
-    @Override
-    public float measureIconWidth(int iconId) {
-        FontRenderContext frc = getFontRenderContext();
-        LineMetrics lm = regularFont.getLineMetrics("M", frc);
-        return lm.getAscent() + lm.getDescent();
-    }
-
-    @Override
-    public void getFontMetrics(MemorySegment arrPtr, long length) {
-        FontRenderContext frc = getFontRenderContext();
-        LineMetrics lm = regularFont.getLineMetrics("M", frc);
-        float ascent = lm.getAscent();
-        float descent = lm.getDescent();
-        arrPtr.reinterpret(length * 4).set(ValueLayout.JAVA_FLOAT, 0, -ascent);
-        arrPtr.reinterpret(length * 4).set(ValueLayout.JAVA_FLOAT, 4, descent);
-    }
-
-    private FontRenderContext getFontRenderContext() {
-        Graphics2D g2 = (Graphics2D) getGraphics();
-        if (g2 != null) {
-            FontRenderContext frc = g2.getFontRenderContext();
-            g2.dispose();
-            return frc;
-        }
-        return new FontRenderContext(null, true, true);
-    }
 
     // ===================== Painting =====================
 
@@ -497,453 +421,17 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        g2.setColor(argbToColor(currentTheme.backgroundColor));
-        g2.fillRect(0, 0, getWidth(), getHeight());
+        renderer.render(g2, renderModel, getWidth(), getHeight(), cursorVisible);
 
-        if (renderModel == null) return;
-
-        drawCurrentLineHighlight(g2, renderModel, getWidth());
-        drawSelectionRects(g2, renderModel);
-        drawLines(g2, renderModel);
-        drawGuideSegments(g2, renderModel);
-        if (renderModel.compositionDecoration != null && renderModel.compositionDecoration.active) {
-            drawCompositionDecoration(g2, renderModel.compositionDecoration);
-        }
-        drawDiagnosticDecorations(g2, renderModel);
-        drawLinkedEditingRects(g2, renderModel);
-        drawBracketHighlightRects(g2, renderModel);
-        drawCursor(g2, renderModel);
-        drawGutterOverlay(g2, renderModel);
-        drawLineNumbers(g2, renderModel);
-        drawScrollbars(g2, renderModel);
-
-        // Completion panel cursor following
-        if (completionPopupController != null && renderModel.cursor != null && renderModel.cursor.position != null) {
+        if (renderModel != null && completionPopupController != null
+                && renderModel.cursor != null && renderModel.cursor.position != null) {
             completionPopupController.updateCursorPosition(
                     renderModel.cursor.position.x, renderModel.cursor.position.y, renderModel.cursor.height);
         }
     }
 
-    private static Font findMonospaceFont(int size) {
-        String[] candidates = {
-            "JetBrains Mono", "Menlo", "SF Mono", "Consolas",
-            "Fira Code", "Source Code Pro", "DejaVu Sans Mono",
-            "Liberation Mono", "Courier New", Font.MONOSPACED
-        };
-        java.util.Set<String> available = new java.util.HashSet<>(
-            java.util.Arrays.asList(java.awt.GraphicsEnvironment
-                .getLocalGraphicsEnvironment().getAvailableFontFamilyNames()));
-        for (String name : candidates) {
-            if (available.contains(name)) {
-                return new Font(name, Font.PLAIN, size);
-            }
-        }
-        return new Font(Font.MONOSPACED, Font.PLAIN, size);
-    }
 
-    private Font getFontByStyle(int fontStyle) {
-        boolean bold = (fontStyle & FontStyle.BOLD) != 0;
-        boolean italic = (fontStyle & FontStyle.ITALIC) != 0;
-        if (bold && italic) return boldItalicFont;
-        if (bold) return boldFont;
-        if (italic) return italicFont;
-        return regularFont;
-    }
-
-    private Font getInlayHintFontByStyle(int fontStyle) {
-        boolean bold = (fontStyle & FontStyle.BOLD) != 0;
-        boolean italic = (fontStyle & FontStyle.ITALIC) != 0;
-        if (bold && italic) return inlayHintBoldItalicFont;
-        if (bold) return inlayHintBoldFont;
-        if (italic) return inlayHintItalicFont;
-        return inlayHintFont;
-    }
-
-    private float getFontAscent(Graphics2D g, Font font) {
-        java.awt.FontMetrics fm = g.getFontMetrics(font);
-        return fm.getAscent();
-    }
-
-    private float getFontHeight(Graphics2D g, Font font) {
-        java.awt.FontMetrics fm = g.getFontMetrics(font);
-        return fm.getAscent() + fm.getDescent();
-    }
-
-    private int getTextWidth(Graphics2D g, String text, Font font) {
-        if (text == null || text.isEmpty()) return 0;
-        return g.getFontMetrics(font).stringWidth(text);
-    }
-
-    // ---- Drawing methods ----
-
-    private void drawCurrentLineHighlight(Graphics2D g, EditorRenderModel model, float width) {
-        if (model.lines == null || model.lines.isEmpty()) return;
-        float lineH = model.cursor != null && model.cursor.height > 0 ? model.cursor.height : getFontHeight(g, regularFont);
-        g.setColor(argbToColor(currentTheme.currentLineColor));
-        g.fillRect(0, (int) model.currentLine.y, (int) width, (int) lineH);
-    }
-
-    private void drawSelectionRects(Graphics2D g, EditorRenderModel model) {
-        if (model.selectionRects == null || model.selectionRects.isEmpty()) return;
-        g.setColor(argbToColor(currentTheme.selectionColor));
-        for (SelectionRect r : model.selectionRects) {
-            g.fillRect((int) r.origin.x, (int) r.origin.y, (int) r.width, (int) r.height);
-        }
-    }
-
-    private void drawLines(Graphics2D g, EditorRenderModel model) {
-        if (model.lines == null) return;
-        for (VisualLine line : model.lines) {
-            if (line.runs == null) continue;
-            for (VisualRun run : line.runs) {
-                drawVisualRun(g, run);
-            }
-        }
-    }
-
-    private void drawVisualRun(Graphics2D g, VisualRun run) {
-        String text = run.text;
-        boolean hasText = text != null && !text.isEmpty();
-        if (!hasText && run.type != VisualRunType.INLAY_HINT) return;
-
-        Font font = (run.type == VisualRunType.INLAY_HINT)
-                ? getInlayHintFontByStyle(run.style != null ? run.style.fontStyle : 0)
-                : getFontByStyle(run.style != null ? run.style.fontStyle : 0);
-
-        Color color = (run.style != null && run.style.color != 0)
-                ? argbToColor(run.style.color)
-                : argbToColor(currentTheme.textColor);
-
-        float ascent = getFontAscent(g, font);
-        float topY = run.y - ascent;
-        float fontHeight = getFontHeight(g, font);
-
-        if (run.type == VisualRunType.FOLD_PLACEHOLDER) {
-            float mgn = run.margin;
-            float bgLeft = run.x + mgn;
-            float bgWidth = run.width - mgn * 2;
-            float radius = fontHeight * 0.2f;
-            g.setColor(argbToColor(currentTheme.foldPlaceholderBgColor));
-            g.fill(new RoundRectangle2D.Float(bgLeft, topY, bgWidth, fontHeight, radius * 2, radius * 2));
-            if (hasText) {
-                float textX = run.x + mgn + run.padding;
-                g.setColor(argbToColor(currentTheme.foldPlaceholderTextColor));
-                g.setFont(font);
-                g.drawString(text, textX, run.y);
-            }
-        } else if (run.type == VisualRunType.INLAY_HINT) {
-            float mgn = run.margin;
-            float bgLeft = run.x + mgn;
-            float bgWidth = run.width - mgn * 2;
-
-            if (run.colorValue != 0) {
-                // COLOR type: solid color block, no rounded corners
-                float blockSize = fontHeight;
-                g.setColor(argbToColor(run.colorValue));
-                g.fillRect((int) (run.x + mgn), (int) topY, (int) blockSize, (int) blockSize);
-            } else {
-                // TEXT / ICON type: rounded background + content
-                float radius = fontHeight * 0.2f;
-                g.setColor(argbToColor(currentTheme.inlayHintBgColor));
-                g.fill(new RoundRectangle2D.Float(bgLeft, topY, bgWidth, fontHeight, radius * 2, radius * 2));
-                if (hasText) {
-                    float textX = run.x + mgn + run.padding;
-                    g.setColor(color);
-                    g.setFont(font);
-                    g.drawString(text, textX, run.y);
-                }
-            }
-        } else {
-            // Normal text / whitespace / phantom text
-            if (run.style != null && run.style.backgroundColor != 0) {
-                g.setColor(argbToColor(run.style.backgroundColor));
-                g.fillRect((int) run.x, (int) topY, (int) Math.ceil(run.width), (int) Math.ceil(fontHeight));
-            }
-            if (hasText) {
-                Color drawColor = (run.type == VisualRunType.PHANTOM_TEXT)
-                        ? argbToColor(currentTheme.phantomTextColor)
-                        : color;
-                g.setColor(drawColor);
-                g.setFont(font);
-                g.drawString(text, run.x, run.y);
-            }
-        }
-
-        // Strikethrough
-        if (run.style != null && (run.style.fontStyle & FontStyle.STRIKETHROUGH) != 0) {
-            float strikeY = topY + ascent * 0.5f;
-            g.setColor(color);
-            g.setStroke(new BasicStroke(1f));
-            g.drawLine((int) run.x, (int) strikeY, (int) (run.x + run.width), (int) strikeY);
-        }
-    }
-
-    private void drawGutterOverlay(Graphics2D g, EditorRenderModel model) {
-        if (model.splitX <= 0) return;
-        g.setColor(argbToColor(currentTheme.backgroundColor));
-        g.fillRect(0, 0, (int) model.splitX, getHeight());
-        drawCurrentLineHighlight(g, model, model.splitX);
-        g.setColor(argbToColor(currentTheme.splitLineColor));
-        g.drawLine((int) model.splitX, 0, (int) model.splitX, getHeight());
-    }
-
-    private void drawLineNumbers(Graphics2D g, EditorRenderModel model) {
-        if (model.lines == null) return;
-        currentDrawingLineNumber = -1;
-        for (VisualLine line : model.lines) {
-            drawLineNumber(g, line, model);
-        }
-    }
-
-    private void drawScrollbars(Graphics2D g, EditorRenderModel model) {
-        ScrollbarModel vertical = model.verticalScrollbar;
-        ScrollbarModel horizontal = model.horizontalScrollbar;
-
-        boolean hasVertical = vertical != null
-                && vertical.visible
-                && vertical.track != null
-                && vertical.thumb != null
-                && vertical.track.width > 0
-                && vertical.track.height > 0;
-        boolean hasHorizontal = horizontal != null
-                && horizontal.visible
-                && horizontal.track != null
-                && horizontal.thumb != null
-                && horizontal.track.width > 0
-                && horizontal.track.height > 0;
-        if (!hasVertical && !hasHorizontal) {
-            return;
-        }
-
-        Color trackColor = argbToColor(currentTheme.scrollbarTrackColor);
-        Color thumbColor = argbToColor(currentTheme.scrollbarThumbColor);
-
-        float verticalTrackX = 0f;
-        float verticalTrackWidth = 0f;
-        float horizontalTrackY = 0f;
-        float horizontalTrackHeight = 0f;
-
-        if (hasVertical) {
-            float trackX = vertical.track.origin != null ? vertical.track.origin.x : 0f;
-            float trackY = vertical.track.origin != null ? vertical.track.origin.y : 0f;
-            float thumbX = vertical.thumb.origin != null ? vertical.thumb.origin.x : 0f;
-            float thumbY = vertical.thumb.origin != null ? vertical.thumb.origin.y : 0f;
-            verticalTrackX = trackX;
-            verticalTrackWidth = vertical.track.width;
-            g.setColor(trackColor);
-            g.fill(new Rectangle2D.Float(trackX, trackY, vertical.track.width, vertical.track.height));
-            g.setColor(thumbColor);
-            g.fill(new Rectangle2D.Float(thumbX, thumbY, vertical.thumb.width, vertical.thumb.height));
-        }
-
-        if (hasHorizontal) {
-            float trackX = horizontal.track.origin != null ? horizontal.track.origin.x : 0f;
-            float trackY = horizontal.track.origin != null ? horizontal.track.origin.y : 0f;
-            float thumbX = horizontal.thumb.origin != null ? horizontal.thumb.origin.x : 0f;
-            float thumbY = horizontal.thumb.origin != null ? horizontal.thumb.origin.y : 0f;
-            horizontalTrackY = trackY;
-            horizontalTrackHeight = horizontal.track.height;
-            g.setColor(trackColor);
-            g.fill(new Rectangle2D.Float(trackX, trackY, horizontal.track.width, horizontal.track.height));
-            g.setColor(thumbColor);
-            g.fill(new Rectangle2D.Float(thumbX, thumbY, horizontal.thumb.width, horizontal.thumb.height));
-        }
-
-        if (hasVertical && hasHorizontal) {
-            g.setColor(trackColor);
-            g.fillRect(
-                    (int) verticalTrackX,
-                    (int) horizontalTrackY,
-                    (int) verticalTrackWidth,
-                    (int) horizontalTrackHeight);
-        }
-    }
-
-    private static Color withAlpha(int argb, int alpha) {
-        int a = Math.max(0, Math.min(255, alpha));
-        return new Color((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF, a);
-    }
-
-    private void drawLineNumber(Graphics2D g, VisualLine vl, EditorRenderModel model) {
-        if (vl.wrapIndex != 0 || vl.isPhantomLine) return;
-        PointF pos = vl.lineNumberPosition;
-        float ascent = getFontAscent(g, regularFont);
-        float topY = pos.y - ascent;
-        float lineHeight = getFontHeight(g, regularFont);
-        int newLineNumber = vl.logicalLine + 1;
-
-        if (newLineNumber != currentDrawingLineNumber) {
-        g.setColor(argbToColor(currentTheme.lineNumberColor));
-            g.setFont(regularFont);
-            g.drawString(String.valueOf(newLineNumber), pos.x, pos.y);
-            currentDrawingLineNumber = newLineNumber;
-        }
-
-        // Draw fold arrows
-        if (vl.foldState != null && vl.foldState != FoldState.NONE) {
-            float halfSize = lineHeight * 0.2f;
-            float centerX = model.foldArrowX > 0 ? model.foldArrowX : model.splitX - lineHeight * 0.5f;
-            float centerY = topY + lineHeight * 0.5f;
-
-        g.setColor(argbToColor(currentTheme.lineNumberColor));
-            g.setStroke(new BasicStroke(Math.max(1f, lineHeight * 0.1f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-
-            GeneralPath path = new GeneralPath();
-            if (vl.foldState == FoldState.COLLAPSED) {
-                path.moveTo(centerX - halfSize * 0.5f, centerY - halfSize);
-                path.lineTo(centerX + halfSize * 0.5f, centerY);
-                path.lineTo(centerX - halfSize * 0.5f, centerY + halfSize);
-            } else {
-                path.moveTo(centerX - halfSize, centerY - halfSize * 0.5f);
-                path.lineTo(centerX, centerY + halfSize * 0.5f);
-                path.lineTo(centerX + halfSize, centerY - halfSize * 0.5f);
-            }
-            g.draw(path);
-        }
-    }
-
-    private void drawCursor(Graphics2D g, EditorRenderModel model) {
-        if (model.cursor == null || !model.cursor.visible || !cursorVisible) return;
-        g.setColor(argbToColor(currentTheme.cursorColor));
-        g.fillRect((int) model.cursor.position.x, (int) model.cursor.position.y,
-                2, (int) model.cursor.height);
-    }
-
-    private void drawCompositionDecoration(Graphics2D g, CompositionDecoration comp) {
-        float y = comp.origin.y + comp.height;
-        g.setColor(argbToColor(currentTheme.compositionUnderlineColor));
-        g.setStroke(new BasicStroke(2f));
-        g.drawLine((int) comp.origin.x, (int) y, (int) (comp.origin.x + comp.width), (int) y);
-    }
-
-    private void drawDiagnosticDecorations(Graphics2D g, EditorRenderModel model) {
-        if (model.diagnosticDecorations == null || model.diagnosticDecorations.isEmpty()) return;
-        for (DiagnosticDecoration diag : model.diagnosticDecorations) {
-            Color c = diag.color != 0 ? argbToColor(diag.color) : switch (diag.severity) {
-                case 0 -> argbToColor(currentTheme.diagnosticErrorColor);
-                case 1 -> argbToColor(currentTheme.diagnosticWarningColor);
-                case 2 -> argbToColor(currentTheme.diagnosticInfoColor);
-                default -> argbToColor(currentTheme.diagnosticHintColor);
-            };
-
-            float startX = diag.origin.x;
-            float endX = startX + diag.width;
-            float baseY = diag.origin.y + diag.height - 1f;
-
-            g.setColor(c);
-            g.setStroke(new BasicStroke(2f));
-
-            if (diag.severity == 3) {
-                // HINT: dashed underline
-                g.setStroke(new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3f, 2f}, 0f));
-                g.drawLine((int) startX, (int) baseY, (int) endX, (int) baseY);
-            } else {
-                // Wavy line
-                float halfWave = 7f;
-                float amplitude = 3.5f;
-                GeneralPath path = new GeneralPath();
-                float x = startX;
-                int step = 0;
-                path.moveTo(x, baseY);
-                while (x < endX) {
-                    float nextX = Math.min(x + halfWave, endX);
-                    float midX = (x + nextX) / 2f;
-                    float peakY = (step % 2 == 0) ? baseY - amplitude : baseY + amplitude;
-                    path.quadTo(midX, peakY, nextX, baseY);
-                    x = nextX;
-                    step++;
-                }
-                g.setStroke(new BasicStroke(2f));
-                g.draw(path);
-            }
-        }
-    }
-
-    private void drawLinkedEditingRects(Graphics2D g, EditorRenderModel model) {
-        if (model.linkedEditingRects == null || model.linkedEditingRects.isEmpty()) return;
-        for (LinkedEditingRect rect : model.linkedEditingRects) {
-            if (rect.origin == null) continue;
-            if (rect.isActive) {
-                // Active tab stop: semi-transparent fill + border
-                g.setColor(withAlpha(currentTheme.linkedEditingActiveColor, 32));
-                g.fillRect((int) rect.origin.x, (int) rect.origin.y, (int) rect.width, (int) rect.height);
-                g.setColor(argbToColor(currentTheme.linkedEditingActiveColor));
-                g.setStroke(new BasicStroke(2f));
-            } else {
-                // Inactive tab stop: border only
-                g.setColor(argbToColor(currentTheme.linkedEditingInactiveColor));
-                g.setStroke(new BasicStroke(1f));
-            }
-            g.drawRect((int) rect.origin.x, (int) rect.origin.y, (int) rect.width, (int) rect.height);
-        }
-    }
-
-    private void drawBracketHighlightRects(Graphics2D g, EditorRenderModel model) {
-        if (model.bracketHighlightRects == null || model.bracketHighlightRects.isEmpty()) return;
-        for (BracketHighlightRect rect : model.bracketHighlightRects) {
-            if (rect.origin == null) continue;
-            // Background fill
-            g.setColor(argbToColor(currentTheme.bracketHighlightBgColor));
-            g.fillRect((int) rect.origin.x, (int) rect.origin.y, (int) rect.width, (int) rect.height);
-            // Border
-            g.setColor(argbToColor(currentTheme.bracketHighlightBorderColor));
-            g.setStroke(new BasicStroke(1.5f));
-            g.drawRect((int) rect.origin.x, (int) rect.origin.y, (int) rect.width, (int) rect.height);
-        }
-    }
-
-    private void drawGuideSegments(Graphics2D g, EditorRenderModel model) {
-        if (model.guideSegments == null || model.guideSegments.isEmpty()) return;
-        for (GuideSegment seg : model.guideSegments) {
-            Color c = argbToColor((seg.type == GuideType.SEPARATOR) ? currentTheme.separatorLineColor : currentTheme.guideColor);
-            g.setColor(c);
-            float lineWidth = (seg.type == GuideType.INDENT) ? 1f : 1.2f;
-            g.setStroke(new BasicStroke(lineWidth));
-
-            if (seg.arrowEnd) {
-                float arrowLen = 9f;
-                float arrowAngle = (float) (Math.PI * 28.0 / 180.0);
-                float arrowDepth = (float) (arrowLen * Math.cos(arrowAngle));
-                float dx = seg.end.x - seg.start.x;
-                float dy = seg.end.y - seg.start.y;
-                float len = (float) Math.sqrt(dx * dx + dy * dy);
-                float trim = arrowDepth + lineWidth * 0.5f;
-                if (len > trim) {
-                    float ratio = (len - trim) / len;
-                    float lineEndX = seg.start.x + dx * ratio;
-                    float lineEndY = seg.start.y + dy * ratio;
-                    g.draw(new Line2D.Float(seg.start.x, seg.start.y, lineEndX, lineEndY));
-                }
-                drawArrowHead(g, c, seg.start, seg.end, arrowLen, arrowAngle);
-            } else {
-                g.draw(new Line2D.Float(seg.start.x, seg.start.y, seg.end.x, seg.end.y));
-            }
-        }
-    }
-
-    private void drawArrowHead(Graphics2D g, Color color, PointF from, PointF to, float arrowLen, float arrowAngle) {
-        float dx = to.x - from.x;
-        float dy = to.y - from.y;
-        float len = (float) Math.sqrt(dx * dx + dy * dy);
-        if (len < 1f) return;
-        float ux = dx / len, uy = dy / len;
-        float cosA = (float) Math.cos(arrowAngle), sinA = (float) Math.sin(arrowAngle);
-        float ax1 = to.x - arrowLen * (ux * cosA - uy * sinA);
-        float ay1 = to.y - arrowLen * (uy * cosA + ux * sinA);
-        float ax2 = to.x - arrowLen * (ux * cosA + uy * sinA);
-        float ay2 = to.y - arrowLen * (uy * cosA - ux * sinA);
-
-        GeneralPath path = new GeneralPath();
-        path.moveTo(to.x, to.y);
-        path.lineTo(ax1, ay1);
-        path.lineTo(ax2, ay2);
-        path.closePath();
-        g.setColor(color);
-        g.fill(path);
-    }
 
     // ===================== Event Handling =====================
 
@@ -1407,21 +895,8 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
     // ===================== Helpers =====================
 
     void syncPlatformScale(float scale) {
-        if (scale <= 0f) return;
-
-        float textSize = baseRegularFont.getSize2D() * scale;
-        regularFont = baseRegularFont.deriveFont(Font.PLAIN, textSize);
-        boldFont = baseRegularFont.deriveFont(Font.BOLD, textSize);
-        italicFont = baseRegularFont.deriveFont(Font.ITALIC, textSize);
-        boldItalicFont = baseRegularFont.deriveFont(Font.BOLD | Font.ITALIC, textSize);
-
-        float inlayHintSize = baseInlayHintFont.getSize2D() * scale;
-        inlayHintFont = baseInlayHintFont.deriveFont(Font.PLAIN, inlayHintSize);
-        inlayHintBoldFont = baseInlayHintFont.deriveFont(Font.BOLD, inlayHintSize);
-        inlayHintItalicFont = baseInlayHintFont.deriveFont(Font.ITALIC, inlayHintSize);
-        inlayHintBoldItalicFont = baseInlayHintFont.deriveFont(Font.BOLD | Font.ITALIC, inlayHintSize);
-
-        setFont(regularFont);
+        renderer.syncPlatformScale(scale);
+        setFont(renderer.getRegularFont());
     }
 
     /**
@@ -1437,11 +912,4 @@ public class SweetEditor extends JPanel implements EditorCore.TextMeasureCallbac
         repaint();
     }
 
-    private static Color argbToColor(int argb) {
-        int a = (argb >> 24) & 0xFF;
-        int r = (argb >> 16) & 0xFF;
-        int g2 = (argb >> 8) & 0xFF;
-        int b = argb & 0xFF;
-        return new Color(r, g2, b, a);
-    }
 }
