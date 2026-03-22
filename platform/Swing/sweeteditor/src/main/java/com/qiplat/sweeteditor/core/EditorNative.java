@@ -358,7 +358,7 @@ public final class EditorNative {
     private static final MethodHandle SET_SCROLL = downcall("editor_set_scroll",
             FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_FLOAT, ValueLayout.JAVA_FLOAT));
 
-    private static final MethodHandle REGISTER_STYLE = downcall("editor_register_style",
+    private static final MethodHandle REGISTER_TEXT_STYLE = downcall("editor_register_text_style",
             FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
 
@@ -974,9 +974,9 @@ public final class EditorNative {
 
     // ===================== Style/Highlight =====================
 
-    public static void registerStyle(long handle, int styleId, int color, int bgColor, int fontStyle) {
+    public static void registerTextStyle(long handle, int styleId, int color, int bgColor, int fontStyle) {
         invokeVoid(() -> {
-            REGISTER_STYLE.invokeExact(handle, styleId, color, bgColor, fontStyle);
+            REGISTER_TEXT_STYLE.invokeExact(handle, styleId, color, bgColor, fontStyle);
         });
     }
 
@@ -1347,3 +1347,4 @@ public final class EditorNative {
 
     private EditorNative() {}
 }
+

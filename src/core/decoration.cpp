@@ -12,29 +12,29 @@ namespace NS_SWEETEDITOR {
   const Vector<GutterIcon> DecorationManager::kEmptyGutterIcons;
   const Vector<DiagnosticSpan> DecorationManager::kEmptyDiagnostics;
 
-#pragma region [Class: StyleRegistry]
-  void StyleRegistry::registerStyle(Style&& style) {
-    style_map_.insert_or_assign(style.style_id, std::move(style));
+#pragma region [Class: TextStyleRegistry]
+  void TextStyleRegistry::registerTextStyle(uint32_t style_id, TextStyle&& style) {
+    style_map_.insert_or_assign(style_id, std::move(style));
   }
 
-  Style& StyleRegistry::getStyle(uint32_t style_id) {
+  TextStyle& TextStyleRegistry::getStyle(uint32_t style_id) {
     auto it = style_map_.find(style_id);
     if (it != style_map_.end()) {
       return it->second;
     }
     // If not found, return the default style (auto-register one)
-    style_map_.insert_or_assign(style_id, Style{style_id, 0, FONT_STYLE_NORMAL});
+    style_map_.insert_or_assign(style_id, TextStyle{0, 0, FONT_STYLE_NORMAL});
     return style_map_[style_id];
   }
 #pragma endregion
 
 #pragma region [Class: DecorationManager]
   DecorationManager::DecorationManager() {
-    m_style_reg_ = makePtr<StyleRegistry>();
+    m_text_style_reg_ = makePtr<TextStyleRegistry>();
   }
 
-  Ptr<StyleRegistry> DecorationManager::getStyleRegistry() {
-    return m_style_reg_;
+  Ptr<TextStyleRegistry> DecorationManager::getTextStyleRegistry() {
+    return m_text_style_reg_;
   }
 
   void DecorationManager::setLineSpans(size_t line, SpanLayer layer, Vector<StyleSpan>&& spans) {
@@ -740,3 +740,4 @@ namespace NS_SWEETEDITOR {
   }
 #pragma endregion
 }
+

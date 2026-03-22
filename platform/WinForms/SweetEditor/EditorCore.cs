@@ -370,7 +370,7 @@ namespace SweetEditor {
 		public int Column { get; }
 		/// <summary>Character length</summary>
 		public int Length { get; }
-		/// <summary>Style ID registered by RegisterStyle</summary>
+		/// <summary>Style ID registered by registerTextStyle</summary>
 		public int StyleId { get; }
 		public StyleSpan(int column, int length, int styleId) { Column = column; Length = length; StyleId = styleId; }
 	}
@@ -597,21 +597,6 @@ namespace SweetEditor {
 	}
 
 	/// <summary>
-	/// Lightweight inline style (color + font style only, used by the rendering pipeline).
-	/// </summary>
-	public struct InlineStyle {
-		/// <summary>Color value (ARGB), 0 means use the default color.</summary>
-		[JsonPropertyName("color")]
-		public int Color { get; set; }
-		/// <summary>Background color value (ARGB), 0 means transparent/no background.</summary>
-		[JsonPropertyName("background_color")]
-		public int BackgroundColor { get; set; }
-		/// <summary>Font style (bit-flag combination: BOLD | ITALIC | STRIKETHROUGH).</summary>
-		[JsonPropertyName("font_style")]
-		public int FontStyle { get; set; }
-	}
-
-	/// <summary>
 	/// Structure for each visually rendered text segment.
 	/// </summary>
 	public struct VisualRun {
@@ -627,9 +612,9 @@ namespace SweetEditor {
 		/// <summary>Segment text content (only present for TEXT, INLAY_HINT(TEXT), and PHANTOM_TEXT).</summary>
 		[JsonPropertyName("text")]
 		public string Text { get; set; }
-		/// <summary>Style (color + font style).</summary>
+		/// <summary>Style (color + background color + font style).</summary>
 		[JsonPropertyName("style")]
-		public InlineStyle Style { get; set; }
+		public TextStyle Style { get; set; }
 		/// <summary>Precomputed width (filled during C++ layout).</summary>
 		[JsonPropertyName("width")]
 		public float Width { get; set; }
@@ -1431,8 +1416,8 @@ namespace SweetEditor {
 		[DllImport(LibraryName, EntryPoint = "editor_get_scroll_metrics", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern IntPtr GetScrollMetrics(IntPtr handle, out UIntPtr outSize);
 
-		[DllImport(LibraryName, EntryPoint = "editor_register_style", CallingConvention = CallingConvention.Cdecl)]
-		internal static extern void RegisterStyle(IntPtr handle, uint styleId, int color, int backgroundColor, int fontStyle);
+		[DllImport(LibraryName, EntryPoint = "editor_register_text_style", CallingConvention = CallingConvention.Cdecl)]
+		internal static extern void registerTextStyle(IntPtr handle, uint styleId, int color, int backgroundColor, int fontStyle);
 
 		[DllImport(LibraryName, EntryPoint = "editor_set_line_spans", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern void SetLineSpans(IntPtr handle, byte[] data, nuint size);
@@ -2145,16 +2130,16 @@ namespace SweetEditor {
 		/// <param name="color">Text color (ARGB)</param>
 		/// <param name="backgroundColor">Background color (ARGB)</param>
 		/// <param name="fontStyle">Font style (bit flags: BOLD | ITALIC | STRIKETHROUGH).</param>
-		public void RegisterStyle(uint styleId, int color, int backgroundColor, int fontStyle) {
-			NativeMethods.RegisterStyle(nativeHandle, styleId, color, backgroundColor, fontStyle);
+		public void registerTextStyle(uint styleId, int color, int backgroundColor, int fontStyle) {
+			NativeMethods.registerTextStyle(nativeHandle, styleId, color, backgroundColor, fontStyle);
 		}
 
 		/// <summary>Registers a highlight style (without background color).</summary>
 		/// <param name="styleId">Style ID</param>
 		/// <param name="color">Text color (ARGB)</param>
 		/// <param name="fontStyle">Font style (bit flags: BOLD | ITALIC | STRIKETHROUGH).</param>
-		public void RegisterStyle(uint styleId, int color, int fontStyle) {
-			NativeMethods.RegisterStyle(nativeHandle, styleId, color, 0, fontStyle);
+		public void registerTextStyle(uint styleId, int color, int fontStyle) {
+			NativeMethods.registerTextStyle(nativeHandle, styleId, color, 0, fontStyle);
 		}
 
 		/// <summary>Sets highlight spans for the specified line (model overload).</summary>
@@ -2520,3 +2505,4 @@ namespace SweetEditor {
 
 	}
 }
+

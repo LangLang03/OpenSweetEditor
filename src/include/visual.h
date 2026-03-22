@@ -42,8 +42,8 @@ namespace NS_SWEETEDITOR {
     float y {0};
     /// Run text content (only TEXT, INLAY_HINT(TEXT), and PHANTOM_TEXT use this)
     U16String text;
-    /// Style (color + font style)
-    InlineStyle style;
+    /// Text style (color + background color + font style)
+    TextStyle style;
     /// Icon resource ID (used by INLAY_HINT(ICON) only)
     int32_t icon_id {0};
     /// Color value (ARGB, used by INLAY_HINT(COLOR) only)

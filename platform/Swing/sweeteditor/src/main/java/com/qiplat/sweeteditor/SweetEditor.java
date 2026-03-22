@@ -89,9 +89,9 @@ public class SweetEditor extends JPanel {
 
         settings = new EditorSettings(this);
 
-        for (var entry : currentTheme.syntaxStyles.entrySet()) {
-            int[] v = entry.getValue();
-            editorCore.registerStyle(entry.getKey(), v[0], v[1]);
+        for (var entry : currentTheme.textStyles.entrySet()) {
+            TextStyle v = entry.getValue();
+            editorCore.registerTextStyle(entry.getKey(), v.color, v.backgroundColor, v.fontStyle);
         }
 
         setBackground(EditorRenderer.argbToColor(currentTheme.backgroundColor));
@@ -123,9 +123,9 @@ public class SweetEditor extends JPanel {
         this.currentTheme = theme;
         renderer.applyTheme(theme);
         setBackground(EditorRenderer.argbToColor(theme.backgroundColor));
-        for (var entry : theme.syntaxStyles.entrySet()) {
-            int[] v = entry.getValue();
-            editorCore.registerStyle(entry.getKey(), v[0], v[1]);
+        for (var entry : theme.textStyles.entrySet()) {
+            TextStyle v = entry.getValue();
+            editorCore.registerTextStyle(entry.getKey(), v.color, v.backgroundColor, v.fontStyle);
         }
         flush();
     }
@@ -259,8 +259,8 @@ public class SweetEditor extends JPanel {
 
     // -------------------- Style Registration + Highlight Spans --------------------
 
-    public void registerStyle(int styleId, int color, int bgColor, int fontStyle) { editorCore.registerStyle(styleId, color, bgColor, fontStyle); }
-    public void registerStyle(int styleId, int color, int fontStyle) { editorCore.registerStyle(styleId, color, fontStyle); }
+    public void registerTextStyle(int styleId, int color, int bgColor, int fontStyle) { editorCore.registerTextStyle(styleId, color, bgColor, fontStyle); }
+    public void registerTextStyle(int styleId, int color, int fontStyle) { editorCore.registerTextStyle(styleId, color, fontStyle); }
     public void setLineSpans(int line, int layer, List<? extends StyleSpan> spans) { editorCore.setLineSpans(line, layer, spans); }
     public void setBatchLineSpans(int layer, Map<Integer, ? extends List<? extends StyleSpan>> spansByLine) { editorCore.setBatchLineSpans(layer, spansByLine); }
 
@@ -903,3 +903,4 @@ public class SweetEditor extends JPanel {
     }
 
 }
+

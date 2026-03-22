@@ -3,7 +3,7 @@ package com.qiplat.sweeteditor.core;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 
-import com.qiplat.sweeteditor.core.visual.FontStyle;
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 import com.qiplat.sweeteditor.perf.MeasurePerfStats;
 
 /**
@@ -79,9 +79,9 @@ public class TextMeasurer {
     float measureWidth(String text, int fontStyle) {
         long t0 = mPerfStats != null ? System.nanoTime() : 0;
 
-        boolean isBold = (fontStyle & FontStyle.BOLD) != 0;
-        boolean isItalic = (fontStyle & FontStyle.ITALIC) != 0;
-        boolean isStrikethrough = (fontStyle & FontStyle.STRIKETHROUGH) != 0;
+        boolean isBold = (fontStyle & TextStyle.BOLD) != 0;
+        boolean isItalic = (fontStyle & TextStyle.ITALIC) != 0;
+        boolean isStrikethrough = (fontStyle & TextStyle.STRIKETHROUGH) != 0;
 
         // Select Typeface style based on bit flags
         int typefaceStyle = Typeface.NORMAL;

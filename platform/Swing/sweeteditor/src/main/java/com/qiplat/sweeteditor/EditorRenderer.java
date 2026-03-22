@@ -2,6 +2,7 @@ package com.qiplat.sweeteditor;
 
 import com.qiplat.sweeteditor.core.EditorCore;
 import com.qiplat.sweeteditor.core.EditorNative;
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 import com.qiplat.sweeteditor.core.visual.*;
 
 import java.awt.*;
@@ -144,8 +145,8 @@ final class EditorRenderer implements EditorCore.TextMeasureCallback {
     }
 
     private Font getFontByStyle(int fontStyle) {
-        boolean bold = (fontStyle & FontStyle.BOLD) != 0;
-        boolean italic = (fontStyle & FontStyle.ITALIC) != 0;
+        boolean bold = (fontStyle & TextStyle.BOLD) != 0;
+        boolean italic = (fontStyle & TextStyle.ITALIC) != 0;
         if (bold && italic) return boldItalicFont;
         if (bold) return boldFont;
         if (italic) return italicFont;
@@ -153,8 +154,8 @@ final class EditorRenderer implements EditorCore.TextMeasureCallback {
     }
 
     private Font getInlayHintFontByStyle(int fontStyle) {
-        boolean bold = (fontStyle & FontStyle.BOLD) != 0;
-        boolean italic = (fontStyle & FontStyle.ITALIC) != 0;
+        boolean bold = (fontStyle & TextStyle.BOLD) != 0;
+        boolean italic = (fontStyle & TextStyle.ITALIC) != 0;
         if (bold && italic) return inlayHintBoldItalicFont;
         if (bold) return inlayHintBoldFont;
         if (italic) return inlayHintItalicFont;
@@ -261,7 +262,7 @@ final class EditorRenderer implements EditorCore.TextMeasureCallback {
             }
         }
 
-        if (run.style != null && (run.style.fontStyle & FontStyle.STRIKETHROUGH) != 0) {
+        if (run.style != null && (run.style.fontStyle & TextStyle.STRIKETHROUGH) != 0) {
             float strikeY = topY + ascent * 0.5f;
             g.setColor(color);
             g.setStroke(new BasicStroke(1f));

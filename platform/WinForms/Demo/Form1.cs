@@ -169,7 +169,7 @@ namespace Demo {
 
 		private void RegisterColorStyleForCurrentTheme() {
 			int color = isDarkTheme ? unchecked((int)0xFFB5CEA8) : unchecked((int)0xFF098658);
-			editorControl1.RegisterStyle(STYLE_COLOR, color, 0);
+			editorControl1.registerTextStyle(STYLE_COLOR, color, 0);
 		}
 
 		private void UpdateStatus(string message) {
@@ -798,3 +798,4 @@ namespace Demo {
 		}
 	}
 }
+

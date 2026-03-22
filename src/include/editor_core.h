@@ -214,9 +214,9 @@ namespace NS_SWEETEDITOR {
 #pragma endregion
 
 #pragma region [Rendering]
-    /// Get editor highlight style registry
-    /// @return Highlight style registry
-    Ptr<StyleRegistry> getStyleRegistry() const;
+    /// Get editor text-style registry
+    /// @return Text-style registry
+    Ptr<TextStyleRegistry> getTextStyleRegistry() const;
 
     /// Build editor render model
     /// @param model Input EditorRenderModel
@@ -492,10 +492,8 @@ namespace NS_SWEETEDITOR {
 #pragma region [Decorations]
     /// Register a highlight style
     /// @param style_id Style ID
-    /// @param color Foreground color value (ARGB)
-    /// @param background_color Background color value (ARGB), 0 means transparent
-    /// @param font_style Font style bit flags
-    void registerStyle(uint32_t style_id, int32_t color, int32_t background_color, int32_t font_style);
+    /// @param style Text style definition
+    void registerTextStyle(uint32_t style_id, TextStyle&& style);
 
     /// Set highlight spans for given line and layer
     /// @param line Line number
@@ -801,3 +799,4 @@ namespace NS_SWEETEDITOR {
 }
 
 #endif //SWEETEDITOR_EDITOR_CORE_H
+

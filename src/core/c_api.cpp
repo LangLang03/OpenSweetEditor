@@ -133,7 +133,7 @@ static void appendTextPosition(std::vector<uint8_t>& buffer, const TextPosition&
   appendI32(buffer, static_cast<int32_t>(position.column));
 }
 
-static void appendInlineStyle(std::vector<uint8_t>& buffer, const InlineStyle& style) {
+static void appendTextStyle(std::vector<uint8_t>& buffer, const TextStyle& style) {
   appendI32(buffer, style.color);
   appendI32(buffer, style.background_color);
   appendI32(buffer, style.font_style);
@@ -144,7 +144,7 @@ static void appendVisualRun(std::vector<uint8_t>& buffer, const VisualRun& run) 
   appendF32(buffer, run.x);
   appendF32(buffer, run.y);
   appendU16AsU8String(buffer, run.text);
-  appendInlineStyle(buffer, run.style);
+  appendTextStyle(buffer, run.style);
   appendI32(buffer, run.icon_id);
   appendI32(buffer, run.color_value);
   appendF32(buffer, run.width);
@@ -1224,12 +1224,12 @@ const uint8_t* editor_get_scroll_metrics(intptr_t editor_handle, size_t* out_siz
 
 #pragma region Style Registration + Highlight Spans
 
-void editor_register_style(intptr_t editor_handle, uint32_t style_id, int32_t color, int32_t background_color, int32_t font_style) {
+void editor_register_text_style(intptr_t editor_handle, uint32_t style_id, int32_t color, int32_t background_color, int32_t font_style) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr) {
     return;
   }
-  editor_core->registerStyle(style_id, color, background_color, font_style);
+  editor_core->registerTextStyle(style_id, TextStyle{color, background_color, font_style});
 }
 
 void editor_set_line_spans(intptr_t editor_handle, const uint8_t* data, size_t size) {
@@ -2055,3 +2055,4 @@ void init_unhandled_exception_handler() {
 #pragma endregion
 
 }
+

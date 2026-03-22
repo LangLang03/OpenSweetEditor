@@ -11,7 +11,7 @@ public class StyleSpan {
     public final int column;
     /** Character length */
     public final int length;
-    /** Style ID registered via registerStyle */
+    /** Style ID registered via registerTextStyle */
     public final int styleId;
 
     public StyleSpan(int column, int length, int styleId) {
@@ -20,3 +20,4 @@ public class StyleSpan {
         this.styleId = styleId;
     }
 }
+

@@ -441,12 +441,12 @@ public:
     return result;
   }
 
-  static void registerStyle(jlong handle, jint styleId, jint color, jint backgroundColor, jint fontStyle) {
-    editor_register_style(static_cast<intptr_t>(handle),
-                          static_cast<uint32_t>(styleId),
-                          static_cast<int32_t>(color),
-                          static_cast<int32_t>(backgroundColor),
-                          static_cast<int32_t>(fontStyle));
+  static void registerTextStyle(jlong handle, jint styleId, jint color, jint backgroundColor, jint fontStyle) {
+    editor_register_text_style(static_cast<intptr_t>(handle),
+                               static_cast<uint32_t>(styleId),
+                               static_cast<int32_t>(color),
+                               static_cast<int32_t>(backgroundColor),
+                               static_cast<int32_t>(fontStyle));
   }
 
   static void setLineSpans(JNIEnv* env, jclass clazz, jlong handle, jobject data, jint size) {
@@ -834,7 +834,7 @@ public:
       {"nativeSetScrollbarConfig", "(JFFFIZIII)V", (void*) setScrollbarConfig},
       {"nativeGetPositionRect", "(JII)[F", (void*) getPositionRect},
       {"nativeGetCursorRect", "(J)[F", (void*) getCursorRect},
-      {"nativeRegisterStyle", "(JIIII)V", (void*) registerStyle},
+      {"nativeRegisterTextStyle", "(JIIII)V", (void*) registerTextStyle},
       {"nativeSetLineSpans", "(JLjava/nio/ByteBuffer;I)V", (void*) setLineSpans},
       {"nativeSetLineInlayHints", "(JLjava/nio/ByteBuffer;I)V", (void*) setLineInlayHints},
       {"nativeSetLinePhantomTexts", "(JLjava/nio/ByteBuffer;I)V", (void*) setLinePhantomTexts},
@@ -903,3 +903,4 @@ public:
 };
 
 #endif //SWEETEDITOR_JEDITOR_HPP
+

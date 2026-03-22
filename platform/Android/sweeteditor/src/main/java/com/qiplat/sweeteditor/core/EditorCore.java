@@ -17,13 +17,13 @@ import com.qiplat.sweeteditor.core.adornment.SeparatorGuide;
 import com.qiplat.sweeteditor.core.adornment.InlayHint;
 import com.qiplat.sweeteditor.core.visual.CursorRect;
 import com.qiplat.sweeteditor.core.visual.EditorRenderModel;
-import com.qiplat.sweeteditor.core.visual.FontStyle;
 import com.qiplat.sweeteditor.core.snippet.LinkedEditingModel;
 import com.qiplat.sweeteditor.core.visual.ScrollMetrics;
 import com.qiplat.sweeteditor.core.foundation.TextPosition;
 import com.qiplat.sweeteditor.core.foundation.TextRange;
 import com.qiplat.sweeteditor.core.adornment.PhantomText;
 import com.qiplat.sweeteditor.core.adornment.StyleSpan;
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -725,12 +725,12 @@ public class EditorCore {
      * @param styleId         Style ID (referenced in subsequent setLineSpans)
      * @param color           ARGB color value
      * @param backgroundColor ARGB background color value (0=transparent)
-     * @param fontStyle       Font style bit flags ({@link FontStyle#NORMAL}, {@link FontStyle#BOLD},
-     *                        {@link FontStyle#ITALIC}, {@link FontStyle#STRIKETHROUGH}, combinable via bitwise OR)
+     * @param fontStyle       Font style bit flags ({@link TextStyle#NORMAL}, {@link TextStyle#BOLD},
+     *                        {@link TextStyle#ITALIC}, {@link TextStyle#STRIKETHROUGH}, combinable via bitwise OR)
      */
-    public void registerStyle(int styleId, int color, int backgroundColor, int fontStyle) {
+    public void registerTextStyle(int styleId, int color, int backgroundColor, int fontStyle) {
         if (mNativeHandle == 0) return;
-        nativeRegisterStyle(mNativeHandle, styleId, color, backgroundColor, fontStyle);
+        nativeRegisterTextStyle(mNativeHandle, styleId, color, backgroundColor, fontStyle);
     }
 
     /**
@@ -740,8 +740,8 @@ public class EditorCore {
      * @param color     ARGB color value
      * @param fontStyle Font style bit flags
      */
-    public void registerStyle(int styleId, int color, int fontStyle) {
-        registerStyle(styleId, color, 0, fontStyle);
+    public void registerTextStyle(int styleId, int color, int fontStyle) {
+        registerTextStyle(styleId, color, 0, fontStyle);
     }
 
     /**
@@ -761,7 +761,7 @@ public class EditorCore {
     /**
      * Sets highlight spans for the specified line (already packed by caller via ProtocolEncoder).
      *
-     * @param payload Packed ByteBuffer (format: line, layer, count, [col, len, style]×N)
+     * @param payload Packed ByteBuffer (format: line, layer, count, [col, len, style]脳N)
      */
     public void setLineSpans(ByteBuffer payload) {
         if (mNativeHandle == 0 || payload == null) return;
@@ -772,7 +772,7 @@ public class EditorCore {
      * Batch sets highlight spans for multiple lines (reduces JNI calls, marks dirty once).
      *
      * @param layer       Highlight layer (0=SYNTAX, 1=SEMANTIC)
-     * @param spansByLine Sparse array of line→span list
+     * @param spansByLine Sparse array of line鈫抯pan list
      */
     public void setBatchLineSpans(int layer, @Nullable SparseArray<? extends List<? extends StyleSpan>> spansByLine) {
         if (mNativeHandle == 0 || spansByLine == null || spansByLine.size() == 0) return;
@@ -816,7 +816,7 @@ public class EditorCore {
     /**
      * Batch sets Inlay Hints for multiple lines (reduces JNI calls, marks dirty once).
      *
-     * @param hintsByLine Sparse array of line→hint list
+     * @param hintsByLine Sparse array of line鈫抙int list
      */
     public void setBatchLineInlayHints(@Nullable SparseArray<? extends List<? extends InlayHint>> hintsByLine) {
         if (mNativeHandle == 0 || hintsByLine == null || hintsByLine.size() == 0) return;
@@ -858,7 +858,7 @@ public class EditorCore {
     /**
      * Batch sets phantom text for multiple lines (reduces JNI calls, marks dirty once).
      *
-     * @param phantomsByLine Sparse array of line→phantom list
+     * @param phantomsByLine Sparse array of line鈫抪hantom list
      */
     public void setBatchLinePhantomTexts(@Nullable SparseArray<? extends List<? extends PhantomText>> phantomsByLine) {
         if (mNativeHandle == 0 || phantomsByLine == null || phantomsByLine.size() == 0) return;
@@ -902,7 +902,7 @@ public class EditorCore {
     /**
      * Batch sets gutter icons for multiple lines (reduces JNI calls).
      *
-     * @param iconsByLine Sparse array of line→icon list
+     * @param iconsByLine Sparse array of line鈫抜con list
      */
     public void setBatchLineGutterIcons(@Nullable SparseArray<? extends List<? extends GutterIcon>> iconsByLine) {
         if (mNativeHandle == 0 || iconsByLine == null || iconsByLine.size() == 0) return;
@@ -947,7 +947,7 @@ public class EditorCore {
     /**
      * Sets diagnostic decorations for the specified line (already packed by caller via ProtocolEncoder).
      *
-     * @param payload Packed ByteBuffer (format: line, count, [col, len, severity, color]×N)
+     * @param payload Packed ByteBuffer (format: line, count, [col, len, severity, color]脳N)
      */
     public void setLineDiagnostics(ByteBuffer payload) {
         if (mNativeHandle == 0 || payload == null) return;
@@ -957,7 +957,7 @@ public class EditorCore {
     /**
      * Batch sets diagnostic decorations for multiple lines (reduces JNI calls).
      *
-     * @param diagsByLine Sparse array of line→diagnostic list
+     * @param diagsByLine Sparse array of line鈫抎iagnostic list
      */
     public void setBatchLineDiagnostics(@Nullable SparseArray<? extends List<? extends DiagnosticItem>> diagsByLine) {
         if (mNativeHandle == 0 || diagsByLine == null || diagsByLine.size() == 0) return;
@@ -1734,7 +1734,7 @@ public class EditorCore {
     private static native ByteBuffer nativeGetScrollMetrics(long handle);
 
     @CriticalNative
-    private static native void nativeRegisterStyle(long handle, int styleId, int color, int backgroundColor, int fontStyle);
+    private static native void nativeRegisterTextStyle(long handle, int styleId, int color, int backgroundColor, int fontStyle);
 
     @FastNative
     private static native void nativeSetLineSpans(long handle, ByteBuffer data, int size);
@@ -1860,3 +1860,4 @@ public class EditorCore {
         System.loadLibrary("sweeteditor");
     }
 }
+

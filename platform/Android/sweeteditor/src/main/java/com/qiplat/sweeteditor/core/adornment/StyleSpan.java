@@ -15,7 +15,7 @@ public final class StyleSpan {
     public final int column;
     /** Character length */
     public final int length;
-    /** Style ID registered via {@link EditorCore#registerStyle} */
+    /** Style ID registered via {@link EditorCore#registerTextStyle} */
     public final int styleId;
 
     /**
@@ -29,3 +29,4 @@ public final class StyleSpan {
         this.styleId = styleId;
     }
 }
+

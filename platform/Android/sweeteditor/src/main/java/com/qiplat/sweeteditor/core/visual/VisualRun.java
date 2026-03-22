@@ -1,6 +1,7 @@
 package com.qiplat.sweeteditor.core.visual;
 
 import com.google.gson.annotations.SerializedName;
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 
 /**
  * Visual text run structure definition.
@@ -24,7 +25,7 @@ public class VisualRun {
 
     /** Style (color + font style). */
     @SerializedName("style")
-    public InlineStyle style;
+    public TextStyle style;
 
     /** Icon resource ID (used only by INLAY_HINT(ICON) type). */
     @SerializedName("icon_id")

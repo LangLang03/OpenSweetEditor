@@ -524,12 +524,12 @@ public class EditorCore implements AutoCloseable {
 
     // ===================== Style Registration + Highlight Spans =====================
 
-    public void registerStyle(int styleId, int color, int bgColor, int fontStyle) {
-        EditorNative.registerStyle(nativeHandle, styleId, color, bgColor, fontStyle);
+    public void registerTextStyle(int styleId, int color, int bgColor, int fontStyle) {
+        EditorNative.registerTextStyle(nativeHandle, styleId, color, bgColor, fontStyle);
     }
 
-    public void registerStyle(int styleId, int color, int fontStyle) {
-        registerStyle(styleId, color, 0, fontStyle);
+    public void registerTextStyle(int styleId, int color, int fontStyle) {
+        registerTextStyle(styleId, color, 0, fontStyle);
     }
 
     /** Set highlight spans for a specific line (model overload) */
@@ -817,3 +817,4 @@ public class EditorCore implements AutoCloseable {
     public void clearMatchedBrackets() { EditorNative.clearMatchedBrackets(nativeHandle); }
     public void clearAllDecorations() { EditorNative.clearAllDecorations(nativeHandle); }
 }
+

@@ -179,7 +179,7 @@ public class Main extends JFrame {
 
     private void registerColorStyleForCurrentTheme() {
         int color = isDarkTheme ? 0xFFB5CEA8 : 0xFF098658;
-        editor.registerStyle(STYLE_COLOR, color, 0);
+        editor.registerTextStyle(STYLE_COLOR, color, 0);
     }
 
     private static String normalizeNewlines(String text) {
@@ -259,3 +259,4 @@ public class Main extends JFrame {
         });
     }
 }
+

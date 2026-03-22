@@ -146,7 +146,7 @@ EDITOR_API void editor_set_line_spacing(intptr_t editor_handle, float add, float
 ///            - f32 y
 ///            - i32 text_utf8_length
 ///            - u8[text_utf8_length] text_utf8_bytes
-///            - InlineStyle style
+///            - TextStyle style
 ///              - i32 color
 ///              - i32 background_color
 ///              - i32 font_style
@@ -648,12 +648,12 @@ EDITOR_API const uint8_t* editor_get_scroll_metrics(intptr_t editor_handle, size
 
 #pragma region Style Registration + Highlight Spans
 
-/// Register style (color + background color + font style)
+/// Register text style (color + background color + font style)
 /// @param style_id Style ID
 /// @param color Foreground color value (ARGB)
 /// @param background_color Background color value (ARGB), 0 means transparent
 /// @param font_style Font style (FontStyle enum value)
-EDITOR_API void editor_register_style(intptr_t editor_handle, uint32_t style_id, int32_t color, int32_t background_color, int32_t font_style);
+EDITOR_API void editor_register_text_style(intptr_t editor_handle, uint32_t style_id, int32_t color, int32_t background_color, int32_t font_style);
 
 /// Set style ranges for specified line and layer (compact binary)
 /// @param data payload(LE):

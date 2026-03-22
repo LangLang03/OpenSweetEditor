@@ -1,5 +1,6 @@
 package com.qiplat.sweeteditor;
 
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -75,21 +76,23 @@ public class EditorTheme {
     public int bracketHighlightBgColor;
 
     /**
-     * Syntax highlighting style mapping (extensible).
-     * <p>Key: styleId, Value: {@code int[2] {color(ARGB), fontStyle(bit flags)}}.
-     * When switching themes, iterates through this map to re-register all styles to C++ core.
+     * Theme text style mapping (extensible).
+     * <p>Key: styleId, Value: {@link TextStyle}.
      */
-    public final Map<Integer, int[]> syntaxStyles = new HashMap<>();
+    public final Map<Integer, TextStyle> textStyles = new HashMap<>();
 
     /**
-     * Register a syntax highlighting style to the theme.
-     * @param styleId   Style ID
-     * @param color     ARGB foreground color
-     * @param fontStyle Font style bit flags (0=normal, 1=bold, 2=italic, 4=strikethrough)
+     * Define one text style in the theme by style ID.
+     *
+     * @param styleId Style ID
+     * @param style   style definition (foreground/background/font style)
      * @return this (supports method chaining)
      */
-    public EditorTheme putSyntaxStyle(int styleId, int color, int fontStyle) {
-        syntaxStyles.put(styleId, new int[]{color, fontStyle});
+    public EditorTheme defineTextStyle(int styleId, TextStyle style) {
+        if (style == null) {
+            throw new IllegalArgumentException("style == null");
+        }
+        textStyles.put(styleId, style);
         return this;
     }
 
@@ -127,14 +130,14 @@ public class EditorTheme {
         t.bracketHighlightBorderColor = 0xCCFFD700; // Golden border
         t.bracketHighlightBgColor     = 0x30FFD700; // Semi-transparent golden background
         // VSCode Dark+ syntax highlighting presets
-        t.putSyntaxStyle(1, 0xFFC678DD, 1);  // keyword      — purple, bold
-        t.putSyntaxStyle(2, 0xFF56B6C2, 0);  // type         — cyan
-        t.putSyntaxStyle(3, 0xFFCE9178, 0);  // string       — orange
-        t.putSyntaxStyle(4, 0xFF6A9955, 2);  // comment      — green, italic
-        t.putSyntaxStyle(5, 0xFFD19A66, 0);  // preprocessor — orange-yellow
-        t.putSyntaxStyle(6, 0xFF61AFEF, 0);  // function     — blue
-        t.putSyntaxStyle(7, 0xFFB5CEA8, 0);  // number       — light green
-        t.putSyntaxStyle(8, 0xFFE5C07B, 1);  // class        — yellow, bold
+        t.defineTextStyle(1, new TextStyle(0xFFC678DD, 1));  // keyword      - purple, bold
+        t.defineTextStyle(2, new TextStyle(0xFF56B6C2, 0));  // type         - cyan
+        t.defineTextStyle(3, new TextStyle(0xFFCE9178, 0));  // string       - orange
+        t.defineTextStyle(4, new TextStyle(0xFF6A9955, 2));  // comment      - green, italic
+        t.defineTextStyle(5, new TextStyle(0xFFD19A66, 0));  // preprocessor - orange-yellow
+        t.defineTextStyle(6, new TextStyle(0xFF61AFEF, 0));  // function     - blue
+        t.defineTextStyle(7, new TextStyle(0xFFB5CEA8, 0));  // number       - light green
+        t.defineTextStyle(8, new TextStyle(0xFFE5C07B, 1));  // class        - yellow, bold
         return t;
     }
 
@@ -172,14 +175,15 @@ public class EditorTheme {
         t.bracketHighlightBorderColor = 0xCCB8860B; // Dark golden border
         t.bracketHighlightBgColor     = 0x30B8860B; // Semi-transparent dark golden background
         // VSCode Light+ syntax highlighting presets
-        t.putSyntaxStyle(1, 0xFF0000FF, 0);  // keyword      — blue
-        t.putSyntaxStyle(2, 0xFF267F99, 0);  // type         — dark cyan
-        t.putSyntaxStyle(3, 0xFFA31515, 0);  // string       — red
-        t.putSyntaxStyle(4, 0xFF008000, 2);  // comment      — green, italic
-        t.putSyntaxStyle(5, 0xFF795E26, 0);  // preprocessor — brown
-        t.putSyntaxStyle(6, 0xFF795E26, 0);  // function     — brown
-        t.putSyntaxStyle(7, 0xFF098658, 0);  // number       — dark green
-        t.putSyntaxStyle(8, 0xFF267F99, 1);  // class        — dark cyan, bold
+        t.defineTextStyle(1, new TextStyle(0xFF0000FF, 0));  // keyword      - blue
+        t.defineTextStyle(2, new TextStyle(0xFF267F99, 0));  // type         - dark cyan
+        t.defineTextStyle(3, new TextStyle(0xFFA31515, 0));  // string       - red
+        t.defineTextStyle(4, new TextStyle(0xFF008000, 2));  // comment      - green, italic
+        t.defineTextStyle(5, new TextStyle(0xFF795E26, 0));  // preprocessor - brown
+        t.defineTextStyle(6, new TextStyle(0xFF795E26, 0));  // function     - brown
+        t.defineTextStyle(7, new TextStyle(0xFF098658, 0));  // number       - dark green
+        t.defineTextStyle(8, new TextStyle(0xFF267F99, 1));  // class        - dark cyan, bold
         return t;
     }
 }
+

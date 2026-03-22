@@ -37,44 +37,30 @@ namespace NS_SWEETEDITOR {
     return style;
   }
 
-  /// Inline style (color + background color + font style, used in render pipeline)
-  struct InlineStyle {
-    /// Foreground color value (ARGB), 0 means use default color
-    int32_t color {0};
-    /// Background color value (ARGB), 0 means transparent/no background
-    int32_t background_color {0};
-    /// Font style (bit flag combination: BOLD | ITALIC | STRIKETHROUGH)
-    int32_t font_style {FONT_STYLE_NORMAL};
-  };
-
-  /// Editor style definition (with style_id, for style registry)
-  struct Style {
-    /// Style ID
-    uint32_t style_id {0};
+  /// Text style definition (color + background color + font style)
+  struct TextStyle {
     /// Foreground color value
     int32_t color {0};
     /// Background color value (ARGB), 0 means transparent/no background
     int32_t background_color {0};
     /// Font style (bit flag combination: BOLD | ITALIC | STRIKETHROUGH)
     int32_t font_style {FONT_STYLE_NORMAL};
-
-    /// Convert to lightweight inline style
-    InlineStyle toInlineStyle() const { return {color, background_color, font_style}; }
   };
 
-  /// Editor style registry
-  class StyleRegistry {
+  /// Text-style registry
+  class TextStyleRegistry {
   public:
-    /// Register a highlight style
-    /// @param style Highlight style info
-    void registerStyle(Style&& style);
-
-    /// Get style info by style ID
+    /// Register a text style
     /// @param style_id Style ID
-    /// @return Matching style info
-    Style& getStyle(uint32_t style_id);
+    /// @param style Text style info
+    void registerTextStyle(uint32_t style_id, TextStyle&& style);
+
+    /// Get text style info by style ID
+    /// @param style_id Style ID
+    /// @return Matching text style info
+    TextStyle& getStyle(uint32_t style_id);
   private:
-    HashMap<uint32_t, Style> style_map_;
+    HashMap<uint32_t, TextStyle> style_map_;
   };
 
   /// Highlight span definition
@@ -205,7 +191,7 @@ namespace NS_SWEETEDITOR {
   public:
     DecorationManager();
 
-    Ptr<StyleRegistry> getStyleRegistry();
+    Ptr<TextStyleRegistry> getTextStyleRegistry();
 
     /// Set highlight spans for a given line and layer (externally provided, sorted by column ascending)
     void setLineSpans(size_t line, SpanLayer layer, Vector<StyleSpan>&& spans);
@@ -331,7 +317,7 @@ namespace NS_SWEETEDITOR {
     void adjustForEdit(const TextRange& old_range, const TextPosition& new_end);
   private:
     void ensureLineCapacity_(size_t line_count);
-    Ptr<StyleRegistry> m_style_reg_;
+    Ptr<TextStyleRegistry> m_text_style_reg_;
     std::array<Vector<Vector<StyleSpan>>, kSpanLayerCount> m_layer_spans_;
     Vector<Vector<InlayHint>> m_inlay_hints_;
     Vector<Vector<PhantomText>> m_phantom_texts_;
@@ -353,3 +339,4 @@ namespace NS_SWEETEDITOR {
 }
 
 #endif //SWEETEDITOR_DECORATION_H
+

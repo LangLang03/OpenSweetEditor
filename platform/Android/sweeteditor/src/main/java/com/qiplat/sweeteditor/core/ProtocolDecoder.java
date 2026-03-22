@@ -12,7 +12,7 @@ import com.qiplat.sweeteditor.core.visual.GuideDirection;
 import com.qiplat.sweeteditor.core.visual.GuideSegment;
 import com.qiplat.sweeteditor.core.visual.GuideStyle;
 import com.qiplat.sweeteditor.core.visual.GuideType;
-import com.qiplat.sweeteditor.core.visual.InlineStyle;
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 import com.qiplat.sweeteditor.core.visual.LinkedEditingRect;
 import com.qiplat.sweeteditor.core.visual.PointF;
 import com.qiplat.sweeteditor.core.visual.SelectionHandle;
@@ -203,12 +203,11 @@ final class ProtocolDecoder {
         return new TextPosition(data.getInt(), data.getInt());
     }
 
-    private static InlineStyle readInlineStyle(ByteBuffer data) {
-        InlineStyle style = new InlineStyle();
-        style.color = data.getInt();
-        style.backgroundColor = data.getInt();
-        style.fontStyle = data.getInt();
-        return style;
+    private static TextStyle readTextStyle(ByteBuffer data) {
+        int color = data.getInt();
+        int backgroundColor = data.getInt();
+        int fontStyle = data.getInt();
+        return new TextStyle(color, backgroundColor, fontStyle);
     }
 
     private static <T extends Enum<T>> T enumByOrdinal(int value, T[] values, T fallback) {
@@ -241,7 +240,7 @@ final class ProtocolDecoder {
         run.x = data.getFloat();
         run.y = data.getFloat();
         run.text = readBufferString(data);
-        run.style = readInlineStyle(data);
+        run.style = readTextStyle(data);
         run.iconId = data.getInt();
         run.colorValue = data.getInt();
         run.width = data.getFloat();

@@ -40,6 +40,7 @@ import com.qiplat.sweeteditor.core.adornment.GutterIcon;
 import com.qiplat.sweeteditor.core.adornment.InlayHint;
 import com.qiplat.sweeteditor.core.adornment.PhantomText;
 import com.qiplat.sweeteditor.core.adornment.StyleSpan;
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 
 import com.qiplat.sweeteditor.core.TextMeasurer;
 import com.qiplat.sweeteditor.core.foundation.ScrollBehavior;
@@ -369,9 +370,9 @@ public class SweetEditor extends View {
         mTheme = theme;
         mRenderer.applyTheme(theme);
 
-        for (Map.Entry<Integer, int[]> entry : theme.syntaxStyles.entrySet()) {
-            int[] style = entry.getValue();
-            mEditorCore.registerStyle(entry.getKey(), style[0], style[1]);
+        for (Map.Entry<Integer, TextStyle> entry : theme.textStyles.entrySet()) {
+            TextStyle style = entry.getValue();
+            mEditorCore.registerTextStyle(entry.getKey(), style.color, style.backgroundColor, style.fontStyle);
         }
 
         flush();
@@ -782,11 +783,11 @@ public class SweetEditor extends View {
      * @param styleId         style ID (custom, must be unique)
      * @param color           ARGB foreground color
      * @param backgroundColor ARGB background color (0=transparent)
-     * @param fontStyle       font style bit flags ({@link FontStyle#NORMAL}, {@link FontStyle#BOLD},
-     *                        {@link FontStyle#ITALIC}, {@link FontStyle#STRIKETHROUGH}, combinable via bitwise OR)
+     * @param fontStyle       font style bit flags ({@link TextStyle#NORMAL}, {@link TextStyle#BOLD},
+     *                        {@link TextStyle#ITALIC}, {@link TextStyle#STRIKETHROUGH}, combinable via bitwise OR)
      */
-    public void registerStyle(int styleId, int color, int backgroundColor, int fontStyle) {
-        mEditorCore.registerStyle(styleId, color, backgroundColor, fontStyle);
+    public void registerTextStyle(int styleId, int color, int backgroundColor, int fontStyle) {
+        mEditorCore.registerTextStyle(styleId, color, backgroundColor, fontStyle);
     }
 
     /**
@@ -796,8 +797,8 @@ public class SweetEditor extends View {
      * @param color     ARGB foreground color
      * @param fontStyle Font style bit flags
      */
-    public void registerStyle(int styleId, int color, int fontStyle) {
-        mEditorCore.registerStyle(styleId, color, fontStyle);
+    public void registerTextStyle(int styleId, int color, int fontStyle) {
+        mEditorCore.registerTextStyle(styleId, color, fontStyle);
     }
 
     /**
@@ -817,7 +818,7 @@ public class SweetEditor extends View {
      * Batch set highlight spans for multiple lines (reduces JNI calls, single dirty mark).
      *
      * @param layer       Highlight layer
-     * @param spansByLine Sparse array of line number → span list
+     * @param spansByLine Sparse array of line number 鈫?span list
      */
     public void setBatchLineSpans(SpanLayer layer, @Nullable SparseArray<? extends List<? extends StyleSpan>> spansByLine) {
         mEditorCore.setBatchLineSpans(layer.value, spansByLine);
@@ -838,7 +839,7 @@ public class SweetEditor extends View {
     /**
      * Batch set Inlay Hints for multiple lines (reduces JNI calls, single dirty mark).
      *
-     * @param hintsByLine Sparse array of line number → hint list
+     * @param hintsByLine Sparse array of line number 鈫?hint list
      */
     public void setBatchLineInlayHints(@Nullable SparseArray<? extends List<? extends InlayHint>> hintsByLine) {
         mEditorCore.setBatchLineInlayHints(hintsByLine);
@@ -858,7 +859,7 @@ public class SweetEditor extends View {
     /**
      * Batch set phantom text for multiple lines (reduces JNI calls, single dirty mark).
      *
-     * @param phantomsByLine Sparse array of line number → phantom list
+     * @param phantomsByLine Sparse array of line number 鈫?phantom list
      */
     public void setBatchLinePhantomTexts(@Nullable SparseArray<? extends List<? extends PhantomText>> phantomsByLine) {
         mEditorCore.setBatchLinePhantomTexts(phantomsByLine);
@@ -882,7 +883,7 @@ public class SweetEditor extends View {
     /**
      * Batch set gutter icons for multiple lines (reduces JNI calls).
      *
-     * @param iconsByLine Sparse array of line number → icon list
+     * @param iconsByLine Sparse array of line number 鈫?icon list
      */
     public void setBatchLineGutterIcons(@Nullable SparseArray<? extends List<? extends GutterIcon>> iconsByLine) {
         mEditorCore.setBatchLineGutterIcons(iconsByLine);
@@ -903,7 +904,7 @@ public class SweetEditor extends View {
     /**
      * Batch set diagnostic decorations for multiple lines (reduces JNI calls).
      *
-     * @param diagsByLine Sparse array of line number → diagnostic list
+     * @param diagsByLine Sparse array of line number 鈫?diagnostic list
      */
     public void setBatchLineDiagnostics(@Nullable SparseArray<? extends List<? extends DiagnosticItem>> diagsByLine) {
         mEditorCore.setBatchLineDiagnostics(diagsByLine);
@@ -1653,9 +1654,9 @@ public class SweetEditor extends View {
         mCompletionProviderManager.setListener(mCompletionPopupController);
         mCompletionPopupController.setConfirmListener(this::applyCompletionItem);
 
-        for (Map.Entry<Integer, int[]> entry : mTheme.syntaxStyles.entrySet()) {
-            int[] style = entry.getValue();
-            mEditorCore.registerStyle(entry.getKey(), style[0], style[1]);
+        for (Map.Entry<Integer, TextStyle> entry : mTheme.textStyles.entrySet()) {
+            TextStyle style = entry.getValue();
+            mEditorCore.registerTextStyle(entry.getKey(), style.color, style.backgroundColor, style.fontStyle);
         }
 
         mSettings = new EditorSettings(this);
@@ -1737,3 +1738,4 @@ public class SweetEditor extends View {
         }
     }
 }
+

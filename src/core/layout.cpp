@@ -1039,10 +1039,10 @@ namespace NS_SWEETEDITOR {
 
     // For faster span lookup, preprocess: find covering span for each column
     // spans are assumed sorted by column and may overlap; use simple linear match here
-    auto findSpanStyle = [&](uint32_t col) -> InlineStyle {
+    auto findSpanStyle = [&](uint32_t col) -> TextStyle {
       for (const auto& span : merged_spans) {
         if (col >= span.column && col < span.column + span.length) {
-          return m_decoration_manager_->getStyleRegistry()->getStyle(span.style_id).toInlineStyle();
+          return m_decoration_manager_->getTextStyleRegistry()->getStyle(span.style_id);
         }
       }
       return {};

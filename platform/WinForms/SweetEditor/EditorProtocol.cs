@@ -505,18 +505,14 @@ namespace SweetEditor {
 			return Enum.IsDefined(typeof(GuideStyle), value) ? (GuideStyle)value : GuideStyle.SOLID;
 		}
 
-		internal static bool TryReadInlineStyle(ReadOnlySpan<byte> data, ref int offset, out InlineStyle style) {
+		internal static bool TryReadTextStyle(ReadOnlySpan<byte> data, ref int offset, out TextStyle style) {
 			style = default;
 			if (!TryReadInt32(data, ref offset, out int color) ||
 				!TryReadInt32(data, ref offset, out int backgroundColor) ||
 				!TryReadInt32(data, ref offset, out int fontStyle)) {
 				return false;
 			}
-			style = new InlineStyle {
-				Color = color,
-				BackgroundColor = backgroundColor,
-				FontStyle = fontStyle,
-			};
+			style = new TextStyle(color, backgroundColor, fontStyle);
 			return true;
 		}
 
@@ -526,7 +522,7 @@ namespace SweetEditor {
 				!TryReadFloat(data, ref offset, out float x) ||
 				!TryReadFloat(data, ref offset, out float y) ||
 				!TryReadUtf8String(data, ref offset, out string text) ||
-				!TryReadInlineStyle(data, ref offset, out InlineStyle style) ||
+				!TryReadTextStyle(data, ref offset, out TextStyle style) ||
 				!TryReadInt32(data, ref offset, out int iconId) ||
 				!TryReadInt32(data, ref offset, out int colorValue) ||
 				!TryReadFloat(data, ref offset, out float width) ||

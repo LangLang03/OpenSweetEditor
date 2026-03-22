@@ -234,6 +234,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void registerColorStyleForCurrentTheme() {
         int color = mIsDarkTheme ? 0xFFB5CEA8 : 0xFF098658;
-        mEditor.registerStyle(STYLE_COLOR, color, 0);
+        mEditor.registerTextStyle(STYLE_COLOR, color, 0);
     }
 }
+

@@ -15,6 +15,7 @@ import java.util.List;
 import com.qiplat.sweeteditor.core.HandleConfig;
 import com.qiplat.sweeteditor.core.ScrollbarConfig;
 import com.qiplat.sweeteditor.core.TextMeasurer;
+import com.qiplat.sweeteditor.core.adornment.TextStyle;
 import com.qiplat.sweeteditor.core.visual.*;
 import com.qiplat.sweeteditor.perf.MeasurePerfStats;
 import com.qiplat.sweeteditor.perf.PerfOverlay;
@@ -428,14 +429,14 @@ final class EditorRenderer {
                                 } else {
                                     color = mTheme.inlayHintTextColor;
                                 }
-                                boolean bold = (fontStyle & FontStyle.BOLD) != 0;
-                                boolean italic = (fontStyle & FontStyle.ITALIC) != 0;
+                                boolean bold = (fontStyle & TextStyle.BOLD) != 0;
+                                boolean italic = (fontStyle & TextStyle.ITALIC) != 0;
                                 int tfStyle = Typeface.NORMAL;
                                 if (bold && italic) tfStyle = Typeface.BOLD_ITALIC;
                                 else if (bold) tfStyle = Typeface.BOLD;
                                 else if (italic) tfStyle = Typeface.ITALIC;
                                 mInlayHintPaint.setTypeface(mInlayHintTypefaces[tfStyle]);
-                                mInlayHintPaint.setStrikeThruText((fontStyle & FontStyle.STRIKETHROUGH) != 0);
+                                mInlayHintPaint.setStrikeThruText((fontStyle & TextStyle.STRIKETHROUGH) != 0);
                                 mInlayHintPaint.setColor(color);
                                 canvas.drawText(run.text, run.x + mgn + run.padding, run.y, mInlayHintPaint);
                             }
@@ -870,14 +871,14 @@ final class EditorRenderer {
     }
 
     private void applyFontStyle(int fontStyle) {
-        boolean bold = (fontStyle & FontStyle.BOLD) != 0;
-        boolean italic = (fontStyle & FontStyle.ITALIC) != 0;
+        boolean bold = (fontStyle & TextStyle.BOLD) != 0;
+        boolean italic = (fontStyle & TextStyle.ITALIC) != 0;
         int style = Typeface.NORMAL;
         if (bold && italic) style = Typeface.BOLD_ITALIC;
         else if (bold) style = Typeface.BOLD;
         else if (italic) style = Typeface.ITALIC;
         mTextPaint.setTypeface(mTextTypefaces[style]);
-        mTextPaint.setStrikeThruText((fontStyle & FontStyle.STRIKETHROUGH) != 0);
+        mTextPaint.setStrikeThruText((fontStyle & TextStyle.STRIKETHROUGH) != 0);
     }
 
     private static boolean isDrawableScrollbar(@Nullable ScrollbarModel scrollbar, float alpha) {

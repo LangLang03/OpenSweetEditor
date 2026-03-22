@@ -162,8 +162,8 @@ namespace NS_SWEETEDITOR {
 #pragma endregion
 
 #pragma region [Rendering]
-  Ptr<StyleRegistry> EditorCore::getStyleRegistry() const {
-    return m_decorations_->getStyleRegistry();
+  Ptr<TextStyleRegistry> EditorCore::getTextStyleRegistry() const {
+    return m_decorations_->getTextStyleRegistry();
   }
 
   void EditorCore::buildRenderModel(EditorRenderModel& model) {
@@ -2230,8 +2230,8 @@ namespace NS_SWEETEDITOR {
 #pragma endregion
 
 #pragma region [Decorations]
-  void EditorCore::registerStyle(uint32_t style_id, int32_t color, int32_t background_color, int32_t font_style) {
-    m_decorations_->getStyleRegistry()->registerStyle(Style{style_id, color, background_color, font_style});
+  void EditorCore::registerTextStyle(uint32_t style_id, TextStyle&& style) {
+    m_decorations_->getTextStyleRegistry()->registerTextStyle(style_id, std::move(style));
   }
 
   void EditorCore::setLineSpans(size_t line, SpanLayer layer, Vector<StyleSpan>&& spans) {
@@ -3204,3 +3204,4 @@ namespace NS_SWEETEDITOR {
   }
 #pragma endregion
 }
+

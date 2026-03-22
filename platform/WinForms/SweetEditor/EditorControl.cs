@@ -60,6 +60,26 @@ namespace SweetEditor {
 	}
 
 	/// <summary>
+	/// Immutable text style definition referenced by StyleSpan.styleId.
+	/// </summary>
+	public readonly struct TextStyle {
+		/// <summary>Foreground color (ARGB).</summary>
+		public int Color { get; }
+		/// <summary>Background color (ARGB), 0 means transparent.</summary>
+		public int BackgroundColor { get; }
+		/// <summary>Font style bit flags (BOLD | ITALIC | STRIKETHROUGH).</summary>
+		public int FontStyle { get; }
+
+		public TextStyle(int color, int fontStyle) : this(color, 0, fontStyle) { }
+
+		public TextStyle(int color, int backgroundColor, int fontStyle) {
+			Color = color;
+			BackgroundColor = backgroundColor;
+			FontStyle = fontStyle;
+		}
+	}
+
+	/// <summary>
 	/// Editor theme configuration containing all configurable color properties.
 	/// All colors are in ARGB format.
 	/// Apply a theme via <see cref="EditorControl.ApplyTheme(EditorTheme)"/>.
@@ -129,21 +149,20 @@ namespace SweetEditor {
 		public Color BracketHighlightBgColor { get; set; }
 
 		/// <summary>
-		/// Syntax highlighting style mapping.
-		/// Key: style ID. Value: tuple (color ARGB, fontStyle bit flags).
+		/// Theme text style mapping.
+		/// Key: style ID. Value: text style definition.
 		/// Applied to the C++ core when a theme is applied.
 		/// </summary>
-		public Dictionary<uint, (int color, int fontStyle)> SyntaxStyles { get; set; } = new();
+		public Dictionary<uint, TextStyle> TextStyles { get; set; } = new();
 
 		/// <summary>
-		/// Registers a syntax highlighting style in the theme.
+		/// Defines a text style in the theme.
 		/// </summary>
 		/// <param name="styleId">Style ID.</param>
-		/// <param name="color">ARGB foreground color.</param>
-		/// <param name="fontStyle">Font style bit flags (0=normal, 1=bold, 2=italic, 4=strikethrough).</param>
+		/// <param name="style">Text style definition.</param>
 		/// <returns>This theme instance (for chaining).</returns>
-		public EditorTheme PutSyntaxStyle(uint styleId, int color, int fontStyle) {
-			SyntaxStyles[styleId] = (color, fontStyle);
+		public EditorTheme DefineTextStyle(uint styleId, TextStyle style) {
+			TextStyles[styleId] = style;
 			return this;
 		}
 
@@ -177,15 +196,15 @@ namespace SweetEditor {
 			LinkedEditingInactiveColor = Color.FromArgb(unchecked((int)0x20007ACC)),
 			BracketHighlightBorderColor = Color.FromArgb(unchecked((int)0xFF888888)),
 			BracketHighlightBgColor = Color.FromArgb(unchecked((int)0x20FFFFFF)),
-			SyntaxStyles = new() {
-				[1] = (unchecked((int)0xFFC678DD), 1),
-				[2] = (unchecked((int)0xFF56B6C2), 0),
-				[3] = (unchecked((int)0xFFCE9178), 0),
-				[4] = (unchecked((int)0xFF6A9955), 2),
-				[5] = (unchecked((int)0xFFD19A66), 0),
-				[6] = (unchecked((int)0xFF61AFEF), 0),
-				[7] = (unchecked((int)0xFFB5CEA8), 0),
-				[8] = (unchecked((int)0xFFE5C07B), 1),
+			TextStyles = new() {
+				[1] = new TextStyle(unchecked((int)0xFFC678DD), 1),
+				[2] = new TextStyle(unchecked((int)0xFF56B6C2), 0),
+				[3] = new TextStyle(unchecked((int)0xFFCE9178), 0),
+				[4] = new TextStyle(unchecked((int)0xFF6A9955), 2),
+				[5] = new TextStyle(unchecked((int)0xFFD19A66), 0),
+				[6] = new TextStyle(unchecked((int)0xFF61AFEF), 0),
+				[7] = new TextStyle(unchecked((int)0xFFB5CEA8), 0),
+				[8] = new TextStyle(unchecked((int)0xFFE5C07B), 1),
 			},
 		};
 
@@ -219,15 +238,15 @@ namespace SweetEditor {
 			LinkedEditingInactiveColor = Color.FromArgb(unchecked((int)0x20007ACC)),
 			BracketHighlightBorderColor = Color.FromArgb(unchecked((int)0xFF888888)),
 			BracketHighlightBgColor = Color.FromArgb(unchecked((int)0x20000000)),
-			SyntaxStyles = new() {
-				[1] = (unchecked((int)0xFF0000FF), 0),
-				[2] = (unchecked((int)0xFF267F99), 0),
-				[3] = (unchecked((int)0xFFA31515), 0),
-				[4] = (unchecked((int)0xFF008000), 2),
-				[5] = (unchecked((int)0xFF795E26), 0),
-				[6] = (unchecked((int)0xFF795E26), 0),
-				[7] = (unchecked((int)0xFF098658), 0),
-				[8] = (unchecked((int)0xFF267F99), 1),
+			TextStyles = new() {
+				[1] = new TextStyle(unchecked((int)0xFF0000FF), 0),
+				[2] = new TextStyle(unchecked((int)0xFF267F99), 0),
+				[3] = new TextStyle(unchecked((int)0xFFA31515), 0),
+				[4] = new TextStyle(unchecked((int)0xFF008000), 2),
+				[5] = new TextStyle(unchecked((int)0xFF795E26), 0),
+				[6] = new TextStyle(unchecked((int)0xFF795E26), 0),
+				[7] = new TextStyle(unchecked((int)0xFF098658), 0),
+				[8] = new TextStyle(unchecked((int)0xFF267F99), 1),
 			},
 		};
 	}
@@ -348,10 +367,10 @@ namespace SweetEditor {
 			this.BackColor = currentTheme.BackgroundColor;
 			this.ForeColor = currentTheme.TextColor;
 
-			// Re-register syntax highlighting styles to C++ core after theme change.
+			// Re-register text styles to C++ core after theme change.
 			if (editorCore != null) {
-				foreach (var kvp in theme.SyntaxStyles) {
-					editorCore.RegisterStyle(kvp.Key, kvp.Value.color, kvp.Value.fontStyle);
+				foreach (var kvp in theme.TextStyles) {
+					editorCore.registerTextStyle(kvp.Key, kvp.Value.Color, kvp.Value.BackgroundColor, kvp.Value.FontStyle);
 				}
 			}
 
@@ -624,15 +643,15 @@ namespace SweetEditor {
 		/// <param name="color">Color value (ARGB).</param>
 		/// <param name="backgroundColor">Background color value (ARGB).</param>
 		/// <param name="fontStyle">Font style flags.</param>
-		public void RegisterStyle(uint styleId, int color, int backgroundColor, int fontStyle) =>
-			editorCore.RegisterStyle(styleId, color, backgroundColor, fontStyle);
+		public void registerTextStyle(uint styleId, int color, int backgroundColor, int fontStyle) =>
+			editorCore.registerTextStyle(styleId, color, backgroundColor, fontStyle);
 
 		/// <summary>Register style.</summary>
 		/// <param name="styleId">Style identifier.</param>
 		/// <param name="color">Color value (ARGB).</param>
 		/// <param name="fontStyle">Font style flags.</param>
-		public void RegisterStyle(uint styleId, int color, int fontStyle) =>
-			editorCore.RegisterStyle(styleId, color, fontStyle);
+		public void registerTextStyle(uint styleId, int color, int fontStyle) =>
+			editorCore.registerTextStyle(styleId, color, fontStyle);
 
 		/// <summary>Sets line spans.</summary>
 		public void SetLineSpans(int line, SpanLayer layer, IList<StyleSpan> spans) {
@@ -651,7 +670,7 @@ namespace SweetEditor {
 
 		#endregion
 
-		#region Public API — InlayHint / PhantomText
+		#region Public API 鈥?InlayHint / PhantomText
 
 		/// <summary>Sets line inlay hints.</summary>
 		public void SetLineInlayHints(int line, IList<InlayHint> hints) {
@@ -908,9 +927,9 @@ namespace SweetEditor {
 			completionProviderManager.OnDismissed += () => completionPopupController.DismissPanel();
 			completionPopupController.OnConfirmed += ApplyCompletionItem;
 
-			// Register default theme syntax highlighting styles.
-			foreach (var kvp in currentTheme.SyntaxStyles) {
-				editorCore.RegisterStyle(kvp.Key, kvp.Value.color, kvp.Value.fontStyle);
+			// Register default theme text styles.
+			foreach (var kvp in currentTheme.TextStyles) {
+				editorCore.registerTextStyle(kvp.Key, kvp.Value.Color, kvp.Value.BackgroundColor, kvp.Value.FontStyle);
 			}
 
 			settings = new EditorSettings(this);
@@ -1484,3 +1503,4 @@ namespace SweetEditor {
 		#endregion
 	}
 }
+
