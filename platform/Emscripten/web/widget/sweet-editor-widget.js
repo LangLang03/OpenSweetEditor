@@ -2,7 +2,7 @@
 import { WebEditorCore } from "../core/web-editor-core.js";
 import { Canvas2DRenderer } from "./canvas2d-renderer.js";
 
-const EventType = {
+const FALLBACK_EVENT_TYPE = {
   TOUCH_DOWN: 1,
   TOUCH_POINTER_DOWN: 2,
   TOUCH_MOVE: 3,
@@ -16,7 +16,7 @@ const EventType = {
   MOUSE_RIGHT_DOWN: 11,
 };
 
-const KeyCode = {
+const FALLBACK_KEY_CODE = {
   BACKSPACE: 8,
   TAB: 9,
   ENTER: 13,
@@ -39,20 +39,60 @@ const KeyCode = {
   K: 75,
 };
 
-const Modifier = {
+const FALLBACK_MODIFIER = {
   SHIFT: 1,
   CTRL: 2,
   ALT: 4,
   META: 8,
 };
 
+function resolveEnum(moduleObj, enumName, fallback) {
+  const enumObj = moduleObj && moduleObj[enumName];
+  if (!enumObj || typeof enumObj !== "object") {
+    return fallback;
+  }
+  return { ...fallback, ...enumObj };
+}
+
+const CONTEXT_MENU_I18N = {
+  en: {
+    undo: "Undo",
+    redo: "Redo",
+    cut: "Cut",
+    copy: "Copy",
+    paste: "Paste",
+    selectAll: "Select All",
+  },
+  zh: {
+    undo: "撤销",
+    redo: "重做",
+    cut: "剪切",
+    copy: "复制",
+    paste: "粘贴",
+    selectAll: "全选",
+  },
+};
+
+function resolveLocale(locale) {
+  const value = String(locale || "").toLowerCase();
+  return value.startsWith("zh") ? "zh" : "en";
+}
+
 export class SweetEditorWidget {
   constructor(container, wasmModule, options = {}) {
     this.container = container;
     this._wasm = wasmModule;
     this._options = options;
+    this._eventType = resolveEnum(wasmModule, "EventType", FALLBACK_EVENT_TYPE);
+    this._keyCode = resolveEnum(wasmModule, "KeyCode", FALLBACK_KEY_CODE);
+    this._modifier = resolveEnum(wasmModule, "Modifier", FALLBACK_MODIFIER);
     this._renderer = new Canvas2DRenderer(options.theme || {});
-    this._core = new WebEditorCore(wasmModule, this._renderer.createTextMeasurerCallbacks(), options.editorOptions || {});
+    this._core = new WebEditorCore(
+      wasmModule,
+      this._renderer.createTextMeasurerCallbacks(),
+      options.editorOptions || {},
+      () => this._markDirty(),
+    );
     this._documentFactory = new DocumentFactory(wasmModule);
     this._activeTouches = new Map();
     this._edgeTimer = null;
@@ -189,14 +229,14 @@ export class SweetEditorWidget {
 
     const point = this._eventPoint(event);
     if (event.pointerType === "mouse") {
-      const type = event.button === 2 ? EventType.MOUSE_RIGHT_DOWN : EventType.MOUSE_DOWN;
+      const type = event.button === 2 ? this._eventType.MOUSE_RIGHT_DOWN : this._eventType.MOUSE_DOWN;
       this._dispatchGesture(type, [point], event);
       event.preventDefault();
       return;
     }
 
     this._activeTouches.set(event.pointerId, point);
-    const type = this._activeTouches.size === 1 ? EventType.TOUCH_DOWN : EventType.TOUCH_POINTER_DOWN;
+    const type = this._activeTouches.size === 1 ? this._eventType.TOUCH_DOWN : this._eventType.TOUCH_POINTER_DOWN;
     this._dispatchGesture(type, Array.from(this._activeTouches.values()), event);
     event.preventDefault();
   }
@@ -205,14 +245,14 @@ export class SweetEditorWidget {
     const point = this._eventPoint(event);
     if (event.pointerType === "mouse") {
       if ((event.buttons & 1) !== 0) {
-        this._dispatchGesture(EventType.MOUSE_MOVE, [point], event);
+        this._dispatchGesture(this._eventType.MOUSE_MOVE, [point], event);
       }
       return;
     }
 
     if (!this._activeTouches.has(event.pointerId)) return;
     this._activeTouches.set(event.pointerId, point);
-    this._dispatchGesture(EventType.TOUCH_MOVE, Array.from(this._activeTouches.values()), event);
+    this._dispatchGesture(this._eventType.TOUCH_MOVE, Array.from(this._activeTouches.values()), event);
     event.preventDefault();
   }
 
@@ -226,12 +266,12 @@ export class SweetEditorWidget {
       }
     }
     if (event.pointerType === "mouse") {
-      this._dispatchGesture(EventType.MOUSE_UP, [point], event);
+      this._dispatchGesture(this._eventType.MOUSE_UP, [point], event);
       return;
     }
 
     if (!this._activeTouches.has(event.pointerId)) return;
-    const type = this._activeTouches.size > 1 ? EventType.TOUCH_POINTER_UP : EventType.TOUCH_UP;
+    const type = this._activeTouches.size > 1 ? this._eventType.TOUCH_POINTER_UP : this._eventType.TOUCH_UP;
     this._dispatchGesture(type, Array.from(this._activeTouches.values()), event);
     this._activeTouches.delete(event.pointerId);
     event.preventDefault();
@@ -239,7 +279,7 @@ export class SweetEditorWidget {
 
   _onPointerCancel(event) {
     if (event.pointerType !== "mouse") {
-      this._dispatchGesture(EventType.TOUCH_CANCEL, Array.from(this._activeTouches.values()), event);
+      this._dispatchGesture(this._eventType.TOUCH_CANCEL, Array.from(this._activeTouches.values()), event);
       this._activeTouches.delete(event.pointerId);
       event.preventDefault();
     }
@@ -247,7 +287,7 @@ export class SweetEditorWidget {
 
   _onWheel(event) {
     const point = this._eventPoint(event);
-    this._dispatchGesture(EventType.MOUSE_WHEEL, [point], event, event.deltaX, event.deltaY, 1.0);
+    this._dispatchGesture(this._eventType.MOUSE_WHEEL, [point], event, event.deltaX, event.deltaY, 1.0);
     event.preventDefault();
   }
 
@@ -313,36 +353,36 @@ export class SweetEditorWidget {
 
   _modifiers(event) {
     let mods = 0;
-    if (event.shiftKey) mods |= Modifier.SHIFT;
-    if (event.ctrlKey) mods |= Modifier.CTRL;
-    if (event.altKey) mods |= Modifier.ALT;
-    if (event.metaKey) mods |= Modifier.META;
+    if (event.shiftKey) mods |= this._modifier.SHIFT;
+    if (event.ctrlKey) mods |= this._modifier.CTRL;
+    if (event.altKey) mods |= this._modifier.ALT;
+    if (event.metaKey) mods |= this._modifier.META;
     return mods;
   }
 
   _mapKeyCode(event) {
     switch (event.key) {
-      case "Backspace": return KeyCode.BACKSPACE;
-      case "Tab": return KeyCode.TAB;
-      case "Enter": return KeyCode.ENTER;
-      case "Escape": return KeyCode.ESCAPE;
-      case "Delete": return KeyCode.DELETE_KEY;
-      case "ArrowLeft": return KeyCode.LEFT;
-      case "ArrowUp": return KeyCode.UP;
-      case "ArrowRight": return KeyCode.RIGHT;
-      case "ArrowDown": return KeyCode.DOWN;
-      case "Home": return KeyCode.HOME;
-      case "End": return KeyCode.END;
-      case "PageUp": return KeyCode.PAGE_UP;
-      case "PageDown": return KeyCode.PAGE_DOWN;
+      case "Backspace": return this._keyCode.BACKSPACE;
+      case "Tab": return this._keyCode.TAB;
+      case "Enter": return this._keyCode.ENTER;
+      case "Escape": return this._keyCode.ESCAPE;
+      case "Delete": return this._keyCode.DELETE_KEY;
+      case "ArrowLeft": return this._keyCode.LEFT;
+      case "ArrowUp": return this._keyCode.UP;
+      case "ArrowRight": return this._keyCode.RIGHT;
+      case "ArrowDown": return this._keyCode.DOWN;
+      case "Home": return this._keyCode.HOME;
+      case "End": return this._keyCode.END;
+      case "PageUp": return this._keyCode.PAGE_UP;
+      case "PageDown": return this._keyCode.PAGE_DOWN;
       default:
         break;
     }
 
     if ((event.ctrlKey || event.metaKey) && event.key.length === 1) {
       const upper = event.key.toUpperCase();
-      if (KeyCode[upper]) {
-        return KeyCode[upper];
+      if (this._keyCode[upper]) {
+        return this._keyCode[upper];
       }
     }
     return 0;

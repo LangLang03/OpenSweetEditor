@@ -268,6 +268,26 @@ void editorStartLinkedEditing(EditorCore& editor, const LinkedEditingModel& mode
   editor.startLinkedEditing(std::move(copy));
 }
 
+GestureResult editorHandleGestureEventRaw(EditorCore& editor, int32_t type, const Vector<PointF>& points, uint8_t modifiers,
+                                          float wheel_delta_x, float wheel_delta_y, float direct_scale) {
+  GestureEvent event;
+  event.type = static_cast<EventType>(type);
+  event.points = points;
+  event.modifiers = static_cast<Modifier>(modifiers);
+  event.wheel_delta_x = wheel_delta_x;
+  event.wheel_delta_y = wheel_delta_y;
+  event.direct_scale = direct_scale;
+  return editor.handleGestureEvent(event);
+}
+
+KeyEventResult editorHandleKeyEventRaw(EditorCore& editor, int32_t key_code, const U8String& text, uint8_t modifiers) {
+  KeyEvent event;
+  event.key_code = static_cast<KeyCode>(key_code);
+  event.text = text;
+  event.modifiers = static_cast<Modifier>(modifiers);
+  return editor.handleKeyEvent(event);
+}
+
 EMSCRIPTEN_BINDINGS(sweeteditor_wasm) {
   enum_<LineEnding>("LineEnding")
     .value("NONE", LineEnding::NONE)
@@ -703,8 +723,10 @@ EMSCRIPTEN_BINDINGS(sweeteditor_wasm) {
     .function("getScrollMetrics", &EditorCore::getScrollMetrics)
     .function("getLayoutMetrics", &editorGetLayoutMetrics)
     .function("handleGestureEvent", &EditorCore::handleGestureEvent)
+    .function("handleGestureEventRaw", &editorHandleGestureEventRaw)
     .function("tickEdgeScroll", &EditorCore::tickEdgeScroll)
     .function("handleKeyEvent", &EditorCore::handleKeyEvent)
+    .function("handleKeyEventRaw", &editorHandleKeyEventRaw)
     .function("insertText", &EditorCore::insertText)
     .function("replaceText", &EditorCore::replaceText)
     .function("deleteText", &EditorCore::deleteText)

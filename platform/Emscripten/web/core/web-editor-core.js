@@ -1,6 +1,7 @@
-﻿export class WebEditorCore {
-  constructor(wasmModule, textMeasurerCallbacks, editorOptions = {}) {
+export class WebEditorCore {
+  constructor(wasmModule, textMeasurerCallbacks, editorOptions = {}, onDidMutate = null) {
     this._wasm = wasmModule;
+    this._onDidMutate = typeof onDidMutate === "function" ? onDidMutate : null;
     const nativeOptions = {
       touch_slop: editorOptions.touchSlop ?? 10.0,
       double_tap_timeout: editorOptions.doubleTapTimeout ?? 300,
@@ -17,10 +18,12 @@
   loadDocument(document) {
     const nativeDoc = typeof document.getNative === "function" ? document.getNative() : document;
     this._native.loadDocument(nativeDoc);
+    this._notifyMutate();
   }
 
   setViewport(width, height) {
     this._native.setViewport({ width, height });
+    this._notifyMutate();
   }
 
   buildRenderModel() {
@@ -28,15 +31,32 @@
   }
 
   handleGestureEvent(eventData) {
-    return this._native.handleGestureEvent(eventData);
+    const result = this._native.handleGestureEventRaw(
+      eventData.type ?? 0,
+      eventData.points,
+      eventData.modifiers ?? 0,
+      eventData.wheel_delta_x ?? 0,
+      eventData.wheel_delta_y ?? 0,
+      eventData.direct_scale ?? 1.0,
+    );
+    this._notifyMutate();
+    return result;
   }
 
   handleKeyEvent(eventData) {
-    return this._native.handleKeyEvent(eventData);
+    const result = this._native.handleKeyEventRaw(
+      eventData.key_code ?? 0,
+      eventData.text ?? "",
+      eventData.modifiers ?? 0,
+    );
+    this._notifyMutate();
+    return result;
   }
 
   tickEdgeScroll() {
-    return this._native.tickEdgeScroll();
+    const result = this._native.tickEdgeScroll();
+    this._notifyMutate();
+    return result;
   }
 
   call(method, ...args) {
@@ -44,13 +64,21 @@
     if (typeof fn !== "function") {
       throw new Error(`EditorCore method not found: ${method}`);
     }
-    return fn.apply(this._native, args);
+    const result = fn.apply(this._native, args);
+    this._notifyMutate();
+    return result;
   }
 
   dispose() {
     if (this._native) {
       this._native.delete();
       this._native = null;
+    }
+  }
+
+  _notifyMutate() {
+    if (this._onDidMutate) {
+      this._onDidMutate();
     }
   }
 }
