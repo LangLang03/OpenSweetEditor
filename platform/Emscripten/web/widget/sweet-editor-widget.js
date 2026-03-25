@@ -214,8 +214,15 @@ export class SweetEditorWidget {
     this._input.style.position = "absolute";
     this._input.style.left = "0";
     this._input.style.top = "0";
-    this._input.style.width = "1px";
-    this._input.style.height = "1px";
+    this._input.style.width = "2px";
+    this._input.style.height = "18px";
+    this._input.style.padding = "0";
+    this._input.style.margin = "0";
+    this._input.style.border = "0";
+    this._input.style.outline = "none";
+    this._input.style.color = "transparent";
+    this._input.style.caretColor = "transparent";
+    this._input.style.background = "transparent";
     this._input.style.opacity = "0";
     this._input.style.pointerEvents = "none";
     this.container.appendChild(this._input);
@@ -773,6 +780,30 @@ export class SweetEditorWidget {
     };
   }
 
+  _syncInputAnchor(model, viewportWidth, viewportHeight) {
+    if (!this._input) return;
+
+    let cursorX = 0;
+    let cursorY = 0;
+    let cursorH = 18;
+    if (model && model.cursor && model.cursor.position) {
+      cursorX = Number(model.cursor.position.x) || 0;
+      cursorY = Number(model.cursor.position.y) || 0;
+      cursorH = Math.max(12, Number(model.cursor.height) || 18);
+    }
+
+    const width = Math.max(2, viewportWidth || 2);
+    const height = Math.max(cursorH, viewportHeight || cursorH);
+    const clampedX = Math.max(0, Math.min(width - 2, cursorX));
+    const clampedY = Math.max(0, Math.min((viewportHeight || height) - cursorH, cursorY));
+
+    this._input.style.left = `${clampedX}px`;
+    this._input.style.top = `${clampedY}px`;
+    this._input.style.height = `${cursorH}px`;
+    this._input.style.lineHeight = `${cursorH}px`;
+    this._input.style.fontSize = `${Math.max(12, Math.round(cursorH * 0.8))}px`;
+  }
+
   _resize() {
     const rect = this.container.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -792,6 +823,7 @@ export class SweetEditorWidget {
     this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this._viewportWidth = rect.width;
     this._viewportHeight = rect.height;
+    this._syncInputAnchor(null, rect.width, rect.height);
     this._core.setViewport(rect.width, rect.height);
     this._markDirty();
   }
@@ -812,6 +844,7 @@ export class SweetEditorWidget {
       try {
         const rect = this.container.getBoundingClientRect();
         const model = this._core.buildRenderModel();
+        this._syncInputAnchor(model, rect.width, rect.height);
         this._renderer.render(this._ctx, model, rect.width, rect.height);
       } catch (error) {
         if (!this._renderErrorLogged) {
