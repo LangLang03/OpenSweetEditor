@@ -1,0 +1,25 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenSweetEditor Web Demo</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #101214; color: #e5e7eb; font-family: ui-sans-serif, system-ui; }
+    .layout { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+    .toolbar { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid #2a2f36; }
+    .toolbar button { background: #1f2937; color: #f3f4f6; border: 1px solid #374151; padding: 6px 10px; cursor: pointer; }
+    .editor-host { height: 100%; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <div class="toolbar">
+    <button id="undoBtn">Undo</button>
+    <button id="redoBtn">Redo</button>
+  </div>
+  <div id="editor" class="editor-host"></div>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
