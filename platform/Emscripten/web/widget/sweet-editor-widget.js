@@ -638,6 +638,23 @@ export class SweetEditorWidget {
     event.preventDefault();
   }
 
+  _pickCommittedText(primaryText, compositionEndText) {
+    const primary = primaryText || "";
+    const fallback = compositionEndText || "";
+    if (!primary && !fallback) return "";
+
+    if (this._locale === "zh") {
+      const hasCjk = (s) => /[\u3400-\u9fff]/.test(s);
+      if (hasCjk(primary)) return primary;
+      if (hasCjk(fallback)) return fallback;
+      const looksLikePinyin = (s) => /^[a-zA-Z'`\-\s]+$/.test(s);
+      if (looksLikePinyin(primary) && fallback) return fallback;
+      if (looksLikePinyin(fallback) && primary) return primary;
+    }
+
+    return primary || fallback;
+  }
+
   _onKeyDown(event) {
     this._hideContextMenu();
     const cmd = event.ctrlKey || event.metaKey;
