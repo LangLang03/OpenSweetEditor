@@ -57,19 +57,10 @@ elseif (APPLE)
 elseif (EMSCRIPTEN)
     add_definitions(-DWASM)
     set(BUILD_STATIC_LIB ON)
-    #file(GLOB_RECURSE WASM_FILES ${CMAKE_PROJECT_DIR}/platform/Emscripten/*.*)
-    message(STATUS "add target: libsweeteditor for wasm")
-    add_executable("libsweeteditor" ${WASM_FILES})
-    target_link_libraries("libsweeteditor" PRIVATE ${CMAKE_PROJECT_NAME}
-            "--bind"
-            "-s WASM=1"
-            "-s MODULARIZE=1"
-            "-s EXPORT_NAME='libsweeteditor'"
-            "-s EXPORT_ES6=1"
-            "-s FORCE_FILESYSTEM=1"
-            "-s ALLOW_MEMORY_GROWTH=1"
-            "-s EXPORTED_RUNTIME_METHODS=[\"FS\"]"
-    )
+    set(BUILD_SHARED_LIB OFF)
+    set(BUILD_TESTING OFF)
+    file(GLOB_RECURSE WASM_FILES ${CMAKE_PROJECT_DIR}/platform/Emscripten/*.*)
+    message(STATUS "add target: sweeteditor for wasm")
 endif ()
 
 include_directories(${INCLUDE_DIRS})
@@ -157,12 +148,32 @@ endif ()
 if (BUILD_SHARED_LIB)
     target_link_libraries(${SHARED_LIB_NAME} PRIVATE ${LINK_LIB})
 endif ()
-# merge static libs
 if (BUILD_STATIC_LIB)
     target_link_libraries(${STATIC_LIB_NAME} PRIVATE ${LINK_LIB})
     include(script/MergeStaticLib.cmake)
     get_target_property(SIMDUTF_PATH simdutf IMPORTED_LOCATION)
     merge_static_libs(${STATIC_LIB_NAME} ${SIMDUTF_PATH})
+endif ()
+
+if (EMSCRIPTEN)
+    add_executable(sweeteditor_wasm ${CORE_SOURCE_FILES} ${WASM_FILES})
+    target_link_libraries(sweeteditor_wasm PRIVATE simdutf)
+    set_target_properties(sweeteditor_wasm PROPERTIES
+        OUTPUT_NAME "sweeteditor"
+        SUFFIX ".js"
+    )
+    target_link_options(sweeteditor_wasm PRIVATE
+        "--bind"
+        "-s WASM=1"
+        "-s MODULARIZE=1"
+        "-s EXPORT_NAME='createSweetEditorModule'"
+        "-s EXPORT_ES6=1"
+        "-s FORCE_FILESYSTEM=1"
+        "-s ALLOW_MEMORY_GROWTH=1"
+        "-s EXPORTED_RUNTIME_METHODS=['FS','ccall','cwrap','getValue','setValue','UTF8ToString','stringToUTF8','lengthBytesUTF8','HEAPU8','HEAPU16','HEAPU32','HEAPF32']"
+        "-s EXPORTED_FUNCTIONS=['_malloc','_free']"
+        "-O3"
+    )
 endif ()
 
 # Unit tests

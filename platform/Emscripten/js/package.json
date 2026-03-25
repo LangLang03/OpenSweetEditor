@@ -1,0 +1,47 @@
+{
+    "name": "@sweeteditor/web",
+    "version": "1.0.0",
+    "description": "SweetEditor WebAssembly binding for web browsers",
+    "main": "dist/index.cjs.js",
+    "module": "dist/index.esm.js",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "build:wasm": "cd .. && bash build.sh",
+        "demo": "npx http-server demo -p 8080 -c-1",
+        "clean": "rm -rf dist"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "@types/node": "^20.0.0"
+    },
+    "keywords": [
+        "editor",
+        "code-editor",
+        "wasm",
+        "webassembly",
+        "text-editor",
+        "syntax-highlighting"
+    ],
+    "author": "",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": ""
+    },
+    "exports": {
+        ".": {
+            "import": "./dist/index.esm.js",
+            "require": "./dist/index.cjs.js",
+            "types": "./dist/index.d.ts"
+        },
+        "./renderer": {
+            "import": "./dist/renderer/CanvasRenderer.js",
+            "types": "./dist/renderer/CanvasRenderer.d.ts"
+        }
+    }
+}
