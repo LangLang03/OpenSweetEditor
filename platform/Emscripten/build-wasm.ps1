@@ -24,7 +24,18 @@ if (-not $emcmake) {
 }
 
 cmake -E make_directory $buildPath
-& $emcmake.Source cmake -S $repoRoot -B $buildPath -G Ninja -DCMAKE_BUILD_TYPE=$BuildType
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to create build directory: $buildPath"
+}
+
+& $emcmake.Source cmake -S $repoRoot -B $buildPath -G Ninja "-DCMAKE_BUILD_TYPE=$BuildType"
+if ($LASTEXITCODE -ne 0) {
+  throw "CMake configure failed for wasm build (BuildType=$BuildType)."
+}
+
 cmake --build $buildPath
+if ($LASTEXITCODE -ne 0) {
+  throw "CMake build failed for wasm target."
+}
 
 Write-Host "Wasm build done: $buildPath/bin/sweeteditor.js"
