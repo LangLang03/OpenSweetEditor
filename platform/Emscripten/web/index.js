@@ -1,5 +1,5 @@
-﻿import { loadSweetEditorCore } from "./editor-core.js";
-import { SweetEditorWidget } from "./sweet-editor-widget.js";
+import { loadSweetEditorCore } from "./editor-core.js?v=20260326_01";
+import { SweetEditorWidget } from "./sweet-editor-widget.js?v=20260326_01";
 
 export {
   loadSweetEditorCore,
@@ -20,9 +20,9 @@ export {
   DecorationProvider,
   DecorationReceiver,
   DecorationProviderManager,
-} from "./editor-core.js";
+} from "./editor-core.js?v=20260326_01";
 
-export { SweetEditorWidget } from "./sweet-editor-widget.js";
+export { SweetEditorWidget } from "./sweet-editor-widget.js?v=20260326_01";
 
 export async function createSweetEditor(container, options = {}) {
   if (!container) {
@@ -31,3 +31,5 @@ export async function createSweetEditor(container, options = {}) {
   const wasmModule = options.wasmModule || await loadSweetEditorCore(options);
   return new SweetEditorWidget(container, wasmModule, options);
 }
+
+

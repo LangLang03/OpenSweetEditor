@@ -4,7 +4,8 @@ import {
   CompletionResult,
   DecorationApplyMode,
   DecorationResult,
-} from "../index.js?v=20260325_13";
+} from "../index.js?v=20260326_01";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_01";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
@@ -67,57 +68,26 @@ public:
 });
 
 const STYLE = Object.freeze({
-  KEYWORD: 3201,
-  TYPE: 3202,
-  STRING: 3203,
-  COMMENT: 3204,
-  NUMBER: 3205,
-  PREPROCESSOR: 3206,
-  FUNCTION: 3207,
-  ANNOTATION: 3208,
-  COLOR: 3209,
+  KEYWORD: 1,
+  TYPE: 2,
+  STRING: 3,
+  COMMENT: 4,
+  BUILTIN: 5,
+  NUMBER: 6,
+  CLASS: 7,
+  FUNCTION: 8,
+  VARIABLE: 9,
+  ANNOTATION: 10,
+  PUNCTUATION: 11,
+  PREPROCESSOR: 12,
+  COLOR: 13,
 });
 
 const INLAY_COLOR_TYPE = 2;
 const MAX_DEMO_CHARS = 60000;
 const MAX_DEMO_LINES = 1600;
 const MAX_RENDER_LINES_PER_PASS = 420;
-
-const KEYWORDS = Object.freeze({
-  cpp: new Set([
-    "if", "else", "for", "while", "switch", "case", "default", "break", "continue", "return",
-    "class", "struct", "namespace", "template", "typename", "public", "private", "protected",
-    "const", "constexpr", "auto", "static", "virtual", "override", "new", "delete",
-  ]),
-  java: new Set([
-    "if", "else", "for", "while", "switch", "case", "default", "break", "continue", "return",
-    "class", "interface", "enum", "package", "import", "public", "private", "protected",
-    "static", "final", "new", "extends", "implements", "void", "null", "true", "false",
-  ]),
-  kotlin: new Set([
-    "if", "else", "when", "for", "while", "return", "class", "object", "fun", "val", "var",
-    "package", "import", "private", "public", "internal", "override", "open", "null",
-    "true", "false",
-  ]),
-  lua: new Set([
-    "if", "then", "else", "elseif", "for", "while", "do", "end", "function",
-    "local", "return", "nil", "true", "false",
-  ]),
-});
-
-const TYPES = Object.freeze({
-  cpp: new Set([
-    "void", "int", "float", "double", "bool", "char", "long", "short", "size_t", "std",
-    "string", "vector", "map",
-  ]),
-  java: new Set([
-    "void", "int", "long", "float", "double", "boolean", "char", "String", "Object", "View",
-  ]),
-  kotlin: new Set([
-    "Int", "Long", "Float", "Double", "Boolean", "String", "Unit", "Any",
-  ]),
-  lua: new Set(["table", "string", "number", "boolean"]),
-});
+const SYNTAX_JSON_FILES = Object.freeze(["cpp.json", "java.json", "kotlin.json", "lua.json"]);
 
 const MEMBER_COMPLETIONS = Object.freeze({
   cpp: [
@@ -319,21 +289,6 @@ function parseColorLiteralArgb(literal) {
   return value >>> 0;
 }
 
-function isRangeClear(occupied, start, endExclusive) {
-  for (let i = start; i < endExclusive; i += 1) {
-    if (occupied[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function markRange(occupied, start, endExclusive) {
-  for (let i = start; i < endExclusive; i += 1) {
-    occupied[i] = 1;
-  }
-}
-
 function findLineCommentStart(line, marker) {
   if (!marker || marker.length === 0) {
     return -1;
@@ -367,170 +322,231 @@ function findLineCommentStart(line, marker) {
   return -1;
 }
 
-function tokenizeLine(line, kind) {
-  const keywords = KEYWORDS[kind] || KEYWORDS.cpp;
-  const types = TYPES[kind] || TYPES.cpp;
-  const commentMarker = kind === "lua" ? "--" : "//";
-  const commentStart = findLineCommentStart(line, commentMarker);
-  const codeEnd = commentStart >= 0 ? commentStart : line.length;
-
-  const spans = [];
-  const occupied = new Uint8Array(line.length);
-  const addSpan = (start, endExclusive, styleId) => {
-    const s = Math.max(0, start | 0);
-    const e = Math.min(line.length, endExclusive | 0);
-    if (e <= s) {
-      return false;
-    }
-    if (!isRangeClear(occupied, s, e)) {
-      return false;
-    }
-    markRange(occupied, s, e);
-    spans.push({ column: s, length: e - s, styleId });
-    return true;
-  };
-
-  if (kind === "cpp" && /^\s*#/.test(line.slice(0, codeEnd))) {
-    const firstCode = line.slice(0, codeEnd).search(/\S/);
-    if (firstCode >= 0) {
-      addSpan(firstCode, codeEnd, STYLE.PREPROCESSOR);
-    }
+function toInt(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
   }
-
-  for (let i = 0; i < codeEnd; i += 1) {
-    const ch = line[i];
-    if (ch !== "'" && ch !== "\"") {
-      continue;
-    }
-    const start = i;
-    const quote = ch;
-    i += 1;
-    while (i < codeEnd) {
-      if (line[i] === "\\") {
-        i += 2;
-        continue;
-      }
-      if (line[i] === quote) {
-        i += 1;
-        break;
-      }
-      i += 1;
-    }
-    addSpan(start, Math.min(i, codeEnd), STYLE.STRING);
-    i -= 1;
-  }
-
-  if (commentStart >= 0) {
-    addSpan(commentStart, line.length, STYLE.COMMENT);
-  }
-
-  if (kind === "java" || kind === "kotlin") {
-    for (const match of line.slice(0, codeEnd).matchAll(/@\w+/g)) {
-      addSpan(match.index ?? 0, (match.index ?? 0) + match[0].length, STYLE.ANNOTATION);
-    }
-  }
-
-  for (const match of line.slice(0, codeEnd).matchAll(/\b0X[0-9A-Fa-f]{6,8}\b/g)) {
-    addSpan(match.index ?? 0, (match.index ?? 0) + match[0].length, STYLE.COLOR);
-  }
-
-  for (const match of line.slice(0, codeEnd).matchAll(/\b(?:0[xX][0-9A-Fa-f]+|\d+(?:\.\d+)?)\b/g)) {
-    addSpan(match.index ?? 0, (match.index ?? 0) + match[0].length, STYLE.NUMBER);
-  }
-
-  for (const match of line.slice(0, codeEnd).matchAll(/\b[A-Za-z_]\w*\b/g)) {
-    const word = match[0];
-    const start = match.index ?? 0;
-    const end = start + word.length;
-    if (keywords.has(word)) {
-      addSpan(start, end, STYLE.KEYWORD);
-      continue;
-    }
-    if (types.has(word)) {
-      addSpan(start, end, STYLE.TYPE);
-      continue;
-    }
-
-    let j = end;
-    while (j < codeEnd && /\s/.test(line[j])) {
-      j += 1;
-    }
-    if (j < codeEnd && line[j] === "(") {
-      addSpan(start, end, STYLE.FUNCTION);
-    }
-  }
-
-  spans.sort((a, b) => a.column - b.column);
-  return spans;
+  return Math.trunc(n);
 }
 
-function buildDecorations(lines, fileName, startLine, endLine, liteMode = false) {
+function safeDelete(handle) {
+  if (handle && typeof handle.delete === "function") {
+    handle.delete();
+  }
+}
+
+function forSweetLineList(list, fn) {
+  if (!list || typeof fn !== "function") {
+    return;
+  }
+
+  if (Array.isArray(list)) {
+    list.forEach((item, index) => fn(item, index));
+    return;
+  }
+
+  if (typeof list.size === "function" && typeof list.get === "function") {
+    const size = Math.max(0, toInt(list.size(), 0));
+    for (let i = 0; i < size; i += 1) {
+      fn(list.get(i), i);
+    }
+  }
+}
+
+function extractSingleLineSpanItem(token) {
+  if (!token || !token.range || !token.range.start || !token.range.end) {
+    return null;
+  }
+
+  const styleId = toInt(token.styleId, 0);
+  if (styleId <= 0) {
+    return null;
+  }
+
+  const startLine = toInt(token.range.start.line, -1);
+  const endLine = toInt(token.range.end.line, -1);
+  const startColumn = Math.max(0, toInt(token.range.start.column, 0));
+  const endColumn = Math.max(0, toInt(token.range.end.column, 0));
+  if (startLine < 0 || startLine !== endLine || endColumn <= startColumn) {
+    return null;
+  }
+
+  return {
+    line: startLine,
+    column: startColumn,
+    length: endColumn - startColumn,
+    styleId,
+  };
+}
+
+function buildDemoInlayAndDiagnostics(lines, fileName, startLine, endLine, liteMode = false) {
   const kind = resolveLanguageKind(fileName);
 
-  const syntaxSpans = new Map();
   const inlayHints = new Map();
   const diagnostics = new Map();
 
   for (let line = startLine; line <= endLine; line += 1) {
     const lineText = lines[line] ?? "";
-    const spans = tokenizeLine(lineText, kind);
-    if (spans.length > 0) {
-      syntaxSpans.set(line, spans);
+
+    if (liteMode) {
+      continue;
     }
 
-    if (!liteMode) {
-      for (const colorMatch of lineText.matchAll(/\b0X[0-9A-Fa-f]{6,8}\b/g)) {
-        const color = parseColorLiteralArgb(colorMatch[0]);
-        if (color == null) {
-          continue;
-        }
-        if (!inlayHints.has(line)) {
-          inlayHints.set(line, []);
-        }
-        inlayHints.get(line).push({
-          type: INLAY_COLOR_TYPE,
-          column: (colorMatch.index ?? 0) + colorMatch[0].length + 1,
-          color,
+    for (const colorMatch of lineText.matchAll(/\b0X[0-9A-Fa-f]{6,8}\b/g)) {
+      const color = parseColorLiteralArgb(colorMatch[0]);
+      if (color == null) {
+        continue;
+      }
+      if (!inlayHints.has(line)) {
+        inlayHints.set(line, []);
+      }
+      inlayHints.get(line).push({
+        type: INLAY_COLOR_TYPE,
+        column: (colorMatch.index ?? 0) + colorMatch[0].length + 1,
+        color,
+      });
+    }
+
+    const commentMarker = kind === "lua" ? "--" : "//";
+    const commentPos = findLineCommentStart(lineText, commentMarker);
+    if (commentPos >= 0) {
+      const comment = lineText.slice(commentPos);
+      const fixmePos = comment.toUpperCase().indexOf("FIXME");
+      if (fixmePos >= 0) {
+        if (!diagnostics.has(line)) diagnostics.set(line, []);
+        diagnostics.get(line).push({
+          column: commentPos + fixmePos,
+          length: 5,
+          severity: 0,
+          color: 0,
         });
       }
 
-      const commentPos = kind === "lua"
-        ? lineText.indexOf("--")
-        : lineText.indexOf("//");
-      if (commentPos >= 0) {
-        const comment = lineText.slice(commentPos);
-        const fixmePos = comment.toUpperCase().indexOf("FIXME");
-        if (fixmePos >= 0) {
-          if (!diagnostics.has(line)) diagnostics.set(line, []);
-          diagnostics.get(line).push({
-            column: commentPos + fixmePos,
-            length: 5,
-            severity: 0,
-            color: 0,
-          });
-        }
-
-        const todoPos = comment.toUpperCase().indexOf("TODO");
-        if (todoPos >= 0) {
-          if (!diagnostics.has(line)) diagnostics.set(line, []);
-          diagnostics.get(line).push({
-            column: commentPos + todoPos,
-            length: 4,
-            severity: 1,
-            color: 0,
-          });
-        }
+      const todoPos = comment.toUpperCase().indexOf("TODO");
+      if (todoPos >= 0) {
+        if (!diagnostics.has(line)) diagnostics.set(line, []);
+        diagnostics.get(line).push({
+          column: commentPos + todoPos,
+          length: 4,
+          severity: 1,
+          color: 0,
+        });
       }
     }
   }
 
-  return { syntaxSpans, inlayHints, diagnostics };
+  return { inlayHints, diagnostics };
+}
+
+function buildAnalysisUri(fileName) {
+  return `file:///${String(fileName || "example.cpp")}`;
+}
+
+function withSweetLineRange(sweetLine, range, fn) {
+  const slRange = new sweetLine.TextRange();
+  const start = new sweetLine.TextPosition();
+  const end = new sweetLine.TextPosition();
+
+  start.line = Math.max(0, toInt(range?.start?.line, 0));
+  start.column = Math.max(0, toInt(range?.start?.column, 0));
+  start.index = 0;
+
+  end.line = Math.max(0, toInt(range?.end?.line, start.line));
+  end.column = Math.max(0, toInt(range?.end?.column, start.column));
+  end.index = 0;
+
+  slRange.start = start;
+  slRange.end = end;
+
+  try {
+    return fn(slRange);
+  } finally {
+    safeDelete(start);
+    safeDelete(end);
+    safeDelete(slRange);
+  }
+}
+
+function registerSweetLineStyleMap(engine) {
+  engine.registerStyleName("keyword", STYLE.KEYWORD);
+  engine.registerStyleName("type", STYLE.TYPE);
+  engine.registerStyleName("string", STYLE.STRING);
+  engine.registerStyleName("comment", STYLE.COMMENT);
+  engine.registerStyleName("preprocessor", STYLE.PREPROCESSOR);
+  engine.registerStyleName("macro", STYLE.PREPROCESSOR);
+  engine.registerStyleName("method", STYLE.FUNCTION);
+  engine.registerStyleName("function", STYLE.FUNCTION);
+  engine.registerStyleName("variable", STYLE.VARIABLE);
+  engine.registerStyleName("field", STYLE.VARIABLE);
+  engine.registerStyleName("number", STYLE.NUMBER);
+  engine.registerStyleName("class", STYLE.CLASS);
+  engine.registerStyleName("builtin", STYLE.BUILTIN);
+  engine.registerStyleName("annotation", STYLE.ANNOTATION);
+  engine.registerStyleName("color", STYLE.COLOR);
+  engine.registerStyleName("punctuation", STYLE.PUNCTUATION);
+}
+
+let sweetLineRuntimePromise = null;
+
+async function ensureSweetLineRuntime(versionTag) {
+  if (sweetLineRuntimePromise) {
+    return sweetLineRuntimePromise;
+  }
+
+  sweetLineRuntimePromise = (async () => {
+    const sweetLine = await loadSweetLineModule({
+      locateFile: (path) => {
+        if (String(path).endsWith(".wasm")) {
+          return new URL(`../libs/sweetline/${path}?v=${versionTag}`, import.meta.url).href;
+        }
+        return new URL(`../libs/sweetline/${path}`, import.meta.url).href;
+      },
+    });
+
+    const config = new sweetLine.HighlightConfig();
+    config.showIndex = false;
+    config.inlineStyle = false;
+    config.tabSize = 4;
+
+    const engine = new sweetLine.HighlightEngine(config);
+    registerSweetLineStyleMap(engine);
+
+    let compiled = 0;
+    for (const syntaxFile of SYNTAX_JSON_FILES) {
+      try {
+        const syntaxUrl = new URL(`../../../_res/syntaxes/${syntaxFile}?v=${versionTag}`, import.meta.url);
+        const response = await fetch(syntaxUrl.href, { cache: "no-store" });
+        if (!response.ok) {
+          continue;
+        }
+        engine.compileSyntaxFromJson(await response.text());
+        compiled += 1;
+      } catch (error) {
+        console.warn(`SweetLine syntax load failed: ${syntaxFile}`, error);
+      }
+    }
+
+    if (compiled === 0) {
+      throw new Error("SweetLine syntax load failed: no syntax JSON compiled.");
+    }
+
+    return { sweetLine, engine };
+  })();
+
+  return sweetLineRuntimePromise;
 }
 
 class DemoDecorationProvider {
-  constructor() {
+  constructor(sweetLine, highlightEngine) {
+    this._sweetLine = sweetLine;
+    this._highlightEngine = highlightEngine;
     this._sourceFileName = "example.kt";
     this._sourceLines = normalizeNewlines(DEMO_FILE_FALLBACKS["example.kt"]).split("\n");
+    this._analysisDocument = null;
+    this._documentAnalyzer = null;
+    this._cacheHighlight = null;
+    this._analyzedFileName = "";
     this._liteMode = false;
     this._refreshLiteMode();
   }
@@ -542,10 +558,96 @@ class DemoDecorationProvider {
       this._sourceLines = [""];
     }
     this._refreshLiteMode();
+    this._disposeAnalyzer();
   }
 
   _refreshLiteMode() {
     this._liteMode = this._sourceLines.length > 1200;
+  }
+
+  _disposeAnalyzer() {
+    safeDelete(this._documentAnalyzer);
+    safeDelete(this._analysisDocument);
+    this._documentAnalyzer = null;
+    this._analysisDocument = null;
+    this._cacheHighlight = null;
+    this._analyzedFileName = "";
+  }
+
+  _rebuildAnalyzer(fileName) {
+    this._disposeAnalyzer();
+    const sourceText = this._sourceLines.join("\n");
+    this._analysisDocument = new this._sweetLine.Document(buildAnalysisUri(fileName), sourceText);
+    this._documentAnalyzer = this._highlightEngine.loadDocument(this._analysisDocument);
+    this._cacheHighlight = this._documentAnalyzer.analyze();
+    this._analyzedFileName = fileName;
+  }
+
+  _applyIncrementalChanges(changes) {
+    if (!this._documentAnalyzer || changes.length === 0) {
+      return true;
+    }
+
+    try {
+      for (const change of changes) {
+        const newText = normalizeNewlines(change?.newText ?? "");
+        if (!change?.range) {
+          continue;
+        }
+        withSweetLineRange(this._sweetLine, change.range, (slRange) => {
+          this._cacheHighlight = this._documentAnalyzer.analyzeIncremental(slRange, newText);
+        });
+      }
+      return true;
+    } catch (error) {
+      console.error("SweetLine incremental analyze failed:", error);
+      return false;
+    }
+  }
+
+  _collectSyntaxSpans(startLine, endLine) {
+    const syntaxSpans = new Map();
+    const lineHighlights = this._cacheHighlight?.lines;
+    if (!lineHighlights) {
+      return syntaxSpans;
+    }
+
+    const lineCount = typeof lineHighlights.size === "function"
+      ? Math.max(0, toInt(lineHighlights.size(), 0))
+      : (Array.isArray(lineHighlights) ? lineHighlights.length : 0);
+    if (lineCount <= 0) {
+      return syntaxSpans;
+    }
+
+    const maxLine = Math.min(endLine, lineCount - 1);
+    for (let line = startLine; line <= maxLine; line += 1) {
+      const lineHighlight = typeof lineHighlights.get === "function"
+        ? lineHighlights.get(line)
+        : lineHighlights[line];
+      if (!lineHighlight) {
+        continue;
+      }
+
+      const lineSpans = [];
+      forSweetLineList(lineHighlight.spans, (token) => {
+        const span = extractSingleLineSpanItem(token);
+        if (!span || span.line !== line) {
+          return;
+        }
+        lineSpans.push({
+          column: span.column,
+          length: span.length,
+          styleId: span.styleId,
+        });
+      });
+
+      if (lineSpans.length > 0) {
+        lineSpans.sort((a, b) => a.column - b.column);
+        syntaxSpans.set(line, lineSpans);
+      }
+    }
+
+    return syntaxSpans;
   }
 
   provideDecorations(context, receiver) {
@@ -563,6 +665,26 @@ class DemoDecorationProvider {
     }
 
     const snapshotFileName = this._sourceFileName;
+    const fileChanged = snapshotFileName !== this._analyzedFileName;
+    if (fileChanged || !this._documentAnalyzer || !this._cacheHighlight) {
+      try {
+        this._rebuildAnalyzer(snapshotFileName);
+      } catch (error) {
+        console.error("SweetLine full analyze failed:", error);
+        this._disposeAnalyzer();
+      }
+    } else if (changes.length > 0) {
+      const incrementalOk = this._applyIncrementalChanges(changes);
+      if (!incrementalOk || !this._cacheHighlight) {
+        try {
+          this._rebuildAnalyzer(snapshotFileName);
+        } catch (error) {
+          console.error("SweetLine fallback full analyze failed:", error);
+          this._disposeAnalyzer();
+        }
+      }
+    }
+
     const visibleRange = clampVisibleRange(
       context?.visibleStartLine ?? 0,
       context?.visibleEndLine ?? ((context?.visibleStartLine ?? 0) + 120),
@@ -572,7 +694,8 @@ class DemoDecorationProvider {
       return;
     }
 
-    const rendered = buildDecorations(
+    const syntaxSpans = this._collectSyntaxSpans(visibleRange.start, visibleRange.end);
+    const rendered = buildDemoInlayAndDiagnostics(
       this._sourceLines,
       snapshotFileName,
       visibleRange.start,
@@ -581,7 +704,7 @@ class DemoDecorationProvider {
     );
 
     receiver.accept(new DecorationResult({
-      syntaxSpans: rendered.syntaxSpans,
+      syntaxSpans,
       syntaxSpansMode: DecorationApplyMode.REPLACE_RANGE,
       inlayHints: rendered.inlayHints,
       inlayHintsMode: DecorationApplyMode.REPLACE_RANGE,
@@ -666,14 +789,18 @@ async function loadDemoFiles(versionTag) {
 }
 
 function registerDemoStyles(editor) {
-  editor.registerTextStyle(STYLE.KEYWORD, 0xFF569CD6, 0, 1);
+  editor.registerTextStyle(STYLE.KEYWORD, 0xFF7AA2F7, 0, 1);
   editor.registerTextStyle(STYLE.TYPE, 0xFF4EC9B0, 0, 0);
   editor.registerTextStyle(STYLE.STRING, 0xFFCE9178, 0, 0);
   editor.registerTextStyle(STYLE.COMMENT, 0xFF6A9955, 0, 2);
+  editor.registerTextStyle(STYLE.BUILTIN, 0xFF7DCFFF, 0, 0);
   editor.registerTextStyle(STYLE.NUMBER, 0xFFB5CEA8, 0, 0);
-  editor.registerTextStyle(STYLE.PREPROCESSOR, 0xFFC586C0, 0, 0);
-  editor.registerTextStyle(STYLE.FUNCTION, 0xFFDCDCAA, 0, 0);
+  editor.registerTextStyle(STYLE.CLASS, 0xFFE0AF68, 0, 1);
+  editor.registerTextStyle(STYLE.FUNCTION, 0xFF73DACA, 0, 0);
+  editor.registerTextStyle(STYLE.VARIABLE, 0xFFD7DEE9, 0, 0);
   editor.registerTextStyle(STYLE.ANNOTATION, 0xFF4FC1FF, 0, 0);
+  editor.registerTextStyle(STYLE.PUNCTUATION, 0xFFD4D4D4, 0, 0);
+  editor.registerTextStyle(STYLE.PREPROCESSOR, 0xFFF7768E, 0, 0);
   editor.registerTextStyle(STYLE.COLOR, 0xFFFF9E64, 0, 1);
 }
 
@@ -699,9 +826,13 @@ const editor = await createSweetEditor(host, {
 
 registerDemoStyles(editor);
 const core = editor.getCore();
+const sweetLineRuntime = await ensureSweetLineRuntime(wasmVersion);
 
 let activeFileName = initialFileName;
-const demoDecorationProvider = new DemoDecorationProvider();
+const demoDecorationProvider = new DemoDecorationProvider(
+  sweetLineRuntime.sweetLine,
+  sweetLineRuntime.engine,
+);
 demoDecorationProvider.setDocumentSource(initialFileName, initialText);
 editor.addDecorationProvider(demoDecorationProvider);
 
@@ -755,3 +886,5 @@ redoBtn.addEventListener("click", () => {
 completeBtn.addEventListener("click", () => {
   editor.triggerCompletion();
 });
+
+

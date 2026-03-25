@@ -1022,7 +1022,7 @@ export class SweetEditorWidget {
   _onWheel(event) {
     this._hideContextMenu();
     const point = this._eventPoint(event);
-    this._dispatchGesture(this._eventType.MOUSE_WHEEL, [point], event, event.deltaX, event.deltaY, 1.0);
+    this._dispatchGesture(this._eventType.MOUSE_WHEEL, [point], event, event.deltaX, -event.deltaY, 1.0);
     event.preventDefault();
   }
 
