@@ -131,6 +131,8 @@ namespace SweetEditor {
 		public Color ScrollbarTrackColor { get; set; } = Color.FromArgb(unchecked((int)0x48FFFFFF));
 		/// <summary>Scrollbar thumb color (ARGB).</summary>
 		public Color ScrollbarThumbColor { get; set; } = Color.FromArgb(unchecked((int)0xAA858585));
+		/// <summary>Scrollbar thumb active (dragging) color (ARGB).</summary>
+public Color ScrollbarThumbActiveColor { get; set; } = Color.FromArgb(unchecked((int)0xFFBBBBBB));
 
 		/// <summary>IME composition underline color (ARGB).</summary>
 		public Color CompositionColor { get; set; }
@@ -215,6 +217,7 @@ namespace SweetEditor {
 			SplitLineColor = Color.FromArgb(unchecked((int)0x3356617A)),
 			ScrollbarTrackColor = Color.FromArgb(unchecked((int)0x2AFFFFFF)),
 			ScrollbarThumbColor = Color.FromArgb(unchecked((int)0x9A7282A0)),
+ScrollbarThumbActiveColor = Color.FromArgb(unchecked((int)0xFFAABEDD)),
 			CompositionColor = Color.FromArgb(unchecked((int)0xFF7AA2F7)),
 			InlayHintBgColor = Color.FromArgb(unchecked((int)0x223A4A66)),
 			InlayHintTextColor = Color.FromArgb(unchecked((int)0xC0AFC2E0)),
@@ -267,6 +270,7 @@ namespace SweetEditor {
 			SplitLineColor = Color.FromArgb(unchecked((int)0x1F29426B)),
 			ScrollbarTrackColor = Color.FromArgb(unchecked((int)0x1F2A3B55)),
 			ScrollbarThumbColor = Color.FromArgb(unchecked((int)0x80446C9C)),
+ScrollbarThumbActiveColor = Color.FromArgb(unchecked((int)0xEE6A9AD0)),
 			CompositionColor = Color.FromArgb(unchecked((int)0xFF2563EB)),
 			InlayHintBgColor = Color.FromArgb(unchecked((int)0x143B82F6)),
 			InlayHintTextColor = Color.FromArgb(unchecked((int)0xB0344A73)),
@@ -528,14 +532,19 @@ namespace SweetEditor {
 		/// <summary>Sets language configuration.</summary>
 		public void SetLanguageConfiguration(LanguageConfiguration? config) {
 			languageConfiguration = config;
-			if (config != null && config.Brackets.Count > 0) {
-				int[] opens = new int[config.Brackets.Count];
-				int[] closes = new int[config.Brackets.Count];
-				for (int i = 0; i < config.Brackets.Count; i++) {
-					opens[i] = string.IsNullOrEmpty(config.Brackets[i].Open) ? 0 : char.ConvertToUtf32(config.Brackets[i].Open, 0);
-					closes[i] = string.IsNullOrEmpty(config.Brackets[i].Close) ? 0 : char.ConvertToUtf32(config.Brackets[i].Close, 0);
+			if (config != null) {
+				if (config.Brackets.Count > 0) {
+					int[] opens = new int[config.Brackets.Count];
+					int[] closes = new int[config.Brackets.Count];
+					for (int i = 0; i < config.Brackets.Count; i++) {
+						opens[i] = string.IsNullOrEmpty(config.Brackets[i].Open) ? 0 : char.ConvertToUtf32(config.Brackets[i].Open, 0);
+						closes[i] = string.IsNullOrEmpty(config.Brackets[i].Close) ? 0 : char.ConvertToUtf32(config.Brackets[i].Close, 0);
+					}
+					editorCore.SetBracketPairs(opens, closes);
 				}
-				editorCore.SetBracketPairs(opens, closes);
+				if (config.TabSize.HasValue && config.TabSize.Value > 0) {
+					editorCore.SetTabSize(config.TabSize.Value);
+				}
 			}
 		}
 
