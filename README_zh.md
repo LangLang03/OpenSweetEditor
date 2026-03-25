@@ -36,15 +36,21 @@ SweetEditor 是一套跨平台代码编辑器内核，面向需要在 Android、
 
 ## 平台支持状态
 
-| 平台      | 状态     | 渲染技术                    | 备注         |
-| ------- | ------ | ----------------------- | ---------- |
-| Android | ✅ 已实现  | Canvas + Paint          | 已接入        |
-| iOS     | ✅ 已实现  | CoreText + CoreGraphics | 已接入        |
-| macOS   | ✅ 已实现  | CoreText + CoreGraphics | 已接入        |
-| Windows | ✅ 已实现  | GDI+                    | 已接入        |
-| Swing   | ✅ 已实现  | Java2D                  | 已接入        |
-| Web     | 🚧 进行中 | -                       | 目录已建，绑定未接入 |
-| OHOS    | 🚧 进行中 | -                       | 目录占位       |
+| 平台SDK | 状态 | 渲染技术 | UI框架 |
+|---|---|---|---|
+| Android（官方，[仓库](./platform/Android)） | ✅ 已实现 | Canvas + Paint | Android View |
+| iOS（官方，[仓库](./platform/Apple)） | ✅ 已实现 | CoreText + CoreGraphics | UIKit（已封装） / SwiftUI（正在完善） |
+| macOS（官方，[仓库](./platform/Apple)） | ✅ 已实现 | CoreText + CoreGraphics | AppKit（已封装） / SwiftUI（正在完善） |
+| Windows（官方，[仓库](./platform/WinForms)） | ✅ 已实现 | GDI+ | WinForms |
+| Swing（官方，[仓库](./platform/Swing)） | ✅ 已实现 | Java2D | Swing |
+| Web（官方，[仓库](./platform/Emscripten)） | 🚧 进行中 | - | - |
+| OHOS（官方，[仓库](./platform/OHOS)） | 🚧 进行中 | - | - |
+| Flutter | 🚧 进行中 | - | Flutter |
+| Android Compose | ❌ 待实现 | - | Compose |
+| Qt | ❌ 待实现 | - | Qt |
+| Compose Multiplatform | ❌ 待实现 | - | Compose |
+| C# Avalonia UI | ❌ 待实现 | - | - |
+| C# WinUI | ❌ 待实现 | - | - |
 
 ## 整体架构
 
@@ -187,9 +193,3 @@ SweetEditor 采用 [GNU Lesser General Public License v2.1 or later](LICENSE)（
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=FinalScave/OpenSweetEditor&type=date&legend=top-left" />
  </picture>
 </a>
-
-## 贡献者
-
-感谢所有为 OpenSweetEditor 做出贡献的人！
-
-[![Contributors](https://contrib.rocks/image?repo=FinalScave/OpenSweetEditor)](https://github.com/FinalScave/OpenSweetEditor/graphs/contributors)

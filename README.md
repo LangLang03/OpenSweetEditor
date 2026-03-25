@@ -36,15 +36,22 @@ It is well suited for long-term evolving editor infrastructure in IDEs, AI progr
 
 ## Platform Support Status
 
-| Platform | Status         | Rendering Technology    | Notes                                          |
-| -------- | -------------- | ----------------------- | ---------------------------------------------- |
-| Android  | ✅ Implemented  | Canvas + Paint          | Integrated                                     |
-| iOS      | ✅ Implemented  | CoreText + CoreGraphics | Integrated                                     |
-| macOS    | ✅ Implemented  | CoreText + CoreGraphics | Integrated                                     |
-| Windows  | ✅ Implemented  | GDI+                    | Integrated                                     |
-| Swing    | ✅ Implemented  | Java2D                  | Integrated                                     |
-| Web      | 🚧 In Progress | -                       | Directory created, bindings not yet integrated |
-| OHOS     | 🚧 In Progress | -                       | Placeholder directory only                     |
+| Platform SDK | Status | Rendering Technology | UI Framework |
+| --- | --- | --- | --- |
+| Android (official, [repo](./platform/Android)) | ✅ Implemented | Canvas + Paint | Android View |
+| iOS (official, [repo](./platform/Apple)) | ✅ Implemented | CoreText + CoreGraphics | UIKit (wrapped) / SwiftUI (being refined) |
+| macOS (official, [repo](./platform/Apple)) | ✅ Implemented | CoreText + CoreGraphics | AppKit (wrapped) / SwiftUI (being refined) |
+| Windows (official, [repo](./platform/WinForms)) | ✅ Implemented | GDI+ | WinForms |
+| Swing (official, [repo](./platform/Swing)) | ✅ Implemented | Java2D | Swing |
+| Web (official, [repo](./platform/Emscripten)) | 🚧 In Progress | - | - |
+| OHOS (official, [repo](./platform/OHOS)) | 🚧 In Progress | - | - |
+| Flutter | 🚧 In Progress | - | Flutter |
+| Android Compose | ❌ Pending | - | Compose |
+| Qt | ❌ Pending | - | Qt |
+| Compose Multiplatform | ❌ Pending | - | Compose |
+| C# Avalonia UI | ❌ Pending | - | - |
+| C# WinUI | ❌ Pending | - | - |
+
 
 ## Overall Architecture
 
@@ -177,3 +184,13 @@ See [Contributing Guide](docs/en/join.md) for details.
 ## License
 
 SweetEditor is licensed under the [GNU Lesser General Public License v2.1 or later](LICENSE) (LGPL-2.1+), with an additional [Static Linking Exception](EXCEPTION) provided as a supplementary clarification.
+
+## Star History
+
+<a href="https://www.star-history.com/#FinalScave/OpenSweetEditor&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=FinalScave/OpenSweetEditor&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=FinalScave/OpenSweetEditor&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=FinalScave/OpenSweetEditor&type=date&legend=top-left" />
+ </picture>
+</a>

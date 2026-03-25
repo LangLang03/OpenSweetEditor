@@ -2,6 +2,16 @@ import Foundation
 import SweetEditorMacOS
 
 public enum DemoSampleSupport {
+    public struct DemoSampleFile: Equatable {
+        public let fileName: String
+        public let text: String
+
+        public init(fileName: String, text: String) {
+            self.fileName = fileName
+            self.text = text
+        }
+    }
+
     public static let fallbackText = """
     // SweetEditor Demo - Cross-platform Code Editor
     // Try editing this text, scrolling, and selecting!
@@ -117,10 +127,28 @@ public enum DemoSampleSupport {
     """
 
     public static func loadSampleText() -> String {
-        if let text = loadSampleTextFromAvailableBundles() {
-            return text
+        availableSampleFiles().first?.text ?? fallbackText
+    }
+
+    public static func availableSampleFiles() -> [DemoSampleFile] {
+        discoverSampleFiles(
+            in: sharedSampleDirectories(),
+            bundleSampleTextLoader: loadSampleTextFromAvailableBundles
+        )
+    }
+
+    public static func discoverSampleFiles(
+        in directories: [URL],
+        bundleSampleTextLoader: () -> String?
+    ) -> [DemoSampleFile] {
+        let sharedFiles = directories.flatMap(loadRegularFiles(in:))
+        if !sharedFiles.isEmpty {
+            return sharedFiles
         }
-        return fallbackText
+        if let bundled = bundleSampleTextLoader() {
+            return [DemoSampleFile(fileName: "sample.cpp", text: bundled)]
+        }
+        return [DemoSampleFile(fileName: "sample.cpp", text: fallbackText)]
     }
 
     public static func resolve(lines: [String]) -> EditorResolvedDecorations {
@@ -281,6 +309,87 @@ public enum DemoSampleSupport {
         }
 
         return nil
+    }
+
+    private static func sharedSampleDirectories() -> [URL] {
+        guard let resourceRoot = findSharedResourceRoot(searchStarts: sharedResourceSearchStarts()) else {
+            return []
+        }
+
+        let filesDirectory = resourceRoot.appendingPathComponent("files", isDirectory: true)
+        return isDirectory(filesDirectory) ? [filesDirectory] : []
+    }
+
+    static func findSharedResourceRoot(searchStarts: [URL]) -> URL? {
+        for start in searchStarts {
+            guard start.isFileURL else { continue }
+            for ancestor in ancestorDirectories(startingAt: start.standardizedFileURL) {
+                for relativePath in ["_res", "platform/_res"] {
+                    let candidate = ancestor.appendingPathComponent(relativePath, isDirectory: true)
+                    if isDirectory(candidate) {
+                        return candidate
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func sharedResourceSearchStarts() -> [URL] {
+        let currentFileDirectory = URL(fileURLWithPath: #filePath, isDirectory: false).deletingLastPathComponent()
+        let currentWorkingDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let bundleResourceDirectory = Bundle.main.resourceURL
+
+        return [currentWorkingDirectory, currentFileDirectory, bundleResourceDirectory]
+            .compactMap { $0?.standardizedFileURL }
+    }
+
+    private static func ancestorDirectories(startingAt start: URL) -> [URL] {
+        var directories: [URL] = []
+        var current: URL? = start.hasDirectoryPath ? start : start.deletingLastPathComponent()
+
+        while let directory = current {
+            directories.append(directory)
+            let parent = directory.deletingLastPathComponent()
+            if parent == directory {
+                break
+            }
+            current = parent
+        }
+
+        return directories
+    }
+
+    private static func loadRegularFiles(in directory: URL) -> [DemoSampleFile] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        return urls
+            .filter(isRegularFile)
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .compactMap(loadSampleFile(from:))
+    }
+
+    private static func isRegularFile(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+        return values?.isRegularFile == true
+    }
+
+    private static func isDirectory(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+        return values?.isDirectory == true
+    }
+
+    private static func loadSampleFile(from url: URL) -> DemoSampleFile? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        return DemoSampleFile(fileName: url.lastPathComponent, text: text)
     }
 
     private static func loadSampleTextFromAvailableBundles() -> String? {
