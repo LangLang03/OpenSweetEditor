@@ -474,7 +474,7 @@ class DemoDecorationProvider {
   }
 
   setDocumentSource(fileName, text) {
-    this._sourceFileName = String(fileName || "example.cpp");
+    this._sourceFileName = String(fileName || "example.kt");
     this._sourceText = normalizeNewlines(text);
   }
 
