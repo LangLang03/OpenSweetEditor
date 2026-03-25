@@ -4,7 +4,7 @@ import {
   CompletionResult,
   DecorationApplyMode,
   DecorationResult,
-} from "../index.js?v=20260325_12";
+} from "../index.js?v=20260325_13";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
@@ -79,6 +79,9 @@ const STYLE = Object.freeze({
 });
 
 const INLAY_COLOR_TYPE = 2;
+const MAX_DEMO_CHARS = 60000;
+const MAX_DEMO_LINES = 1600;
+const MAX_RENDER_LINES_PER_PASS = 420;
 
 const KEYWORDS = Object.freeze({
   cpp: new Set([
@@ -208,42 +211,97 @@ function resolveLanguageConfiguration(fileName) {
   };
 }
 
-function lineColumnToOffset(text, line, column) {
-  const targetLine = Math.max(0, Number(line) | 0);
-  const targetColumn = Math.max(0, Number(column) | 0);
-  let offset = 0;
-  let currentLine = 0;
-
-  while (offset < text.length && currentLine < targetLine) {
-    if (text.charCodeAt(offset) === 10) {
-      currentLine += 1;
-    }
-    offset += 1;
+function clampVisibleRange(start, end, totalLines) {
+  const total = Math.max(0, Number(totalLines) | 0);
+  if (total <= 0) {
+    return { start: 0, end: -1 };
   }
 
-  let currentColumn = 0;
-  while (offset < text.length && currentColumn < targetColumn) {
-    if (text.charCodeAt(offset) === 10) {
-      break;
-    }
-    offset += 1;
-    currentColumn += 1;
+  let s = Math.max(0, Number(start) | 0);
+  let e = Math.max(s, Number(end) | 0);
+  s = Math.min(s, total - 1);
+  e = Math.min(e, total - 1);
+
+  if (e - s + 1 > MAX_RENDER_LINES_PER_PASS) {
+    e = Math.min(total - 1, s + MAX_RENDER_LINES_PER_PASS - 1);
   }
-  return offset;
+
+  return { start: s, end: e };
 }
 
-function applyTextChange(text, range, newText) {
+function applyLineChangeToLines(lines, range, newText) {
   if (!range || !range.start || !range.end) {
-    return text;
+    return;
   }
-  let startOffset = lineColumnToOffset(text, range.start.line, range.start.column);
-  let endOffset = lineColumnToOffset(text, range.end.line, range.end.column);
-  if (startOffset > endOffset) {
-    const tmp = startOffset;
-    startOffset = endOffset;
-    endOffset = tmp;
+  if (!Array.isArray(lines) || lines.length === 0) {
+    lines.splice(0, lines.length, "");
   }
-  return `${text.slice(0, startOffset)}${newText}${text.slice(endOffset)}`;
+
+  let startLine = Math.max(0, Number(range.start.line) | 0);
+  let endLine = Math.max(0, Number(range.end.line) | 0);
+  if (startLine > endLine) {
+    const t = startLine;
+    startLine = endLine;
+    endLine = t;
+  }
+  startLine = Math.min(startLine, lines.length - 1);
+  endLine = Math.min(endLine, lines.length - 1);
+
+  let startColumn = Math.max(0, Number(range.start.column) | 0);
+  let endColumn = Math.max(0, Number(range.end.column) | 0);
+  if (range.start.line > range.end.line) {
+    const t = startColumn;
+    startColumn = endColumn;
+    endColumn = t;
+  }
+
+  const startText = lines[startLine] || "";
+  const endText = lines[endLine] || "";
+  startColumn = Math.min(startColumn, startText.length);
+  endColumn = Math.min(endColumn, endText.length);
+
+  const prefix = startText.slice(0, startColumn);
+  const suffix = endText.slice(endColumn);
+
+  const inserted = normalizeNewlines(newText).split("\n");
+  if (inserted.length === 0) {
+    inserted.push("");
+  }
+
+  const replacement = [];
+  if (inserted.length === 1) {
+    replacement.push(`${prefix}${inserted[0]}${suffix}`);
+  } else {
+    replacement.push(`${prefix}${inserted[0]}`);
+    for (let i = 1; i < inserted.length - 1; i += 1) {
+      replacement.push(inserted[i]);
+    }
+    replacement.push(`${inserted[inserted.length - 1]}${suffix}`);
+  }
+
+  lines.splice(startLine, endLine - startLine + 1, ...replacement);
+}
+
+function truncateDemoTextForWeb(text) {
+  let out = normalizeNewlines(text);
+  let truncated = false;
+
+  if (out.length > MAX_DEMO_CHARS) {
+    out = out.slice(0, MAX_DEMO_CHARS);
+    truncated = true;
+  }
+
+  const lines = out.split("\n");
+  if (lines.length > MAX_DEMO_LINES) {
+    out = lines.slice(0, MAX_DEMO_LINES).join("\n");
+    truncated = true;
+  }
+
+  if (truncated) {
+    out += "\n\n// [Web Demo] Truncated for smooth interaction.\n";
+  }
+
+  return { text: out, truncated };
 }
 
 function parseColorLiteralArgb(literal) {
@@ -406,63 +464,65 @@ function tokenizeLine(line, kind) {
   return spans;
 }
 
-function buildDecorations(text, fileName) {
-  const lines = normalizeNewlines(text).split("\n");
+function buildDecorations(lines, fileName, startLine, endLine, liteMode = false) {
   const kind = resolveLanguageKind(fileName);
 
   const syntaxSpans = new Map();
   const inlayHints = new Map();
   const diagnostics = new Map();
 
-  lines.forEach((lineText, line) => {
+  for (let line = startLine; line <= endLine; line += 1) {
+    const lineText = lines[line] ?? "";
     const spans = tokenizeLine(lineText, kind);
     if (spans.length > 0) {
       syntaxSpans.set(line, spans);
     }
 
-    for (const colorMatch of lineText.matchAll(/\b0X[0-9A-Fa-f]{6,8}\b/g)) {
-      const color = parseColorLiteralArgb(colorMatch[0]);
-      if (color == null) {
-        continue;
-      }
-      if (!inlayHints.has(line)) {
-        inlayHints.set(line, []);
-      }
-      inlayHints.get(line).push({
-        type: INLAY_COLOR_TYPE,
-        column: (colorMatch.index ?? 0) + colorMatch[0].length + 1,
-        color,
-      });
-    }
-
-    const commentPos = kind === "lua"
-      ? lineText.indexOf("--")
-      : lineText.indexOf("//");
-    if (commentPos >= 0) {
-      const comment = lineText.slice(commentPos);
-      const fixmePos = comment.toUpperCase().indexOf("FIXME");
-      if (fixmePos >= 0) {
-        if (!diagnostics.has(line)) diagnostics.set(line, []);
-        diagnostics.get(line).push({
-          column: commentPos + fixmePos,
-          length: 5,
-          severity: 0,
-          color: 0,
+    if (!liteMode) {
+      for (const colorMatch of lineText.matchAll(/\b0X[0-9A-Fa-f]{6,8}\b/g)) {
+        const color = parseColorLiteralArgb(colorMatch[0]);
+        if (color == null) {
+          continue;
+        }
+        if (!inlayHints.has(line)) {
+          inlayHints.set(line, []);
+        }
+        inlayHints.get(line).push({
+          type: INLAY_COLOR_TYPE,
+          column: (colorMatch.index ?? 0) + colorMatch[0].length + 1,
+          color,
         });
       }
 
-      const todoPos = comment.toUpperCase().indexOf("TODO");
-      if (todoPos >= 0) {
-        if (!diagnostics.has(line)) diagnostics.set(line, []);
-        diagnostics.get(line).push({
-          column: commentPos + todoPos,
-          length: 4,
-          severity: 1,
-          color: 0,
-        });
+      const commentPos = kind === "lua"
+        ? lineText.indexOf("--")
+        : lineText.indexOf("//");
+      if (commentPos >= 0) {
+        const comment = lineText.slice(commentPos);
+        const fixmePos = comment.toUpperCase().indexOf("FIXME");
+        if (fixmePos >= 0) {
+          if (!diagnostics.has(line)) diagnostics.set(line, []);
+          diagnostics.get(line).push({
+            column: commentPos + fixmePos,
+            length: 5,
+            severity: 0,
+            color: 0,
+          });
+        }
+
+        const todoPos = comment.toUpperCase().indexOf("TODO");
+        if (todoPos >= 0) {
+          if (!diagnostics.has(line)) diagnostics.set(line, []);
+          diagnostics.get(line).push({
+            column: commentPos + todoPos,
+            length: 4,
+            severity: 1,
+            color: 0,
+          });
+        }
       }
     }
-  });
+  }
 
   return { syntaxSpans, inlayHints, diagnostics };
 }
@@ -470,12 +530,22 @@ function buildDecorations(text, fileName) {
 class DemoDecorationProvider {
   constructor() {
     this._sourceFileName = "example.kt";
-    this._sourceText = normalizeNewlines(DEMO_FILE_FALLBACKS["example.kt"]);
+    this._sourceLines = normalizeNewlines(DEMO_FILE_FALLBACKS["example.kt"]).split("\n");
+    this._liteMode = false;
+    this._refreshLiteMode();
   }
 
   setDocumentSource(fileName, text) {
     this._sourceFileName = String(fileName || "example.kt");
-    this._sourceText = normalizeNewlines(text);
+    this._sourceLines = normalizeNewlines(text).split("\n");
+    if (this._sourceLines.length === 0) {
+      this._sourceLines = [""];
+    }
+    this._refreshLiteMode();
+  }
+
+  _refreshLiteMode() {
+    this._liteMode = this._sourceLines.length > 1200;
   }
 
   provideDecorations(context, receiver) {
@@ -487,20 +557,43 @@ class DemoDecorationProvider {
     const changes = Array.isArray(context?.textChanges) ? context.textChanges : [];
     if (changes.length > 0) {
       for (const change of changes) {
-        this._sourceText = applyTextChange(this._sourceText, change.range, normalizeNewlines(change.newText ?? ""));
+        applyLineChangeToLines(this._sourceLines, change.range, normalizeNewlines(change.newText ?? ""));
       }
+      this._refreshLiteMode();
     }
 
     const snapshotFileName = this._sourceFileName;
-    const snapshotText = this._sourceText;
-    const rendered = buildDecorations(snapshotText, snapshotFileName);
+    const visibleRange = clampVisibleRange(
+      context?.visibleStartLine ?? 0,
+      context?.visibleEndLine ?? ((context?.visibleStartLine ?? 0) + 120),
+      this._sourceLines.length,
+    );
+    if (visibleRange.end < visibleRange.start) {
+      return;
+    }
+
+    const rendered = buildDecorations(
+      this._sourceLines,
+      snapshotFileName,
+      visibleRange.start,
+      visibleRange.end,
+      this._liteMode,
+    );
 
     receiver.accept(new DecorationResult({
       syntaxSpans: rendered.syntaxSpans,
-      syntaxSpansMode: DecorationApplyMode.REPLACE_ALL,
+      syntaxSpansMode: DecorationApplyMode.REPLACE_RANGE,
       inlayHints: rendered.inlayHints,
-      inlayHintsMode: DecorationApplyMode.REPLACE_ALL,
+      inlayHintsMode: DecorationApplyMode.REPLACE_RANGE,
     }));
+
+    if (this._liteMode) {
+      receiver.accept(new DecorationResult({
+        diagnostics: new Map(),
+        diagnosticsMode: DecorationApplyMode.REPLACE_RANGE,
+      }));
+      return;
+    }
 
     setTimeout(() => {
       if (receiver.isCancelled) {
@@ -508,9 +601,9 @@ class DemoDecorationProvider {
       }
       receiver.accept(new DecorationResult({
         diagnostics: rendered.diagnostics,
-        diagnosticsMode: DecorationApplyMode.REPLACE_ALL,
+        diagnosticsMode: DecorationApplyMode.REPLACE_RANGE,
       }));
-    }, 140);
+    }, 90);
   }
 }
 
@@ -546,6 +639,7 @@ class DemoCompletionProvider {
 async function loadDemoFiles(versionTag) {
   const fileNames = Object.keys(DEMO_FILE_FALLBACKS).slice().sort((a, b) => a.localeCompare(b));
   const fileMap = new Map();
+  const fileState = new Map();
 
   await Promise.all(fileNames.map(async (fileName) => {
     const fallback = DEMO_FILE_FALLBACKS[fileName];
@@ -553,21 +647,22 @@ async function loadDemoFiles(versionTag) {
     try {
       const response = await fetch(url.href, { cache: "no-store" });
       if (!response.ok) {
-        fileMap.set(fileName, normalizeNewlines(fallback));
+        const fallbackResult = truncateDemoTextForWeb(fallback);
+        fileMap.set(fileName, fallbackResult.text);
+        fileState.set(fileName, { truncated: fallbackResult.truncated });
         return;
       }
-      let text = await response.text();
-      text = normalizeNewlines(text);
-      if (text.length > 180000) {
-        text = `${text.slice(0, 180000)}\n\n// [Web Demo] File truncated for smooth UI performance.\n`;
-      }
-      fileMap.set(fileName, text);
+      const loaded = truncateDemoTextForWeb(await response.text());
+      fileMap.set(fileName, loaded.text);
+      fileState.set(fileName, { truncated: loaded.truncated });
     } catch (_) {
-      fileMap.set(fileName, normalizeNewlines(fallback));
+      const fallbackResult = truncateDemoTextForWeb(fallback);
+      fileMap.set(fileName, fallbackResult.text);
+      fileState.set(fileName, { truncated: fallbackResult.truncated });
     }
   }));
 
-  return { fileNames, fileMap };
+  return { fileNames, fileMap, fileState };
 }
 
 function registerDemoStyles(editor) {
@@ -592,8 +687,8 @@ const statusText = document.getElementById("statusText");
 const wasmVersion = Date.now();
 const locale = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
 
-const { fileNames, fileMap } = await loadDemoFiles(wasmVersion);
-const initialFileName = fileNames[0] || "example.cpp";
+const { fileNames, fileMap, fileState } = await loadDemoFiles(wasmVersion);
+const initialFileName = fileNames[0] || "example.kt";
 const initialText = fileMap.get(initialFileName) || DEMO_FILE_FALLBACKS[initialFileName] || "";
 
 const editor = await createSweetEditor(host, {
@@ -619,13 +714,17 @@ function setStatus(message) {
 
 function loadFile(fileName) {
   const text = fileMap.get(fileName) || DEMO_FILE_FALLBACKS[fileName] || "";
+  const state = fileState.get(fileName);
   activeFileName = fileName;
+  if (typeof core.clearAllDecorations === "function") {
+    core.clearAllDecorations();
+  }
   demoDecorationProvider.setDocumentSource(fileName, text);
   editor.setMetadata({ fileName });
   editor.setLanguageConfiguration(resolveLanguageConfiguration(fileName));
   editor.loadText(text);
   editor.requestDecorationRefresh();
-  setStatus(`Loaded: ${fileName}`);
+  setStatus(`Loaded: ${fileName}${state?.truncated ? " (truncated)" : ""}`);
 }
 
 for (const fileName of fileNames) {
@@ -639,7 +738,7 @@ fileSelect.value = initialFileName;
 editor.setMetadata({ fileName: initialFileName });
 editor.setLanguageConfiguration(resolveLanguageConfiguration(initialFileName));
 editor.requestDecorationRefresh();
-setStatus(`Loaded: ${initialFileName}`);
+setStatus(`Loaded: ${initialFileName}${fileState.get(initialFileName)?.truncated ? " (truncated)" : ""}`);
 
 fileSelect.addEventListener("change", () => {
   loadFile(fileSelect.value);
