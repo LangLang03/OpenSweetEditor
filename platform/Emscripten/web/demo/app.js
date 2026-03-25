@@ -3,9 +3,12 @@ import {
   CompletionItem,
   CompletionResult,
   DecorationApplyMode,
+  DecorationTextChangeMode,
+  DecorationResultDispatchMode,
+  DecorationProviderCallMode,
   DecorationResult,
-} from "../index.js?v=20260326_01";
-import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_01";
+} from "../index.js?v=20260326_04";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_04";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
@@ -354,26 +357,28 @@ function forSweetLineList(list, fn) {
   }
 }
 
-function extractSingleLineSpanItem(token) {
+function extractLineSpanItem(token, fallbackLine = 0) {
   if (!token || !token.range || !token.range.start || !token.range.end) {
     return null;
   }
 
-  const styleId = toInt(token.styleId, 0);
+  const styleId = toInt(token.styleId ?? token.style_id, 0);
   if (styleId <= 0) {
     return null;
   }
 
-  const startLine = toInt(token.range.start.line, -1);
-  const endLine = toInt(token.range.end.line, -1);
   const startColumn = Math.max(0, toInt(token.range.start.column, 0));
   const endColumn = Math.max(0, toInt(token.range.end.column, 0));
-  if (startLine < 0 || startLine !== endLine || endColumn <= startColumn) {
+  if (endColumn <= startColumn) {
     return null;
   }
 
+  const rawStartLine = toInt(token.range.start.line, toInt(fallbackLine, 0));
+  const rawEndLine = toInt(token.range.end.line, rawStartLine);
+  const line = rawStartLine === rawEndLine ? rawStartLine : toInt(fallbackLine, 0);
+
   return {
-    line: startLine,
+    line: Math.max(0, line),
     column: startColumn,
     length: endColumn - startColumn,
     styleId,
@@ -612,40 +617,43 @@ class DemoDecorationProvider {
       return syntaxSpans;
     }
 
-    const lineCount = typeof lineHighlights.size === "function"
-      ? Math.max(0, toInt(lineHighlights.size(), 0))
-      : (Array.isArray(lineHighlights) ? lineHighlights.length : 0);
-    if (lineCount <= 0) {
-      return syntaxSpans;
-    }
-
-    const maxLine = Math.min(endLine, lineCount - 1);
-    for (let line = startLine; line <= maxLine; line += 1) {
-      const lineHighlight = typeof lineHighlights.get === "function"
-        ? lineHighlights.get(line)
-        : lineHighlights[line];
+    const appendFromLineHighlight = (lineHighlight, fallbackLine) => {
       if (!lineHighlight) {
-        continue;
+        return;
       }
-
-      const lineSpans = [];
       forSweetLineList(lineHighlight.spans, (token) => {
-        const span = extractSingleLineSpanItem(token);
-        if (!span || span.line !== line) {
+        const span = extractLineSpanItem(token, fallbackLine);
+        if (!span) {
           return;
         }
-        lineSpans.push({
+        if (span.line < startLine || span.line > endLine) {
+          return;
+        }
+        if (!syntaxSpans.has(span.line)) {
+          syntaxSpans.set(span.line, []);
+        }
+        syntaxSpans.get(span.line).push({
           column: span.column,
           length: span.length,
           styleId: span.styleId,
         });
       });
+    };
 
-      if (lineSpans.length > 0) {
-        lineSpans.sort((a, b) => a.column - b.column);
-        syntaxSpans.set(line, lineSpans);
+    if (typeof lineHighlights.size === "function" && typeof lineHighlights.get === "function") {
+      const lineCount = Math.max(0, toInt(lineHighlights.size(), 0));
+      for (let i = 0; i < lineCount; i += 1) {
+        appendFromLineHighlight(lineHighlights.get(i), i);
       }
+    } else if (Array.isArray(lineHighlights)) {
+      lineHighlights.forEach((lineHighlight, i) => appendFromLineHighlight(lineHighlight, i));
+    } else {
+      return syntaxSpans;
     }
+
+    syntaxSpans.forEach((spans) => {
+      spans.sort((a, b) => a.column - b.column);
+    });
 
     return syntaxSpans;
   }
@@ -813,6 +821,20 @@ const statusText = document.getElementById("statusText");
 
 const wasmVersion = Date.now();
 const locale = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+const DEMO_DECORATION_OPTIONS = Object.freeze({
+  // `INCREMENTAL`: pass textChanges to provider (provider can do incremental analyze)
+  // `FULL`: force full analyze on every text change
+  // `DISABLED`: ignore text-change driven refresh
+  textChangeMode: DecorationTextChangeMode.INCREMENTAL,
+  // `BOTH`: allow sync + async receiver.accept
+  // `SYNC`: only allow sync results
+  // `ASYNC`: only allow async results
+  resultDispatchMode: DecorationResultDispatchMode.BOTH,
+  // `SYNC`: call provider immediately
+  // `ASYNC`: call provider in macrotask
+  providerCallMode: DecorationProviderCallMode.SYNC,
+  applySynchronously: false,
+});
 
 const { fileNames, fileMap, fileState } = await loadDemoFiles(wasmVersion);
 const initialFileName = fileNames[0] || "example.kt";
@@ -822,6 +844,7 @@ const editor = await createSweetEditor(host, {
   modulePath: `../../../../build/wasm/bin/sweeteditor.js?v=${wasmVersion}`,
   locale,
   text: initialText,
+  decorationOptions: DEMO_DECORATION_OPTIONS,
 });
 
 registerDemoStyles(editor);

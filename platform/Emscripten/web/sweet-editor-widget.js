@@ -1,4 +1,3 @@
-﻿
 import {
   DocumentFactory,
   WebEditorCore,
@@ -595,13 +594,21 @@ export class SweetEditorWidget {
       },
     });
 
+    const decorationOptions = options.decorationOptions || options.decorationProviderOptions || {};
     this._decorationProviderManager = new DecorationProviderManager({
       buildContext: (ctx) => new DecorationContext(ctx),
       getVisibleLineRange: () => this.getVisibleLineRange(),
+      ensureVisibleLineRange: () => this._refreshRenderModelSnapshot(),
       getTotalLineCount: () => this.getTotalLineCount(),
       getLanguageConfiguration: () => this._languageConfiguration,
       getMetadata: () => this._metadata,
       onApplyMerged: (merged, visibleRange) => this._applyMergedDecorations(merged, visibleRange),
+      textChangeMode: decorationOptions.textChangeMode,
+      resultDispatchMode: decorationOptions.resultDispatchMode,
+      providerCallMode: decorationOptions.providerCallMode,
+      scrollRefreshMinIntervalMs: decorationOptions.scrollRefreshMinIntervalMs,
+      overscanViewportMultiplier: decorationOptions.overscanViewportMultiplier,
+      applySynchronously: decorationOptions.applySynchronously,
     });
 
     this._setupDom();
@@ -741,6 +748,22 @@ export class SweetEditorWidget {
     this._decorationProviderManager.requestRefresh();
   }
 
+  setDecorationProviderOptions(options = {}) {
+    this._decorationProviderManager.setOptions(options);
+  }
+
+  getDecorationProviderOptions() {
+    return this._decorationProviderManager.getOptions();
+  }
+
+  setDecorationOptions(options = {}) {
+    this.setDecorationProviderOptions(options);
+  }
+
+  getDecorationOptions() {
+    return this.getDecorationProviderOptions();
+  }
+
   addCompletionProvider(provider) {
     this._completionProviderManager.addProvider(provider);
   }
@@ -765,8 +788,11 @@ export class SweetEditorWidget {
     this._completionPopupController.setRenderer(renderer);
   }
 
-  getVisibleLineRange() {
-    const model = this._lastRenderModel || this._safeBuildRenderModel();
+  getVisibleLineRange(options = {}) {
+    const preferFreshModel = Boolean(options?.preferFreshModel ?? false);
+    const model = preferFreshModel
+      ? (this._refreshRenderModelSnapshot() || this._lastRenderModel)
+      : (this._lastRenderModel || this._refreshRenderModelSnapshot());
     if (!model || !model.lines) {
       return { start: 0, end: -1 };
     }
@@ -1309,6 +1335,14 @@ export class SweetEditorWidget {
     } catch (_) {
       return null;
     }
+  }
+
+  _refreshRenderModelSnapshot() {
+    const model = this._safeBuildRenderModel();
+    if (model) {
+      this._lastRenderModel = model;
+    }
+    return model;
   }
 
   _updateCompletionPopupCursorAnchor() {

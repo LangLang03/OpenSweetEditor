@@ -1,4 +1,3 @@
-﻿
 const FALLBACK_SPAN_LAYER = Object.freeze({
   SYNTAX: 0,
   SEMANTIC: 1,
@@ -1056,6 +1055,23 @@ export const DecorationApplyMode = Object.freeze({
   REPLACE_RANGE: 2,
 });
 
+export const DecorationTextChangeMode = Object.freeze({
+  INCREMENTAL: "incremental",
+  FULL: "full",
+  DISABLED: "disabled",
+});
+
+export const DecorationResultDispatchMode = Object.freeze({
+  BOTH: "both",
+  SYNC: "sync",
+  ASYNC: "async",
+});
+
+export const DecorationProviderCallMode = Object.freeze({
+  SYNC: "sync",
+  ASYNC: "async",
+});
+
 export class DecorationContext {
   constructor({
     visibleStartLine = 0,
@@ -1133,14 +1149,27 @@ class ManagedDecorationReceiver extends DecorationReceiver {
     this._provider = provider;
     this._generation = generation;
     this._cancelled = false;
+    this._inSyncPhase = true;
   }
 
   cancel() {
     this._cancelled = true;
   }
 
+  markAsyncPhase() {
+    this._inSyncPhase = false;
+  }
+
   accept(result) {
     if (this._cancelled || this._generation !== this._manager._generation) {
+      return false;
+    }
+
+    const dispatchMode = this._manager._resultDispatchMode;
+    if (dispatchMode === DecorationResultDispatchMode.SYNC && !this._inSyncPhase) {
+      return false;
+    }
+    if (dispatchMode === DecorationResultDispatchMode.ASYNC && this._inSyncPhase) {
       return false;
     }
 
@@ -1211,6 +1240,36 @@ function mergeDecorationPatch(target, patch) {
   });
 }
 
+function normalizeDecorationTextChangeMode(mode) {
+  const value = String(mode ?? "").toLowerCase();
+  if (value === DecorationTextChangeMode.FULL) {
+    return DecorationTextChangeMode.FULL;
+  }
+  if (value === DecorationTextChangeMode.DISABLED) {
+    return DecorationTextChangeMode.DISABLED;
+  }
+  return DecorationTextChangeMode.INCREMENTAL;
+}
+
+function normalizeDecorationResultDispatchMode(mode) {
+  const value = String(mode ?? "").toLowerCase();
+  if (value === DecorationResultDispatchMode.SYNC) {
+    return DecorationResultDispatchMode.SYNC;
+  }
+  if (value === DecorationResultDispatchMode.ASYNC) {
+    return DecorationResultDispatchMode.ASYNC;
+  }
+  return DecorationResultDispatchMode.BOTH;
+}
+
+function normalizeDecorationProviderCallMode(mode) {
+  const value = String(mode ?? "").toLowerCase();
+  if (value === DecorationProviderCallMode.ASYNC) {
+    return DecorationProviderCallMode.ASYNC;
+  }
+  return DecorationProviderCallMode.SYNC;
+}
+
 export class DecorationProviderManager {
   constructor(options = {}) {
     this._providers = new Set();
@@ -1218,6 +1277,9 @@ export class DecorationProviderManager {
 
     this._buildContext = typeof options.buildContext === "function" ? options.buildContext : null;
     this._getVisibleLineRange = typeof options.getVisibleLineRange === "function" ? options.getVisibleLineRange : null;
+    this._ensureVisibleLineRange = typeof options.ensureVisibleLineRange === "function"
+      ? options.ensureVisibleLineRange
+      : null;
     this._getTotalLineCount = typeof options.getTotalLineCount === "function" ? options.getTotalLineCount : null;
     this._getLanguageConfiguration = typeof options.getLanguageConfiguration === "function"
       ? options.getLanguageConfiguration
@@ -1236,8 +1298,50 @@ export class DecorationProviderManager {
     this._lastVisibleEndLine = -1;
     this._lastScrollRefreshTickMs = 0;
 
-    this._scrollRefreshMinIntervalMs = Math.max(0, toInt(options.scrollRefreshMinIntervalMs, 50));
-    this._overscanViewportMultiplier = Math.max(0, Number(options.overscanViewportMultiplier ?? 0.5));
+    this._scrollRefreshMinIntervalMs = 50;
+    this._overscanViewportMultiplier = 0.5;
+    this._textChangeMode = DecorationTextChangeMode.INCREMENTAL;
+    this._resultDispatchMode = DecorationResultDispatchMode.BOTH;
+    this._providerCallMode = DecorationProviderCallMode.SYNC;
+    this._applySynchronously = false;
+
+    this.setOptions(options);
+  }
+
+  setOptions(options = {}) {
+    if (!options || typeof options !== "object") {
+      return;
+    }
+
+    if ("scrollRefreshMinIntervalMs" in options) {
+      this._scrollRefreshMinIntervalMs = Math.max(0, toInt(options.scrollRefreshMinIntervalMs, 50));
+    }
+    if ("overscanViewportMultiplier" in options) {
+      this._overscanViewportMultiplier = Math.max(0, Number(options.overscanViewportMultiplier ?? 0.5));
+    }
+    if ("textChangeMode" in options) {
+      this._textChangeMode = normalizeDecorationTextChangeMode(options.textChangeMode);
+    }
+    if ("resultDispatchMode" in options) {
+      this._resultDispatchMode = normalizeDecorationResultDispatchMode(options.resultDispatchMode);
+    }
+    if ("providerCallMode" in options) {
+      this._providerCallMode = normalizeDecorationProviderCallMode(options.providerCallMode);
+    }
+    if ("applySynchronously" in options) {
+      this._applySynchronously = Boolean(options.applySynchronously);
+    }
+  }
+
+  getOptions() {
+    return {
+      scrollRefreshMinIntervalMs: this._scrollRefreshMinIntervalMs,
+      overscanViewportMultiplier: this._overscanViewportMultiplier,
+      textChangeMode: this._textChangeMode,
+      resultDispatchMode: this._resultDispatchMode,
+      providerCallMode: this._providerCallMode,
+      applySynchronously: this._applySynchronously,
+    };
   }
 
   addProvider(provider) {
@@ -1278,6 +1382,9 @@ export class DecorationProviderManager {
   }
 
   onTextChanged(changes) {
+    if (this._textChangeMode === DecorationTextChangeMode.DISABLED) {
+      return;
+    }
     this._scheduleRefresh(50, asArray(changes));
   }
 
@@ -1332,6 +1439,10 @@ export class DecorationProviderManager {
     this._generation += 1;
     const generation = this._generation;
 
+    if (this._ensureVisibleLineRange) {
+      safeCall(() => this._ensureVisibleLineRange());
+    }
+
     const visibleRange = this._resolveVisibleRange();
     this._lastVisibleStartLine = visibleRange.start;
     this._lastVisibleEndLine = visibleRange.end;
@@ -1339,6 +1450,9 @@ export class DecorationProviderManager {
     const totalLineCount = Math.max(0, toInt(this._getTotalLineCount?.(), 0));
     const pendingChanges = this._pendingTextChanges.slice();
     this._pendingTextChanges = [];
+    const contextChanges = this._textChangeMode === DecorationTextChangeMode.FULL
+      ? []
+      : pendingChanges;
 
     const contextRange = this._resolveContextRange(visibleRange, totalLineCount);
     const context = this._buildContext
@@ -1346,7 +1460,7 @@ export class DecorationProviderManager {
           visibleStartLine: contextRange.start,
           visibleEndLine: contextRange.end,
           totalLineCount,
-          textChanges: pendingChanges,
+          textChanges: contextChanges,
           languageConfiguration: this._getLanguageConfiguration?.() ?? null,
           editorMetadata: this._getMetadata?.() ?? null,
         })
@@ -1354,7 +1468,7 @@ export class DecorationProviderManager {
           visibleStartLine: contextRange.start,
           visibleEndLine: contextRange.end,
           totalLineCount,
-          textChanges: pendingChanges,
+          textChanges: contextChanges,
           languageConfiguration: this._getLanguageConfiguration?.() ?? null,
           editorMetadata: this._getMetadata?.() ?? null,
         });
@@ -1372,12 +1486,29 @@ export class DecorationProviderManager {
 
       const receiver = new ManagedDecorationReceiver(this, provider, generation);
       state.activeReceiver = receiver;
+      this._invokeProvider(provider, context, receiver);
+    }
+  }
+
+  _invokeProvider(provider, context, receiver) {
+    const run = () => {
+      if (receiver.isCancelled) {
+        return;
+      }
       try {
         provider.provideDecorations(context, receiver);
       } catch (error) {
         console.error("Decoration provider error:", error);
+      } finally {
+        receiver.markAsyncPhase();
       }
+    };
+
+    if (this._providerCallMode === DecorationProviderCallMode.ASYNC) {
+      setTimeout(run, 0);
+      return;
     }
+    run();
   }
 
   _resolveVisibleRange() {
@@ -1427,6 +1558,12 @@ export class DecorationProviderManager {
     }
 
     this._applyScheduled = true;
+    if (this._applySynchronously) {
+      this._applyScheduled = false;
+      this._applyMerged();
+      return;
+    }
+
     this._applyTimer = setTimeout(() => {
       this._applyTimer = 0;
       this._applyScheduled = false;
