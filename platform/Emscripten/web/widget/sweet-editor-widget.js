@@ -113,9 +113,9 @@ export class SweetEditorWidget {
     this._viewportWidth = 0;
     this._viewportHeight = 0;
     this._isComposing = false;
-    this._compositionJustEnded = false;
-    this._compositionEndData = "";
-    this._compositionFallbackTimer = 0;
+    this._compositionCommitPending = false;
+    this._compositionEndFallbackData = "";
+    this._compositionEndTimer = 0;
     this._contextMenuVisible = false;
     this._contextMenuButtons = {};
     this._onDocumentPointerDown = (event) => this._handleDocumentPointerDown(event);
@@ -125,7 +125,7 @@ export class SweetEditorWidget {
     this._setupDom();
     this._bindEvents();
     this._resize();
-    this._core.call("setCompositionEnabled", options.enableComposition ?? false);
+    this._core.call("setCompositionEnabled", options.enableComposition ?? true);
 
     if (options.text) {
       this.loadText(options.text, { kind: options.documentKind || "piece-table" });
@@ -160,9 +160,9 @@ export class SweetEditorWidget {
   dispose() {
     if (this._disposed) return;
     this._disposed = true;
-    if (this._compositionFallbackTimer) {
-      clearTimeout(this._compositionFallbackTimer);
-      this._compositionFallbackTimer = 0;
+    if (this._compositionEndTimer) {
+      clearTimeout(this._compositionEndTimer);
+      this._compositionEndTimer = 0;
     }
     this._hideContextMenu();
     document.removeEventListener("pointerdown", this._onDocumentPointerDown, true);
@@ -223,7 +223,7 @@ export class SweetEditorWidget {
     this._input.style.color = "transparent";
     this._input.style.caretColor = "transparent";
     this._input.style.background = "transparent";
-    this._input.style.opacity = "0";
+    this._input.style.opacity = "0.01";
     this._input.style.pointerEvents = "none";
     this.container.appendChild(this._input);
 
@@ -243,54 +243,81 @@ export class SweetEditorWidget {
 
     this._input.addEventListener("keydown", (e) => this._onKeyDown(e));
     this._input.addEventListener("compositionstart", () => {
-      if (this._compositionFallbackTimer) {
-        clearTimeout(this._compositionFallbackTimer);
-        this._compositionFallbackTimer = 0;
+      if (this._compositionEndTimer) {
+        clearTimeout(this._compositionEndTimer);
+        this._compositionEndTimer = 0;
       }
       this._isComposing = true;
-      this._compositionJustEnded = false;
-      this._compositionEndData = "";
+      this._compositionCommitPending = false;
+      this._compositionEndFallbackData = "";
       this._input.value = "";
+      this._core.call("compositionStart");
+      this._markDirty();
     });
-    this._input.addEventListener("compositionupdate", () => {
-      // Keep composition processing in native input layer; commit happens on input event.
+    this._input.addEventListener("compositionupdate", (e) => {
+      const composingText = (typeof e.data === "string") ? e.data : (this._input.value || "");
+      this._core.call("compositionUpdate", composingText);
+      this._markDirty();
     });
     this._input.addEventListener("compositionend", (e) => {
       this._isComposing = false;
-      this._compositionJustEnded = true;
-      this._compositionEndData = e.data || "";
-      this._compositionFallbackTimer = setTimeout(() => {
-        this._compositionFallbackTimer = 0;
-        if (!this._compositionJustEnded) return;
-        this._compositionJustEnded = false;
-        const fallbackText = this._pickCommittedText("", this._compositionEndData);
-        this._compositionEndData = "";
-        this._input.value = "";
-        if (!fallbackText) return;
-        this._core.call("insertText", fallbackText);
+      this._compositionCommitPending = true;
+      this._compositionEndFallbackData = (typeof e.data === "string") ? e.data : "";
+      this._input.value = "";
+      this._compositionEndTimer = setTimeout(() => {
+        this._compositionEndTimer = 0;
+        if (!this._compositionCommitPending) {
+          return;
+        }
+        this._compositionCommitPending = false;
+        const fallbackCommit = this._compositionEndFallbackData;
+        this._compositionEndFallbackData = "";
+        if (fallbackCommit) {
+          this._core.call("compositionEnd", fallbackCommit);
+        } else {
+          this._core.call("compositionCancel");
+        }
         this._markDirty();
       }, 0);
     });
     this._input.addEventListener("input", (e) => {
       const inputType = e.inputType || "";
-      const isCompositionInput = this._isComposing
-        || e.isComposing
-        || inputType.startsWith("deleteComposition");
-      if (isCompositionInput) {
+      if (inputType === "insertFromComposition") {
+        if (this._compositionCommitPending) {
+          if (this._compositionEndTimer) {
+            clearTimeout(this._compositionEndTimer);
+            this._compositionEndTimer = 0;
+          }
+          this._compositionCommitPending = false;
+          const committedText = (typeof e.data === "string" && e.data.length > 0)
+            ? e.data
+            : (this._input.value || this._compositionEndFallbackData || "");
+          this._compositionEndFallbackData = "";
+          this._core.call("compositionEnd", committedText);
+          this._markDirty();
+        }
+        this._input.value = "";
         return;
       }
 
-      let text = (typeof e.data === "string" && e.data.length > 0) ? e.data : (this._input.value || "");
-      if (this._compositionJustEnded || inputType === "insertFromComposition" || inputType === "insertCompositionText") {
-        this._compositionJustEnded = false;
-        if (this._compositionFallbackTimer) {
-          clearTimeout(this._compositionFallbackTimer);
-          this._compositionFallbackTimer = 0;
-        }
-        text = this._pickCommittedText(text, this._compositionEndData);
-        this._compositionEndData = "";
+      if (this._isComposing || e.isComposing || inputType.startsWith("insertComposition") || inputType.startsWith("deleteComposition")) {
+        return;
       }
 
+      if (inputType === "deleteContentBackward") {
+        this._core.call("backspace");
+        this._input.value = "";
+        this._markDirty();
+        return;
+      }
+      if (inputType === "deleteContentForward") {
+        this._core.call("deleteForward");
+        this._input.value = "";
+        this._markDirty();
+        return;
+      }
+
+      const text = (typeof e.data === "string" && e.data.length > 0) ? e.data : (this._input.value || "");
       this._input.value = "";
       if (!text) return;
       this._core.call("insertText", text);
@@ -645,23 +672,6 @@ export class SweetEditorWidget {
     event.preventDefault();
   }
 
-  _pickCommittedText(primaryText, compositionEndText) {
-    const primary = primaryText || "";
-    const fallback = compositionEndText || "";
-    if (!primary && !fallback) return "";
-
-    if (this._locale === "zh") {
-      const hasCjk = (s) => /[\u3400-\u9fff]/.test(s);
-      if (hasCjk(primary)) return primary;
-      if (hasCjk(fallback)) return fallback;
-      const looksLikePinyin = (s) => /^[a-zA-Z'`\-\s]+$/.test(s);
-      if (looksLikePinyin(primary) && fallback) return fallback;
-      if (looksLikePinyin(fallback) && primary) return primary;
-    }
-
-    return primary || fallback;
-  }
-
   _onKeyDown(event) {
     this._hideContextMenu();
     const cmd = event.ctrlKey || event.metaKey;
@@ -690,6 +700,20 @@ export class SweetEditorWidget {
 
     const result = this._core.handleKeyEvent({ key_code: keyCode, text: "", modifiers: mods });
     if (result && result.handled) {
+      this._markDirty();
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      this._core.call("backspace");
+      this._markDirty();
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === "Delete") {
+      this._core.call("deleteForward");
       this._markDirty();
       event.preventDefault();
     }
@@ -786,10 +810,26 @@ export class SweetEditorWidget {
     let cursorX = 0;
     let cursorY = 0;
     let cursorH = 18;
+    const nativeCore = typeof this._core.getNative === "function" ? this._core.getNative() : null;
+    if (nativeCore && typeof nativeCore.getCursorScreenRect === "function") {
+      try {
+        const rect = nativeCore.getCursorScreenRect();
+        if (rect) {
+          cursorX = Number(rect.x) || 0;
+          cursorY = Number(rect.y) || 0;
+          cursorH = Math.max(12, Number(rect.height) || 18);
+        }
+      } catch (_) {
+        // Keep fallback values when native rect read fails.
+      }
+    }
+
     if (model && model.cursor && model.cursor.position) {
-      cursorX = Number(model.cursor.position.x) || 0;
-      cursorY = Number(model.cursor.position.y) || 0;
-      cursorH = Math.max(12, Number(model.cursor.height) || 18);
+      if (cursorX === 0 && cursorY === 0) {
+        cursorX = Number(model.cursor.position.x) || 0;
+        cursorY = Number(model.cursor.position.y) || 0;
+        cursorH = Math.max(12, Number(model.cursor.height) || 18);
+      }
     }
 
     const width = Math.max(2, viewportWidth || 2);
