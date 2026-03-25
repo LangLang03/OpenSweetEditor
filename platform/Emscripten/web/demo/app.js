@@ -1,4 +1,4 @@
-import { createSweetEditor } from "../index.js?v=20260325_5";
+import { createSweetEditor } from "../index.js?v=20260325_8";
 
 const host = document.getElementById("editor");
 const wasmVersion = Date.now();
