@@ -83,6 +83,8 @@ export class SweetEditorWidget {
     this.container = container;
     this._wasm = wasmModule;
     this._options = options;
+    this._locale = resolveLocale(options.locale || (typeof navigator !== "undefined" ? navigator.language : "en"));
+    this._i18n = CONTEXT_MENU_I18N[this._locale];
     this._eventType = resolveEnum(wasmModule, "EventType", FALLBACK_EVENT_TYPE);
     this._keyCode = resolveEnum(wasmModule, "KeyCode", FALLBACK_KEY_CODE);
     this._modifier = resolveEnum(wasmModule, "Modifier", FALLBACK_MODIFIER);
@@ -102,10 +104,20 @@ export class SweetEditorWidget {
     this._disposed = false;
     this._viewportWidth = 0;
     this._viewportHeight = 0;
+    this._isComposing = false;
+    this._pendingCompositionCommit = false;
+    this._compositionEndText = "";
+    this._compositionCommitTimer = 0;
+    this._contextMenuVisible = false;
+    this._contextMenuButtons = {};
+    this._onDocumentPointerDown = (event) => this._handleDocumentPointerDown(event);
+    this._onDocumentKeyDown = (event) => this._handleDocumentKeyDown(event);
+    this._onWindowBlur = () => this._hideContextMenu();
 
     this._setupDom();
     this._bindEvents();
     this._resize();
+    this._core.call("setCompositionEnabled", options.enableComposition ?? true);
 
     if (options.text) {
       this.loadText(options.text, { kind: options.documentKind || "piece-table" });
@@ -122,6 +134,12 @@ export class SweetEditorWidget {
     return this._documentFactory;
   }
 
+  setLocale(locale) {
+    this._locale = resolveLocale(locale);
+    this._i18n = CONTEXT_MENU_I18N[this._locale];
+    this._refreshContextMenuLabels();
+  }
+
   loadText(text, options = {}) {
     if (this._document) {
       this._document.dispose();
@@ -134,6 +152,14 @@ export class SweetEditorWidget {
   dispose() {
     if (this._disposed) return;
     this._disposed = true;
+    if (this._compositionCommitTimer) {
+      clearTimeout(this._compositionCommitTimer);
+      this._compositionCommitTimer = 0;
+    }
+    this._hideContextMenu();
+    document.removeEventListener("pointerdown", this._onDocumentPointerDown, true);
+    document.removeEventListener("keydown", this._onDocumentKeyDown, true);
+    window.removeEventListener("blur", this._onWindowBlur);
     if (this._rafHandle) {
       cancelAnimationFrame(this._rafHandle);
       this._rafHandle = 0;
@@ -151,6 +177,10 @@ export class SweetEditorWidget {
       this._document = null;
     }
     this._core.dispose();
+    if (this._contextMenu) {
+      this._contextMenu.remove();
+      this._contextMenu = null;
+    }
     this._canvas.remove();
     this._input.remove();
   }
@@ -182,6 +212,8 @@ export class SweetEditorWidget {
     this._input.style.pointerEvents = "none";
     this.container.appendChild(this._input);
 
+    this._createContextMenu();
+
     this._resizeObserver = new ResizeObserver(() => this._resize());
     this._resizeObserver.observe(this.container);
   }
@@ -192,10 +224,17 @@ export class SweetEditorWidget {
     this._canvas.addEventListener("pointerup", (e) => this._onPointerUp(e));
     this._canvas.addEventListener("pointercancel", (e) => this._onPointerCancel(e));
     this._canvas.addEventListener("wheel", (e) => this._onWheel(e), { passive: false });
-    this._canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    this._canvas.addEventListener("contextmenu", (e) => this._onContextMenu(e));
 
     this._input.addEventListener("keydown", (e) => this._onKeyDown(e));
     this._input.addEventListener("compositionstart", () => {
+      if (this._compositionCommitTimer) {
+        clearTimeout(this._compositionCommitTimer);
+        this._compositionCommitTimer = 0;
+      }
+      this._isComposing = true;
+      this._pendingCompositionCommit = false;
+      this._compositionEndText = "";
       this._core.call("compositionStart");
       this._markDirty();
     });
@@ -204,20 +243,72 @@ export class SweetEditorWidget {
       this._markDirty();
     });
     this._input.addEventListener("compositionend", (e) => {
-      this._core.call("compositionEnd", e.data || "");
+      this._isComposing = false;
+      this._pendingCompositionCommit = true;
+      this._compositionEndText = e.data || "";
+      this._core.call("compositionCancel");
       this._markDirty();
       this._input.value = "";
-    });
-    this._input.addEventListener("input", () => {
-      if (this._input.value) {
-        this._core.call("insertText", this._input.value);
-        this._input.value = "";
-        this._markDirty();
+
+      if (this._compositionCommitTimer) {
+        clearTimeout(this._compositionCommitTimer);
       }
+      this._compositionCommitTimer = setTimeout(() => {
+        this._compositionCommitTimer = 0;
+        if (!this._pendingCompositionCommit) return;
+        this._pendingCompositionCommit = false;
+        if (this._compositionEndText) {
+          this._core.call("insertText", this._compositionEndText);
+          this._markDirty();
+        }
+        this._compositionEndText = "";
+      }, 0);
     });
+    this._input.addEventListener("input", (e) => {
+      const inputType = e.inputType || "";
+      const isCompositionInput = this._isComposing
+        || e.isComposing
+        || inputType.startsWith("insertComposition")
+        || inputType.startsWith("deleteComposition");
+      if (isCompositionInput) {
+        this._input.value = "";
+        return;
+      }
+
+      if (this._pendingCompositionCommit) {
+        if (this._compositionCommitTimer) {
+          clearTimeout(this._compositionCommitTimer);
+          this._compositionCommitTimer = 0;
+        }
+        this._pendingCompositionCommit = false;
+        const committedText = (typeof e.data === "string" && e.data.length > 0) ? e.data : (this._input.value || "");
+        const finalText = committedText || this._compositionEndText;
+        this._compositionEndText = "";
+        this._input.value = "";
+        if (finalText) {
+          this._core.call("insertText", finalText);
+          this._markDirty();
+        }
+        return;
+      }
+
+      const text = this._input.value || "";
+      this._input.value = "";
+      if (!text) return;
+      this._core.call("insertText", text);
+      this._markDirty();
+    });
+    this._input.addEventListener("copy", (e) => this._handleClipboardCopyCut(e, false));
+    this._input.addEventListener("cut", (e) => this._handleClipboardCopyCut(e, true));
+    this._input.addEventListener("paste", (e) => this._handleClipboardPaste(e));
+
+    document.addEventListener("pointerdown", this._onDocumentPointerDown, true);
+    document.addEventListener("keydown", this._onDocumentKeyDown, true);
+    window.addEventListener("blur", this._onWindowBlur);
   }
 
   _onPointerDown(event) {
+    this._hideContextMenu();
     this._input.focus();
     if (typeof this._canvas.setPointerCapture === "function") {
       try {
@@ -286,20 +377,258 @@ export class SweetEditorWidget {
   }
 
   _onWheel(event) {
+    this._hideContextMenu();
     const point = this._eventPoint(event);
     this._dispatchGesture(this._eventType.MOUSE_WHEEL, [point], event, event.deltaX, event.deltaY, 1.0);
     event.preventDefault();
   }
 
-  _onKeyDown(event) {
-    const mods = this._modifiers(event);
+  _onContextMenu(event) {
+    event.preventDefault();
+    this._input.focus();
 
-    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      this._core.call("insertText", event.key);
-      this._markDirty();
-      event.preventDefault();
+    const rect = this.container.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    this._updateContextMenuState();
+    this._showContextMenu(x, y);
+  }
+
+  _handleDocumentPointerDown(event) {
+    if (!this._contextMenuVisible || !this._contextMenu) return;
+    if (this._contextMenu.contains(event.target)) return;
+    this._hideContextMenu();
+  }
+
+  _handleDocumentKeyDown(event) {
+    if (event.key === "Escape") {
+      this._hideContextMenu();
+    }
+  }
+
+  _createContextMenu() {
+    const menu = document.createElement("div");
+    menu.style.position = "absolute";
+    menu.style.display = "none";
+    menu.style.zIndex = "32";
+    menu.style.minWidth = "156px";
+    menu.style.padding = "4px";
+    menu.style.borderRadius = "8px";
+    menu.style.border = "1px solid rgba(255,255,255,0.12)";
+    menu.style.background = "#1f2937";
+    menu.style.boxShadow = "0 12px 28px rgba(0,0,0,0.35)";
+    menu.style.userSelect = "none";
+    menu.style.fontFamily = "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif";
+    menu.style.fontSize = "13px";
+    menu.style.pointerEvents = "auto";
+
+    const entries = ["undo", "redo", "-", "cut", "copy", "paste", "-", "selectAll"];
+    entries.forEach((entry) => {
+      if (entry === "-") {
+        const separator = document.createElement("div");
+        separator.style.height = "1px";
+        separator.style.margin = "4px 6px";
+        separator.style.background = "rgba(255,255,255,0.16)";
+        menu.appendChild(separator);
+        return;
+      }
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.action = entry;
+      button.style.display = "block";
+      button.style.width = "100%";
+      button.style.textAlign = "left";
+      button.style.border = "none";
+      button.style.background = "transparent";
+      button.style.color = "#f3f4f6";
+      button.style.padding = "7px 10px";
+      button.style.borderRadius = "6px";
+      button.style.cursor = "pointer";
+      button.style.font = "inherit";
+      button.addEventListener("mouseenter", () => {
+        if (!button.disabled) {
+          button.style.background = "rgba(255,255,255,0.12)";
+        }
+      });
+      button.addEventListener("mouseleave", () => {
+        button.style.background = "transparent";
+      });
+      button.addEventListener("click", async (evt) => {
+        evt.preventDefault();
+        evt.stopPropagation();
+        await this._runContextAction(entry);
+        this._hideContextMenu();
+        this._input.focus();
+      });
+      menu.appendChild(button);
+      this._contextMenuButtons[entry] = button;
+    });
+
+    this._contextMenu = menu;
+    this.container.appendChild(menu);
+    this._refreshContextMenuLabels();
+  }
+
+  _refreshContextMenuLabels() {
+    if (!this._contextMenuButtons) return;
+    const labels = this._i18n || CONTEXT_MENU_I18N.en;
+    Object.entries(this._contextMenuButtons).forEach(([key, button]) => {
+      button.textContent = labels[key] || key;
+    });
+  }
+
+  _setContextMenuItemDisabled(action, disabled) {
+    const button = this._contextMenuButtons[action];
+    if (!button) return;
+    button.disabled = !!disabled;
+    button.style.opacity = disabled ? "0.45" : "1";
+    button.style.cursor = disabled ? "not-allowed" : "pointer";
+  }
+
+  _updateContextMenuState() {
+    let canUndo = false;
+    let canRedo = false;
+    let hasSelection = false;
+    try {
+      canUndo = !!this._core.call("canUndo");
+      canRedo = !!this._core.call("canRedo");
+      hasSelection = !!this._core.call("hasSelection");
+    } catch (_) {
+      // Ignore and keep defaults.
+    }
+
+    this._setContextMenuItemDisabled("undo", !canUndo);
+    this._setContextMenuItemDisabled("redo", !canRedo);
+    this._setContextMenuItemDisabled("cut", !hasSelection);
+    this._setContextMenuItemDisabled("copy", !hasSelection);
+    const canReadClipboard = typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.readText;
+    this._setContextMenuItemDisabled("paste", !canReadClipboard);
+  }
+
+  _showContextMenu(x, y) {
+    if (!this._contextMenu) return;
+    const containerRect = this.container.getBoundingClientRect();
+    const menu = this._contextMenu;
+    menu.style.display = "block";
+    menu.style.visibility = "hidden";
+
+    const menuWidth = menu.offsetWidth || 160;
+    const menuHeight = menu.offsetHeight || 180;
+    const clampedX = Math.max(4, Math.min(x, containerRect.width - menuWidth - 4));
+    const clampedY = Math.max(4, Math.min(y, containerRect.height - menuHeight - 4));
+
+    menu.style.left = `${clampedX}px`;
+    menu.style.top = `${clampedY}px`;
+    menu.style.visibility = "visible";
+    this._contextMenuVisible = true;
+  }
+
+  _hideContextMenu() {
+    if (!this._contextMenu) return;
+    this._contextMenu.style.display = "none";
+    this._contextMenuVisible = false;
+  }
+
+  async _runContextAction(action) {
+    switch (action) {
+      case "undo":
+        this._core.call("undo");
+        break;
+      case "redo":
+        this._core.call("redo");
+        break;
+      case "selectAll":
+        this._core.call("selectAll");
+        break;
+      case "copy":
+        await this._copySelectionToClipboard(false);
+        break;
+      case "cut":
+        await this._copySelectionToClipboard(true);
+        break;
+      case "paste": {
+        const text = await this._readClipboardText();
+        if (text) {
+          this._core.call("insertText", text);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  async _copySelectionToClipboard(isCut) {
+    if (!this._core.call("hasSelection")) return;
+    const selectedText = this._core.call("getSelectedText") || "";
+    if (!selectedText) return;
+    const copied = await this._writeClipboardText(selectedText);
+    if (isCut && copied) {
+      const selection = this._core.call("getSelection");
+      if (selection) {
+        this._core.call("deleteText", selection);
+      }
+    }
+  }
+
+  async _writeClipboardText(text) {
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {
+        // Fall through to legacy path.
+      }
+    }
+
+    try {
+      const previous = this._input.value;
+      this._input.value = text;
+      this._input.focus();
+      this._input.select();
+      const ok = document.execCommand("copy");
+      this._input.value = previous || "";
+      return !!ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async _readClipboardText() {
+    if (!(typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.readText)) {
+      return "";
+    }
+    try {
+      return await navigator.clipboard.readText();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  _onKeyDown(event) {
+    this._hideContextMenu();
+    const cmd = event.ctrlKey || event.metaKey;
+    if (cmd && !event.altKey) {
+      const key = (event.key || "").toLowerCase();
+      if (key === "c") {
+        void this._copySelectionToClipboard(false);
+        event.preventDefault();
+        return;
+      }
+      if (key === "x") {
+        void this._copySelectionToClipboard(true);
+        event.preventDefault();
+        return;
+      }
+    }
+
+    if (this._isComposing || event.isComposing || event.key === "Process" || event.keyCode === 229) {
       return;
     }
+
+    const mods = this._modifiers(event);
 
     const keyCode = this._mapKeyCode(event);
     if (!keyCode) return;

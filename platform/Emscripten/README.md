@@ -21,5 +21,6 @@ The wasm output will be generated at `build/wasm/bin/sweeteditor.js` and `build/
 - Core API (embind C++ mapping): `EditorCore`, `LineArrayDocument`, `PieceTableDocument`
 - High-level API: `createSweetEditor(container, options)`
 - Document abstraction/factory: `Document`, `DocumentFactory`
+- Context menu i18n: pass `options.locale` with `"zh"` or `"en"` (default auto-detect from browser)
 
 Entry file: `platform/Emscripten/web/index.js`
