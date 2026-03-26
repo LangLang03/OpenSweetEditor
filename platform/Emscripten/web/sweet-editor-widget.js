@@ -381,20 +381,21 @@ class Canvas2DRenderer {
     const style = run.style || {};
     const text = run.text || "";
     const topY = run.y - this._baseFontSize;
+    const runType = toInt(run.type, 0);
 
     if (style.background_color) {
       ctx.fillStyle = argbToCss(style.background_color, "transparent");
       ctx.fillRect(run.x, topY, run.width, this._baseFontSize * 1.3);
     }
 
-    if (run.type === 5) {
+    if (runType === 5) {
       ctx.fillStyle = this.theme.foldPlaceholderBg;
       ctx.fillRect(run.x, topY, run.width, this._baseFontSize * 1.3);
       ctx.fillStyle = this.theme.foldPlaceholderText;
-    } else if (run.type === 3) {
+    } else if (runType === 3) {
       this._drawInlayHintRun(ctx, run, topY, style, text);
       return;
-    } else if (run.type === 4) {
+    } else if (runType === 4) {
       ctx.fillStyle = this.theme.phantomText;
     } else {
       ctx.fillStyle = argbToCss(style.color, this.theme.text);

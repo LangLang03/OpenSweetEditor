@@ -1,4 +1,4 @@
-﻿import { EditorEventType } from "../index.js?v=20260326_11";
+import { EditorEventType } from "../index.js?v=20260326_14";
 
 function assert(condition, message) {
   if (!condition) {
@@ -6,13 +6,42 @@ function assert(condition, message) {
   }
 }
 
+function toFiniteNumber(value) {
+  if (value && typeof value === "object" && "value" in value) {
+    const enumValue = Number(value.value);
+    if (Number.isFinite(enumValue)) {
+      return enumValue;
+    }
+  }
+  const n = Number(value);
+  if (Number.isFinite(n)) {
+    return n;
+  }
+  return null;
+}
+
+function toInt(value, fallback = 0) {
+  const n = toFiniteNumber(value);
+  if (n === null) {
+    return fallback;
+  }
+  return Math.trunc(n);
+}
+
 function waitFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function getPixel(ctx, x, y) {
-  const sampleX = Math.max(0, Math.floor(x));
-  const sampleY = Math.max(0, Math.floor(y));
+  const canvas = ctx.canvas;
+  const cssWidth = Math.max(1, Number(canvas.clientWidth) || Number(canvas.width) || 1);
+  const cssHeight = Math.max(1, Number(canvas.clientHeight) || Number(canvas.height) || 1);
+  const dprX = (Number(canvas.width) || cssWidth) / cssWidth;
+  const dprY = (Number(canvas.height) || cssHeight) / cssHeight;
+  const maxX = Math.max(0, (Number(canvas.width) || 1) - 1);
+  const maxY = Math.max(0, (Number(canvas.height) || 1) - 1);
+  const sampleX = Math.max(0, Math.min(maxX, Math.floor(x * dprX)));
+  const sampleY = Math.max(0, Math.min(maxY, Math.floor(y * dprY)));
   const data = ctx.getImageData(sampleX, sampleY, 1, 1).data;
   return {
     r: data[0],
@@ -24,6 +53,22 @@ function getPixel(ctx, x, y) {
 
 function pixelNotBackground(pixel, threshold = 12) {
   return pixel.a > 0 && (pixel.r > threshold || pixel.g > threshold || pixel.b > threshold);
+}
+
+function unpackArgb(color) {
+  const value = Number(color) >>> 0;
+  return {
+    r: (value >>> 16) & 0xff,
+    g: (value >>> 8) & 0xff,
+    b: value & 0xff,
+  };
+}
+
+function pixelNearColor(pixel, rgb, tolerance = 96) {
+  const dr = Math.abs(pixel.r - rgb.r);
+  const dg = Math.abs(pixel.g - rgb.g);
+  const db = Math.abs(pixel.b - rgb.b);
+  return pixel.a > 0 && dr <= tolerance && dg <= tolerance && db <= tolerance;
 }
 
 export async function runWebApiSmoke(editor) {
@@ -94,6 +139,10 @@ export async function runWebApiSmoke(editor) {
   ]);
   editor.setLineDiagnostics(0, [{ column: 0, length: 2, severity: 0, color: 0 }]);
 
+  // Ensure sampling happens with the decorated line in viewport.
+  editor.setScroll(0, 0);
+  editor.gotoPosition(0, 0);
+
   await waitFrame();
   await waitFrame();
 
@@ -119,6 +168,8 @@ export async function runWebApiSmoke(editor) {
   }
 
   let inlayColorSampleOk = false;
+  let inlayColorRunCount = 0;
+  const inlayDebugSamples = [];
   const lines = model.lines;
   if (lines && typeof lines.size === "function" && lines.size() > 0) {
     for (let i = 0; i < lines.size() && !inlayColorSampleOk; i += 1) {
@@ -127,14 +178,32 @@ export async function runWebApiSmoke(editor) {
       if (!runs || typeof runs.size !== "function") continue;
       for (let j = 0; j < runs.size(); j += 1) {
         const run = runs.get(j);
-        if (Number(run?.type) === 3 && Number(run?.color_value) !== 0) {
-          const px = getPixel(
-            ctx,
-            (Number(run.x) || 0) + Math.max(1, (Number(run.width) || 0) * 0.25),
-            (Number(run.y) || 0),
-          );
-          inlayColorSampleOk = pixelNotBackground(px);
-          break;
+        if (toInt(run?.type, -1) === 3 && toInt(run?.color_value, 0) !== 0) {
+          inlayColorRunCount += 1;
+          const target = unpackArgb(run.color_value);
+          const margin = Math.max(0, Number(run.margin) || 0);
+          const left = (Number(run.x) || 0) + margin;
+          const right = left + Math.max(4, (Number(run.width) || 0) - margin * 2);
+          const top = (Number(run.y) || 0) - 20;
+          const bottom = (Number(run.y) || 0) + 2;
+
+          for (let sx = 0; sx < 7 && !inlayColorSampleOk; sx += 1) {
+            for (let sy = 0; sy < 7 && !inlayColorSampleOk; sy += 1) {
+              const sampleX = left + ((right - left) * sx) / 6;
+              const sampleY = top + ((bottom - top) * sy) / 6;
+              const px = getPixel(ctx, sampleX, sampleY);
+              if (inlayDebugSamples.length < 8) {
+                inlayDebugSamples.push({
+                  x: Math.round(sampleX),
+                  y: Math.round(sampleY),
+                  pixel: px,
+                });
+              }
+              if (pixelNearColor(px, target) || pixelNotBackground(px, 20)) {
+                inlayColorSampleOk = true;
+              }
+            }
+          }
         }
       }
     }
@@ -148,7 +217,10 @@ export async function runWebApiSmoke(editor) {
   assert(eventCounters[EditorEventType.SCROLL_CHANGED] > 0, "ScrollChanged not fired");
   assert(eventCounters[EditorEventType.SCALE_CHANGED] > 0, "ScaleChanged not fired");
   assert(gutterSampleOk, "gutter icon render sample failed");
-  assert(inlayColorSampleOk, "inlay color render sample failed");
+  assert(
+    inlayColorSampleOk,
+    `inlay color render sample failed (runs=${inlayColorRunCount}, samples=${JSON.stringify(inlayDebugSamples)})`,
+  );
 
   return {
     ok: true,
@@ -159,4 +231,3 @@ export async function runWebApiSmoke(editor) {
     },
   };
 }
-

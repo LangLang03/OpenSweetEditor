@@ -953,7 +953,7 @@ export class WebEditorCore {
     this._callWithVector("DiagnosticSpanVector", src, (item) => ({
       column: ensureColumn(item.column),
       length: ensureLength(item.length),
-      severity: toInt(item.severity, this._diagnosticSeverity.DIAG_HINT),
+      severity: this._toNativeEnumValue("DiagnosticSeverity", item.severity, this._diagnosticSeverity.DIAG_HINT),
       color: toInt(item.color, 0),
     }), (vec) => {
       this.call("setLineDiagnostics", lineNo, vec);
@@ -999,7 +999,7 @@ export class WebEditorCore {
   setSeparatorGuides(guides) {
     this._callWithVector("SeparatorGuideVector", asArray(guides), (item) => ({
       line: ensureLine(item.line),
-      style: toInt(item.style, this._separatorStyle.SINGLE),
+      style: this._toNativeEnumValue("SeparatorStyle", item.style, this._separatorStyle.SINGLE),
       count: Math.max(0, toInt(item.count, 0)),
       text_end_column: Math.max(0, toInt(item.textEndColumn ?? item.text_end_column, 0)),
     }), (vec) => {
@@ -1065,19 +1065,20 @@ export class WebEditorCore {
   }
 
   _toNativeInlayHint(hint) {
-    const type = toInt(hint.type, this._inlayType.TEXT);
-    if (type === this._inlayType.ICON) {
+    const typeValue = toInt(hint.type, this._inlayType.TEXT);
+    const nativeType = this._toNativeEnumValue("InlayType", typeValue, this._inlayType.TEXT);
+    if (typeValue === this._inlayType.ICON) {
       return {
-        type,
+        type: nativeType,
         column: ensureColumn(hint.column),
         text: "",
         icon_id: toInt(hint.iconId ?? hint.icon_id ?? hint.intValue, 0),
         color: 0,
       };
     }
-    if (type === this._inlayType.COLOR) {
+    if (typeValue === this._inlayType.COLOR) {
       return {
-        type,
+        type: nativeType,
         column: ensureColumn(hint.column),
         text: "",
         icon_id: 0,
@@ -1085,12 +1086,22 @@ export class WebEditorCore {
       };
     }
     return {
-      type: this._inlayType.TEXT,
+      type: this._toNativeEnumValue("InlayType", this._inlayType.TEXT, this._inlayType.TEXT),
       column: ensureColumn(hint.column),
       text: String(hint.text ?? ""),
       icon_id: 0,
       color: 0,
     };
+  }
+
+  _toNativeEnumValue(enumName, value, fallback = 0) {
+    const numericValue = toInt(value, fallback);
+    const enumType = this._wasm?.[enumName];
+    const enumValues = enumType?.values;
+    if (enumValues && Object.prototype.hasOwnProperty.call(enumValues, String(numericValue))) {
+      return enumValues[String(numericValue)];
+    }
+    return numericValue;
   }
 
   _callWithVector(vectorName, items, mapper, fn) {
