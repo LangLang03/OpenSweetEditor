@@ -2423,19 +2423,6 @@ export class SweetEditorWidget {
       return;
     }
 
-    if (event.key === "Enter") {
-      const providerAction = this._provideNewLineAction();
-      if (providerAction != null) {
-        const text = String(providerAction?.text ?? providerAction ?? "");
-        if (text.length > 0) {
-          const editResult = this._core.insertText(text);
-          this._handleTextEditResult(editResult, { action: TextChangeAction.KEY });
-          event.preventDefault();
-          return;
-        }
-      }
-    }
-
     const mods = this._modifiers(event);
     const keyCode = this._mapKeyCode(event);
     if (!keyCode) {
@@ -2770,6 +2757,7 @@ export class SweetEditorWidget {
         forceSelection: selectionChanged,
       });
     }
+    this.requestDecorationRefresh();
   }
 
   _handleTextEditResult(editResult, options = {}) {
