@@ -1,5 +1,5 @@
-import { loadSweetEditorCore } from "./editor-core.js?v=20260326_22";
-import { SweetEditorWidget } from "./sweet-editor-widget.js?v=20260326_22";
+import { loadSweetEditorCore } from "./editor-core.js?v=20260326_23";
+import { SweetEditorWidget } from "./sweet-editor-widget.js?v=20260326_23";
 
 export {
   loadSweetEditorCore,
@@ -30,9 +30,9 @@ export {
   applyLineChangeToLines,
   applyTextChangeToText,
   applyTextChangesToText,
-} from "./editor-core.js?v=20260326_22";
+} from "./editor-core.js?v=20260326_23";
 
-export { SweetEditorWidget, EditorEventType } from "./sweet-editor-widget.js?v=20260326_22";
+export { SweetEditorWidget, EditorEventType } from "./sweet-editor-widget.js?v=20260326_23";
 
 export async function createSweetEditor(container, options = {}) {
   if (!container) {

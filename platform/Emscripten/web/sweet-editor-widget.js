@@ -295,6 +295,8 @@ class Canvas2DRenderer {
     this._baseFontSize = 14;
     this._fontFamily = "Menlo, Consolas, Monaco, monospace";
     this._iconProvider = null;
+    this._pixelRatioX = 1;
+    this._pixelRatioY = 1;
   }
 
   createTextMeasurerCallbacks() {
@@ -342,7 +344,50 @@ class Canvas2DRenderer {
     return this._iconProvider;
   }
 
+  _setPixelSnapContext(ctx) {
+    if (!ctx || typeof ctx.getTransform !== "function") {
+      this._pixelRatioX = 1;
+      this._pixelRatioY = 1;
+      return;
+    }
+    const transform = ctx.getTransform();
+    const ratioX = Number(transform?.a);
+    const ratioY = Number(transform?.d);
+    this._pixelRatioX = Number.isFinite(ratioX) && ratioX > 0 ? ratioX : 1;
+    this._pixelRatioY = Number.isFinite(ratioY) && ratioY > 0 ? ratioY : 1;
+  }
+
+  _snapX(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) {
+      return 0;
+    }
+    return Math.round(n * this._pixelRatioX) / this._pixelRatioX;
+  }
+
+  _snapY(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) {
+      return 0;
+    }
+    return Math.round(n * this._pixelRatioY) / this._pixelRatioY;
+  }
+
+  _snapRect(x, y, width, height) {
+    const x1 = this._snapX(x);
+    const y1 = this._snapY(y);
+    const x2 = this._snapX((Number(x) || 0) + Math.max(0, Number(width) || 0));
+    const y2 = this._snapY((Number(y) || 0) + Math.max(0, Number(height) || 0));
+    return {
+      x: x1,
+      y: y1,
+      width: Math.max(0, x2 - x1),
+      height: Math.max(0, y2 - y1),
+    };
+  }
+
   render(ctx, model, viewportWidth, viewportHeight) {
+    this._setPixelSnapContext(ctx);
     ctx.fillStyle = this.theme.background;
     ctx.fillRect(0, 0, viewportWidth, viewportHeight);
     if (!model) return;
@@ -358,14 +403,16 @@ class Canvas2DRenderer {
     if (!model.current_line) return;
     const cursor = model.cursor;
     const h = cursor && cursor.height > 0 ? cursor.height : this._baseFontSize * 1.4;
+    const rect = this._snapRect(0, model.current_line.y, viewportWidth, h);
     ctx.fillStyle = this.theme.currentLine;
-    ctx.fillRect(0, model.current_line.y, viewportWidth, h);
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
   }
 
   _drawSelection(ctx, model) {
     ctx.fillStyle = this.theme.selection;
     forVector(model.selection_rects, (rect) => {
-      ctx.fillRect(rect.origin.x, rect.origin.y, rect.width, rect.height);
+      const snapped = this._snapRect(rect.origin.x, rect.origin.y, rect.width, rect.height);
+      ctx.fillRect(snapped.x, snapped.y, snapped.width, snapped.height);
     });
   }
 
@@ -381,17 +428,21 @@ class Canvas2DRenderer {
     if (!run) return;
     const style = run.style || {};
     const text = run.text || "";
-    const topY = run.y - this._baseFontSize;
+    const topY = this._snapY(run.y - this._baseFontSize);
+    const baselineY = this._snapY(run.y);
     const runType = toInt(run.type, 0);
+    const lineHeight = this._baseFontSize * 1.3;
 
     if (style.background_color) {
+      const backgroundRect = this._snapRect(run.x, topY, run.width, lineHeight);
       ctx.fillStyle = argbToCss(style.background_color, "transparent");
-      ctx.fillRect(run.x, topY, run.width, this._baseFontSize * 1.3);
+      ctx.fillRect(backgroundRect.x, backgroundRect.y, backgroundRect.width, backgroundRect.height);
     }
 
     if (runType === 5) {
+      const foldRect = this._snapRect(run.x, topY, run.width, lineHeight);
       ctx.fillStyle = this.theme.foldPlaceholderBg;
-      ctx.fillRect(run.x, topY, run.width, this._baseFontSize * 1.3);
+      ctx.fillRect(foldRect.x, foldRect.y, foldRect.width, foldRect.height);
       ctx.fillStyle = this.theme.foldPlaceholderText;
     } else if (runType === 3) {
       this._drawInlayHintRun(ctx, run, topY, style, text);
@@ -404,26 +455,29 @@ class Canvas2DRenderer {
 
     if (text.length > 0) {
       ctx.font = this._fontByStyle(style.font_style || 0);
-      ctx.fillText(text, run.x, run.y);
+      ctx.fillText(text, run.x, baselineY);
     }
   }
 
   _drawCursor(ctx, model) {
     if (!model.cursor || !model.cursor.visible) return;
+    const rect = this._snapRect(model.cursor.position.x, model.cursor.position.y, 2, model.cursor.height);
     ctx.fillStyle = this.theme.cursor;
-    ctx.fillRect(model.cursor.position.x, model.cursor.position.y, 2, model.cursor.height);
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
   }
 
   _drawGutter(ctx, model, viewportHeight) {
     if (model.split_x <= 0) return;
+    const gutterRect = this._snapRect(0, 0, model.split_x, viewportHeight);
     ctx.fillStyle = this.theme.background;
-    ctx.fillRect(0, 0, model.split_x, viewportHeight);
+    ctx.fillRect(gutterRect.x, gutterRect.y, gutterRect.width, gutterRect.height);
 
     ctx.strokeStyle = this.theme.splitLine;
     if (model.split_line_visible) {
+      const splitX = this._snapX(model.split_x) + (0.5 / this._pixelRatioX);
       ctx.beginPath();
-      ctx.moveTo(model.split_x + 0.5, 0);
-      ctx.lineTo(model.split_x + 0.5, viewportHeight);
+      ctx.moveTo(splitX, 0);
+      ctx.lineTo(splitX, viewportHeight);
       ctx.stroke();
     }
 
@@ -432,7 +486,7 @@ class Canvas2DRenderer {
     forVector(model.lines, (line) => {
       if (line.wrap_index !== 0 || line.is_phantom_line) return;
       const p = line.line_number_position;
-      ctx.fillText(String(line.logical_line + 1), p.x, p.y);
+      ctx.fillText(String(line.logical_line + 1), p.x, this._snapY(p.y));
     });
 
     forVector(model.gutter_icons, (item) => {
@@ -457,24 +511,31 @@ class Canvas2DRenderer {
     const padding = Math.max(0, Number(run.padding) || 0);
     const runHeight = this._baseFontSize * 1.3;
     const bgX = run.x + margin;
-    const bgY = topY;
+    const bgY = this._snapY(topY);
     const bgWidth = Math.max(1, run.width - margin * 2);
     const bgHeight = runHeight;
 
     if (run.color_value) {
       const blockSize = Math.max(4, Math.min(bgHeight, bgWidth));
       const blockX = bgX;
-      const blockY = bgY + (bgHeight - blockSize) * 0.5;
+      const blockY = this._snapY(bgY + (bgHeight - blockSize) * 0.5);
       const color = argbToCss(toInt(run.color_value, 0), this.theme.inlayHintBg);
+      const colorRect = this._snapRect(blockX, blockY, blockSize, blockSize);
       ctx.fillStyle = color;
-      ctx.fillRect(blockX, blockY, blockSize, blockSize);
+      ctx.fillRect(colorRect.x, colorRect.y, colorRect.width, colorRect.height);
       ctx.strokeStyle = "rgba(0,0,0,0.24)";
-      ctx.strokeRect(blockX + 0.5, blockY + 0.5, Math.max(1, blockSize - 1), Math.max(1, blockSize - 1));
+      ctx.strokeRect(
+        colorRect.x + (0.5 / this._pixelRatioX),
+        colorRect.y + (0.5 / this._pixelRatioY),
+        Math.max(1, colorRect.width - (1 / this._pixelRatioX)),
+        Math.max(1, colorRect.height - (1 / this._pixelRatioY)),
+      );
       return;
     }
 
+    const bgRect = this._snapRect(bgX, bgY, bgWidth, bgHeight);
     ctx.fillStyle = this.theme.inlayHintBg;
-    ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
+    ctx.fillRect(bgRect.x, bgRect.y, bgRect.width, bgRect.height);
 
     if (toInt(run.icon_id, 0) > 0) {
       const iconSize = Math.max(4, Math.min(bgHeight - padding * 2, bgWidth - padding * 2));
@@ -488,7 +549,7 @@ class Canvas2DRenderer {
     if (text.length > 0) {
       ctx.font = this._fontByStyle(style.font_style || 0);
       const textX = bgX + padding;
-      ctx.fillText(text, textX, run.y);
+      ctx.fillText(text, textX, this._snapY(run.y));
     }
   }
 
@@ -501,7 +562,7 @@ class Canvas2DRenderer {
     }
     const iconId = toInt(item.icon_id, 0);
     const x = Number(item.origin?.x) || 0;
-    const y = Number(item.origin?.y) || 0;
+    const y = this._snapY(item.origin?.y);
     this._drawIconGlyphOrImage(ctx, iconId, x, y, width, height, false);
   }
 
@@ -518,7 +579,7 @@ class Canvas2DRenderer {
     }
 
     const x = Number(marker.origin?.x) || 0;
-    const y = Number(marker.origin?.y) || 0;
+    const y = this._snapY(marker.origin?.y);
     const centerX = x + width * 0.5;
     const centerY = y + height * 0.5;
     const halfSize = Math.max(2, Math.min(width, height) * 0.28);
@@ -546,7 +607,8 @@ class Canvas2DRenderer {
     const descriptor = this._resolveIconDescriptor(iconId);
     if (descriptor?.image && isImageLikeObject(descriptor.image)) {
       try {
-        ctx.drawImage(descriptor.image, x, y, width, height);
+        const imageRect = this._snapRect(x, y, width, height);
+        ctx.drawImage(descriptor.image, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
         return;
       } catch (_) {
         // ignore
@@ -565,7 +627,7 @@ class Canvas2DRenderer {
         ctx.font = `${Math.max(8, Math.floor(Math.min(width, height) * 0.8))}px ${this._fontFamily}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(glyph, x + width * 0.5, y + height * 0.5);
+        ctx.fillText(glyph, this._snapX(x + width * 0.5), this._snapY(y + height * 0.5));
         ctx.textAlign = "start";
         ctx.textBaseline = "alphabetic";
         return;
@@ -584,7 +646,8 @@ class Canvas2DRenderer {
     }
 
     ctx.fillStyle = cssColor;
-    ctx.fillRect(x, y, width, height);
+    const colorRect = this._snapRect(x, y, width, height);
+    ctx.fillRect(colorRect.x, colorRect.y, colorRect.width, colorRect.height);
   }
 
   _resolveIconDescriptor(iconId) {
@@ -918,6 +981,32 @@ export class SweetEditorWidget {
     this._viewportWidth = 0;
     this._viewportHeight = 0;
     this._lastRenderModel = null;
+    this._rafScheduledAt = 0;
+
+    const perfOverlayOptions = (options.performanceOverlay && typeof options.performanceOverlay === "object")
+      ? options.performanceOverlay
+      : {};
+    this._performanceOverlayEnabled = options.performanceOverlay === false
+      ? false
+      : Boolean(perfOverlayOptions.enabled ?? true);
+    this._performanceOverlayUpdateIntervalMs = Math.max(120, toInt(perfOverlayOptions.updateIntervalMs, 250));
+    this._performanceOverlay = null;
+    this._perfStats = {
+      frameCount: 0,
+      fpsWindowStartAt: 0,
+      fps: 0,
+      avgFrameMs: 0,
+      avgBuildMs: 0,
+      avgDrawMs: 0,
+      avgRafLagMs: 0,
+      maxFrameMs: 0,
+      requeueCount: 0,
+      lastOverlayUpdatedAt: 0,
+      lastFrameMs: 0,
+      lastScrollSampleY: 0,
+      lastScrollSampleAt: 0,
+      scrollSpeedY: 0,
+    };
 
     this._isComposing = false;
     this._compositionCommitPending = false;
@@ -1606,6 +1695,11 @@ export class SweetEditorWidget {
       this._completionPopupController = null;
     }
 
+    if (this._performanceOverlay) {
+      this._performanceOverlay.remove();
+      this._performanceOverlay = null;
+    }
+
     this._listeners.clear();
     this._newLineActionProviders = [];
 
@@ -2190,6 +2284,7 @@ export class SweetEditorWidget {
     this._input.style.opacity = "0.01";
     this._input.style.pointerEvents = "none";
     this.container.appendChild(this._input);
+    this._setupPerformanceOverlay();
 
     this._createContextMenu();
 
@@ -2263,6 +2358,123 @@ export class SweetEditorWidget {
   _isCompositionInputType(inputType) {
     const type = String(inputType || "");
     return type.startsWith("insertComposition") || type.startsWith("deleteComposition");
+  }
+
+  _setupPerformanceOverlay() {
+    if (!this._performanceOverlayEnabled) {
+      return;
+    }
+    const panel = document.createElement("pre");
+    panel.setAttribute("aria-hidden", "true");
+    panel.style.position = "absolute";
+    panel.style.top = "8px";
+    panel.style.right = "8px";
+    panel.style.margin = "0";
+    panel.style.padding = "6px 8px";
+    panel.style.border = "none";
+    panel.style.borderRadius = "0";
+    panel.style.background = "rgba(0, 0, 0, 0.62)";
+    panel.style.color = "#ffd400";
+    panel.style.font = "12px Menlo, Consolas, Monaco, monospace";
+    panel.style.lineHeight = "1.35";
+    panel.style.whiteSpace = "pre";
+    panel.style.pointerEvents = "none";
+    panel.style.zIndex = "30";
+    panel.textContent = "FPS --\nFrame -- ms\nRenderLag -- ms";
+    this.container.appendChild(panel);
+    this._performanceOverlay = panel;
+  }
+
+  _nowMs() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  _smoothValue(previous, current, alpha = 0.18) {
+    const value = Number(current);
+    if (!Number.isFinite(value)) {
+      return Number(previous) || 0;
+    }
+    const prev = Number(previous);
+    if (!Number.isFinite(prev) || prev <= 0) {
+      return value;
+    }
+    return prev + (value - prev) * alpha;
+  }
+
+  _recordPerformanceSample(sample = {}) {
+    if (!this._performanceOverlayEnabled || !this._perfStats) {
+      return;
+    }
+
+    const stats = this._perfStats;
+    const now = this._nowMs();
+    stats.frameCount += 1;
+    if (stats.fpsWindowStartAt <= 0) {
+      stats.fpsWindowStartAt = now;
+    }
+    const fpsWindowElapsed = now - stats.fpsWindowStartAt;
+    if (fpsWindowElapsed >= 1000) {
+      stats.fps = (stats.frameCount * 1000) / fpsWindowElapsed;
+      stats.frameCount = 0;
+      stats.fpsWindowStartAt = now;
+    }
+
+    const frameMs = Math.max(0, Number(sample.frameMs) || 0);
+    const buildMs = Math.max(0, Number(sample.buildMs) || 0);
+    const drawMs = Math.max(0, Number(sample.drawMs) || 0);
+    const rafLagMs = Math.max(0, Number(sample.rafLagMs) || 0);
+
+    stats.avgFrameMs = this._smoothValue(stats.avgFrameMs, frameMs, 0.16);
+    stats.avgBuildMs = this._smoothValue(stats.avgBuildMs, buildMs, 0.2);
+    stats.avgDrawMs = this._smoothValue(stats.avgDrawMs, drawMs, 0.2);
+    stats.avgRafLagMs = this._smoothValue(stats.avgRafLagMs, rafLagMs, 0.2);
+    stats.maxFrameMs = Math.max(frameMs, stats.maxFrameMs * 0.92);
+    stats.lastFrameMs = frameMs;
+    if (sample.requeued) {
+      stats.requeueCount += 1;
+    }
+
+    if (now - stats.lastOverlayUpdatedAt >= this._performanceOverlayUpdateIntervalMs) {
+      this._updatePerformanceOverlay(now);
+    }
+  }
+
+  _updatePerformanceOverlay(now = this._nowMs()) {
+    if (!this._performanceOverlayEnabled || !this._performanceOverlay || !this._perfStats) {
+      return;
+    }
+
+    const stats = this._perfStats;
+    let scrollY = this._lastScrollY;
+    const metrics = this._safeGetScrollMetrics();
+    if (metrics) {
+      const nextScrollY = Number(metrics.scroll_y ?? metrics.scrollY);
+      if (Number.isFinite(nextScrollY)) {
+        scrollY = nextScrollY;
+      }
+    }
+
+    if (stats.lastScrollSampleAt > 0) {
+      const dt = Math.max(1, now - stats.lastScrollSampleAt);
+      const instantSpeedY = ((scrollY - stats.lastScrollSampleY) * 1000) / dt;
+      stats.scrollSpeedY = this._smoothValue(stats.scrollSpeedY, instantSpeedY, 0.25);
+    }
+    stats.lastScrollSampleY = scrollY;
+    stats.lastScrollSampleAt = now;
+    stats.lastOverlayUpdatedAt = now;
+
+    this._performanceOverlay.textContent = [
+      `FPS ${stats.fps.toFixed(1)}`,
+      `Frame ${stats.avgFrameMs.toFixed(2)} ms`,
+      `Build ${stats.avgBuildMs.toFixed(2)} ms`,
+      `Draw ${stats.avgDrawMs.toFixed(2)} ms`,
+      `RAF Lag ${stats.avgRafLagMs.toFixed(2)} ms`,
+      `ScrollV ${stats.scrollSpeedY.toFixed(1)} px/s`,
+      `Max ${stats.maxFrameMs.toFixed(2)} ms`,
+    ].join("\n");
   }
 
   _hasActiveCompositionFlow() {
@@ -2836,23 +3048,42 @@ export class SweetEditorWidget {
 
   _requestRender() {
     if (this._disposed || this._rafHandle) return;
+    this._rafScheduledAt = this._nowMs();
     this._rafHandle = requestAnimationFrame(() => {
+      const frameStartAt = this._nowMs();
+      const rafLagMs = this._rafScheduledAt > 0 ? Math.max(0, frameStartAt - this._rafScheduledAt) : 0;
+      this._rafScheduledAt = 0;
       this._rafHandle = 0;
       if (this._disposed || !this._dirty) return;
 
       this._dirty = false;
+      let buildMs = 0;
+      let drawMs = 0;
       try {
         const rect = this.container.getBoundingClientRect();
+        const buildStartAt = this._nowMs();
         const model = this._core.buildRenderModel();
+        buildMs = Math.max(0, this._nowMs() - buildStartAt);
         this._lastRenderModel = model;
         this._syncInputAnchor(model, rect.width, rect.height);
+        const drawStartAt = this._nowMs();
         this._renderer.render(this._ctx, model, rect.width, rect.height);
+        drawMs = Math.max(0, this._nowMs() - drawStartAt);
       } catch (error) {
         if (!this._renderErrorLogged) {
           console.error("SweetEditorWidget render error:", error);
           this._renderErrorLogged = true;
         }
       }
+
+      const frameMs = Math.max(0, this._nowMs() - frameStartAt);
+      this._recordPerformanceSample({
+        frameMs,
+        buildMs,
+        drawMs,
+        rafLagMs,
+        requeued: this._dirty,
+      });
 
       if (this._dirty) {
         this._requestRender();
