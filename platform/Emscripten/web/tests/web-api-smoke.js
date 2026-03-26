@@ -1,4 +1,4 @@
-import { EditorEventType } from "../index.js?v=20260326_21";
+import { EditorEventType } from "../index.js?v=20260326_22";
 
 function assert(condition, message) {
   if (!condition) {
@@ -222,6 +222,19 @@ export async function runWebApiSmoke(editor) {
   editor._onInput(makeInputEvent("", "", { isComposing: true }));
   await waitTimerTick();
   assert(editor.getText() === "d", "regression F failed: empty composing input should not cancel printable fallback");
+
+  // Input regression G: Enter must not race ahead while composition commit is pending.
+  editor.loadText("");
+  resetInputPipelineState(editor);
+  editor.getCore().compositionStart();
+  editor.getCore().compositionUpdate("shi");
+  editor._isComposing = false;
+  editor._compositionCommitPending = true;
+  editor._compositionEndFallbackData = "\u8BD5";
+  editor._onKeyDown(makeKeyEvent("Enter", { keyCode: 13 }));
+  assert(editor.getText() === "", "regression G failed: Enter should not insert newline while composition commit is pending");
+  editor._onInput(makeInputEvent("insertFromComposition", "\u8BD5"));
+  assert(editor.getText() === "\u8BD5", "regression G failed: pending composition should commit normally");
 
   editor.loadText("alpha\nbeta\ngamma");
 

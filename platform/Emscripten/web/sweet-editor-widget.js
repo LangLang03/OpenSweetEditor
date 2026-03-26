@@ -2265,6 +2265,20 @@ export class SweetEditorWidget {
     return type.startsWith("insertComposition") || type.startsWith("deleteComposition");
   }
 
+  _hasActiveCompositionFlow() {
+    if (this._isComposing || this._compositionCommitPending) {
+      return true;
+    }
+    if (!this._core || typeof this._core.isComposing !== "function") {
+      return false;
+    }
+    try {
+      return !!this._core.isComposing();
+    } catch (_) {
+      return false;
+    }
+  }
+
   _invalidatePrintableFallback() {
     this._printableFallbackEpoch += 1;
     if (!this._pendingPrintableFallbackTimers || this._pendingPrintableFallbackTimers.size === 0) {
@@ -2363,7 +2377,7 @@ export class SweetEditorWidget {
       return;
     }
 
-    if (this._isComposing || this._isCompositionInputType(inputType)) {
+    if (this._hasActiveCompositionFlow() || this._isCompositionInputType(inputType)) {
       this._invalidatePrintableFallback();
       return;
     }
@@ -2407,7 +2421,7 @@ export class SweetEditorWidget {
       return;
     }
 
-    if (this._isComposing || this._isCompositionInputType(inputType)) {
+    if (this._hasActiveCompositionFlow() || this._isCompositionInputType(inputType)) {
       this._invalidatePrintableFallback();
       return;
     }
@@ -2624,7 +2638,7 @@ export class SweetEditorWidget {
       }
     }
 
-    if (this._isComposing || event.isComposing || event.key === "Process") {
+    if (this._hasActiveCompositionFlow() || event.isComposing || event.key === "Process") {
       return;
     }
 
