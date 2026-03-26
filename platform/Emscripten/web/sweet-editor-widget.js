@@ -2357,26 +2357,30 @@ export class SweetEditorWidget {
   }
 
   _onBeforeInput(e) {
-    this._invalidatePrintableFallback();
-
     const inputType = e.inputType || "";
     if (inputType === "insertFromComposition") {
+      this._invalidatePrintableFallback();
       return;
     }
 
-    if (this._isComposing || this._isCompositionInputType(inputType) || (e.isComposing && inputType !== "insertText")) {
+    if (this._isComposing || this._isCompositionInputType(inputType)) {
+      this._invalidatePrintableFallback();
+      return;
+    }
+    if (e.isComposing && inputType !== "insertText") {
       return;
     }
 
     const handled = this._applyDomTextInput(e, { preventDefault: true, allowValueFallback: false });
     if (handled) {
+      this._invalidatePrintableFallback();
       this._suppressNextInputOnce();
     }
   }
 
   _onInput(e) {
-    this._invalidatePrintableFallback();
     if (this._suppressNextInputEvent) {
+      this._invalidatePrintableFallback();
       this._suppressNextInputEvent = false;
       this._input.value = "";
       return;
@@ -2385,6 +2389,7 @@ export class SweetEditorWidget {
     const inputType = e.inputType || "";
 
     if (inputType === "insertFromComposition") {
+      this._invalidatePrintableFallback();
       if (this._compositionCommitPending) {
         if (this._compositionEndTimer) {
           clearTimeout(this._compositionEndTimer);
@@ -2402,10 +2407,17 @@ export class SweetEditorWidget {
       return;
     }
 
-    if (this._isComposing || this._isCompositionInputType(inputType) || (e.isComposing && inputType === "")) {
+    if (this._isComposing || this._isCompositionInputType(inputType)) {
+      this._invalidatePrintableFallback();
       return;
     }
-    this._applyDomTextInput(e, { preventDefault: false, allowValueFallback: true });
+    if (e.isComposing && inputType === "") {
+      return;
+    }
+    const handled = this._applyDomTextInput(e, { preventDefault: false, allowValueFallback: true });
+    if (handled) {
+      this._invalidatePrintableFallback();
+    }
   }
 
   _onPointerDown(event) {
@@ -2545,7 +2557,10 @@ export class SweetEditorWidget {
 
     const activeElement = document.activeElement;
     if (activeElement === this._input) {
-      return false;
+      if (target && !this._isBodyLikeElement(target) && !this.container.contains(target)) {
+        return false;
+      }
+      return this._documentKeyRouteActive;
     }
     if (activeElement && this.container.contains(activeElement)) {
       return true;
