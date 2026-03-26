@@ -398,10 +398,7 @@ public class SweetEditor extends View {
         mTheme = theme;
         mRenderer.applyTheme(theme);
 
-        for (Map.Entry<Integer, TextStyle> entry : theme.textStyles.entrySet()) {
-            TextStyle style = entry.getValue();
-            mEditorCore.registerTextStyle(entry.getKey(), style.color, style.backgroundColor, style.fontStyle);
-        }
+        mEditorCore.registerBatchTextStyles(theme.textStyles);
 
         if (mInlineSuggestionController != null) {
             mInlineSuggestionController.applyTheme(theme);
@@ -1801,10 +1798,7 @@ public class SweetEditor extends View {
 
         mSelectionMenuController = new SelectionMenuController(this, mEventBus, mTheme);
 
-        for (Map.Entry<Integer, TextStyle> entry : mTheme.textStyles.entrySet()) {
-            TextStyle style = entry.getValue();
-            mEditorCore.registerTextStyle(entry.getKey(), style.color, style.backgroundColor, style.fontStyle);
-        }
+        mEditorCore.registerBatchTextStyles(mTheme.textStyles);
 
         mSettings = new EditorSettings(this);
         mSettings.setContentStartPadding(DEFAULT_CONTENT_START_PADDING_DP * density);
