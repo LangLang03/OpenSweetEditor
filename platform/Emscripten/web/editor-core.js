@@ -63,7 +63,32 @@ function toInt(value, fallback = 0) {
 }
 
 function asArray(value) {
-  return Array.isArray(value) ? value : [];
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  if (typeof value.size === "function" && typeof value.get === "function") {
+    const size = Math.max(0, toInt(value.size(), 0));
+    const out = [];
+    for (let i = 0; i < size; i += 1) {
+      out.push(value.get(i));
+    }
+    return out;
+  }
+
+  if (typeof value[Symbol.iterator] === "function") {
+    try {
+      return Array.from(value);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  return [];
 }
 
 function ensureLine(value) {

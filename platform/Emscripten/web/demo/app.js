@@ -7,8 +7,8 @@ import {
   DecorationResultDispatchMode,
   DecorationProviderCallMode,
   DecorationResult,
-} from "../index.js?v=20260326_05";
-import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_05";
+} from "../index.js?v=20260326_10";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_10";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
@@ -87,8 +87,6 @@ const STYLE = Object.freeze({
 });
 
 const INLAY_COLOR_TYPE = 2;
-const MAX_DEMO_CHARS = 60000;
-const MAX_DEMO_LINES = 1600;
 const MAX_RENDER_LINES_PER_PASS = 420;
 const SYNTAX_JSON_FILES = Object.freeze(["cpp.json", "java.json", "kotlin.json", "lua.json"]);
 
@@ -256,25 +254,10 @@ function applyLineChangeToLines(lines, range, newText) {
 }
 
 function truncateDemoTextForWeb(text) {
-  let out = normalizeNewlines(text);
-  let truncated = false;
-
-  if (out.length > MAX_DEMO_CHARS) {
-    out = out.slice(0, MAX_DEMO_CHARS);
-    truncated = true;
-  }
-
-  const lines = out.split("\n");
-  if (lines.length > MAX_DEMO_LINES) {
-    out = lines.slice(0, MAX_DEMO_LINES).join("\n");
-    truncated = true;
-  }
-
-  if (truncated) {
-    out += "\n\n// [Web Demo] Truncated for smooth interaction.\n";
-  }
-
-  return { text: out, truncated };
+  return {
+    text: normalizeNewlines(text),
+    truncated: false,
+  };
 }
 
 function parseColorLiteralArgb(literal) {
@@ -519,21 +502,34 @@ async function ensureSweetLineRuntime(versionTag) {
 
     let compiled = 0;
     for (const syntaxFile of SYNTAX_JSON_FILES) {
-      try {
-        const syntaxUrl = new URL(`../../../_res/syntaxes/${syntaxFile}?v=${versionTag}`, import.meta.url);
-        const response = await fetch(syntaxUrl.href, { cache: "no-store" });
-        if (!response.ok) {
-          continue;
+      const candidates = [
+        new URL(`./syntaxes/${syntaxFile}?v=${versionTag}`, import.meta.url),
+        new URL(`../../../_res/syntaxes/${syntaxFile}?v=${versionTag}`, import.meta.url),
+      ];
+
+      let loaded = false;
+      for (const syntaxUrl of candidates) {
+        try {
+          const response = await fetch(syntaxUrl.href, { cache: "no-store" });
+          if (!response.ok) {
+            continue;
+          }
+          engine.compileSyntaxFromJson(await response.text());
+          compiled += 1;
+          loaded = true;
+          break;
+        } catch (_) {
+          // try next candidate
         }
-        engine.compileSyntaxFromJson(await response.text());
-        compiled += 1;
-      } catch (error) {
-        console.warn(`SweetLine syntax load failed: ${syntaxFile}`, error);
+      }
+
+      if (!loaded) {
+        console.warn(`SweetLine syntax load failed: ${syntaxFile}`);
       }
     }
 
     if (compiled === 0) {
-      throw new Error("SweetLine syntax load failed: no syntax JSON compiled.");
+      console.warn("SweetLine syntax load skipped: no syntax JSON compiled.");
     }
 
     return { sweetLine, engine };
@@ -814,6 +810,8 @@ function registerDemoStyles(editor) {
 
 const host = document.getElementById("editor");
 const fileSelect = document.getElementById("fileSelect");
+const openLocalBtn = document.getElementById("openLocalBtn");
+const localFileInput = document.getElementById("localFileInput");
 const undoBtn = document.getElementById("undoBtn");
 const redoBtn = document.getElementById("redoBtn");
 const completeBtn = document.getElementById("completeBtn");
@@ -866,19 +864,105 @@ function setStatus(message) {
   statusText.textContent = message;
 }
 
-function loadFile(fileName) {
-  const text = fileMap.get(fileName) || DEMO_FILE_FALLBACKS[fileName] || "";
-  const state = fileState.get(fileName);
-  activeFileName = fileName;
-  if (typeof core.clearAllDecorations === "function") {
-    core.clearAllDecorations();
+function ensureFileOption(fileName) {
+  for (let i = 0; i < fileSelect.options.length; i += 1) {
+    if (fileSelect.options[i].value === fileName) {
+      return;
+    }
   }
-  demoDecorationProvider.setDocumentSource(fileName, text);
-  editor.setMetadata({ fileName });
-  editor.setLanguageConfiguration(resolveLanguageConfiguration(fileName));
-  editor.loadText(text);
-  editor.requestDecorationRefresh();
-  setStatus(`Loaded: ${fileName}${state?.truncated ? " (truncated)" : ""}`);
+
+  const option = document.createElement("option");
+  option.value = fileName;
+  option.textContent = fileName;
+  fileSelect.appendChild(option);
+}
+
+function getUniqueLocalFileName(fileName) {
+  const raw = String(fileName || "").trim();
+  const base = raw.length > 0 ? raw : `local-${Date.now()}.txt`;
+  if (!fileMap.has(base)) {
+    return base;
+  }
+
+  const dot = base.lastIndexOf(".");
+  const hasExt = dot > 0 && dot < base.length - 1;
+  const stem = hasExt ? base.slice(0, dot) : base;
+  const ext = hasExt ? base.slice(dot) : "";
+
+  let index = 2;
+  while (true) {
+    const candidate = `${stem} (${index})${ext}`;
+    if (!fileMap.has(candidate)) {
+      return candidate;
+    }
+    index += 1;
+  }
+}
+
+function applyFileContent(fileName, text, options = {}) {
+  const { truncated = false } = options;
+  fileMap.set(fileName, text);
+  fileState.set(fileName, { truncated: !!truncated });
+  ensureFileOption(fileName);
+  fileSelect.value = fileName;
+  loadFile(fileName);
+}
+
+function snapshotActiveFileContent() {
+  if (!activeFileName) {
+    return;
+  }
+
+  try {
+    const currentText = String(editor.getText() ?? "");
+    fileMap.set(activeFileName, currentText);
+    fileState.set(activeFileName, { truncated: false });
+  } catch (error) {
+    console.warn("Snapshot active file failed:", error);
+  }
+}
+
+function loadFile(fileName) {
+  const normalizedFileName = String(fileName || "");
+  if (!normalizedFileName) {
+    setStatus("Load failed: empty file name");
+    return;
+  }
+
+  if (activeFileName && activeFileName !== normalizedFileName) {
+    snapshotActiveFileContent();
+  }
+
+  const knownFile = fileMap.has(normalizedFileName) || Object.prototype.hasOwnProperty.call(DEMO_FILE_FALLBACKS, normalizedFileName);
+  if (!knownFile) {
+    setStatus(`Load failed: ${normalizedFileName} not found`);
+    return;
+  }
+
+  const text = fileMap.has(normalizedFileName)
+    ? fileMap.get(normalizedFileName)
+    : (DEMO_FILE_FALLBACKS[normalizedFileName] || "");
+
+  try {
+    activeFileName = normalizedFileName;
+    if (typeof core.clearAllDecorations === "function") {
+      core.clearAllDecorations();
+    }
+    demoDecorationProvider.setDocumentSource(normalizedFileName, text);
+    editor.setMetadata({ fileName: normalizedFileName });
+    editor.setLanguageConfiguration(resolveLanguageConfiguration(normalizedFileName));
+    editor.loadText(text);
+    try {
+      core.call("setScroll", 0, 0);
+    } catch (_) {
+      // ignore when setScroll is not exposed in current runtime
+    }
+    editor.requestDecorationRefresh();
+    setStatus(`Loaded: ${normalizedFileName}`);
+  } catch (error) {
+    console.error("Failed to load file:", normalizedFileName, error);
+    setStatus(`Load failed: ${normalizedFileName}`);
+  }
 }
 
 for (const fileName of fileNames) {
@@ -889,14 +973,41 @@ for (const fileName of fileNames) {
 }
 
 fileSelect.value = initialFileName;
-editor.setMetadata({ fileName: initialFileName });
-editor.setLanguageConfiguration(resolveLanguageConfiguration(initialFileName));
-editor.requestDecorationRefresh();
-setStatus(`Loaded: ${initialFileName}${fileState.get(initialFileName)?.truncated ? " (truncated)" : ""}`);
+loadFile(initialFileName);
 
-fileSelect.addEventListener("change", () => {
+const onFileSelectChanged = () => {
   loadFile(fileSelect.value);
-});
+};
+
+fileSelect.addEventListener("change", onFileSelectChanged);
+fileSelect.addEventListener("input", onFileSelectChanged);
+
+if (openLocalBtn && localFileInput) {
+  openLocalBtn.addEventListener("click", () => {
+    localFileInput.click();
+  });
+
+  localFileInput.addEventListener("change", async () => {
+    const localFile = localFileInput.files && localFileInput.files[0];
+    if (!localFile) {
+      return;
+    }
+
+    try {
+      setStatus(`Loading local: ${localFile.name}...`);
+      const rawText = await localFile.text();
+      const truncated = truncateDemoTextForWeb(rawText);
+      const fileName = getUniqueLocalFileName(localFile.name || "local.txt");
+      applyFileContent(fileName, truncated.text, { truncated: truncated.truncated });
+      setStatus(`Loaded local: ${fileName}`);
+    } catch (error) {
+      console.error("Failed to load local file:", error);
+      setStatus("Load local failed");
+    } finally {
+      localFileInput.value = "";
+    }
+  });
+}
 
 undoBtn.addEventListener("click", () => {
   core.call("undo");

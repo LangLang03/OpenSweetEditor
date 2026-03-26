@@ -110,7 +110,32 @@ function toInt(value, fallback = 0) {
 }
 
 function asArray(value) {
-  return Array.isArray(value) ? value : [];
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  if (typeof value.size === "function" && typeof value.get === "function") {
+    const size = Math.max(0, toInt(value.size(), 0));
+    const out = [];
+    for (let i = 0; i < size; i += 1) {
+      out.push(value.get(i));
+    }
+    return out;
+  }
+
+  if (typeof value[Symbol.iterator] === "function") {
+    try {
+      return Array.from(value);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  return [];
 }
 
 function forVector(vec, fn) {
@@ -587,6 +612,7 @@ export class SweetEditorWidget {
 
     this._contextMenuVisible = false;
     this._contextMenuButtons = {};
+    this._bracketPairsUnsupportedLogged = false;
 
     this._onDocumentPointerDown = (event) => this._handleDocumentPointerDown(event);
     this._onDocumentKeyDown = (event) => this._handleDocumentKeyDown(event);
@@ -670,6 +696,13 @@ export class SweetEditorWidget {
 
   getMetadata() {
     return this._metadata;
+  }
+
+  getText() {
+    if (!this._document) {
+      return "";
+    }
+    return String(this._document.getText() ?? "");
   }
 
   loadText(text, options = {}) {
@@ -1654,7 +1687,14 @@ export class SweetEditorWidget {
     });
 
     if (pairs.length > 0) {
-      this._core.setBracketPairs(pairs);
+      try {
+        this._core.setBracketPairs(pairs);
+      } catch (error) {
+        if (!this._bracketPairsUnsupportedLogged) {
+          this._bracketPairsUnsupportedLogged = true;
+          console.warn("setBracketPairs unavailable in current wasm runtime; continuing without language bracket pairs.", error);
+        }
+      }
     }
   }
 
