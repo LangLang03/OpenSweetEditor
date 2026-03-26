@@ -1,4 +1,4 @@
-import { EditorEventType } from "../index.js?v=20260326_18";
+import { EditorEventType } from "../index.js?v=20260326_19";
 
 function assert(condition, message) {
   if (!condition) {
@@ -30,6 +30,45 @@ function toInt(value, fallback = 0) {
 
 function waitFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function waitTimerTick() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function makeKeyEvent(key, overrides = {}) {
+  const event = {
+    key,
+    keyCode: 0,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    isComposing: false,
+    preventDefault() {},
+    stopPropagation() {},
+  };
+  return { ...event, ...overrides };
+}
+
+function makeInputEvent(inputType, data, overrides = {}) {
+  const event = {
+    inputType,
+    data,
+    isComposing: false,
+    preventDefault() {},
+  };
+  return { ...event, ...overrides };
+}
+
+function resetInputPipelineState(editor) {
+  editor._isComposing = false;
+  editor._compositionCommitPending = false;
+  editor._compositionEndFallbackData = "";
+  editor._input.value = "";
+  if (typeof editor._invalidatePrintableFallback === "function") {
+    editor._invalidatePrintableFallback();
+  }
 }
 
 function getPixel(ctx, x, y) {
@@ -126,6 +165,56 @@ export async function runWebApiSmoke(editor) {
   editor.setFoldRegions([{ startLine: 0, endLine: 1, collapsed: false }]);
   editor.toggleFoldAt(0);
   editor.toggleFoldAt(0);
+
+  // Input regression A: insertText should still commit even when isComposing=true.
+  editor.loadText("");
+  resetInputPipelineState(editor);
+  editor._onInput(makeInputEvent("insertText", "a", { isComposing: true }));
+  assert(editor.getText() === "a", "regression A failed: insertText with isComposing=true should insert english");
+
+  // Input regression B: composition input must not pre-commit, insertFromComposition commits final text.
+  editor.loadText("");
+  resetInputPipelineState(editor);
+  editor.getCore().compositionStart();
+  editor._isComposing = true;
+  editor.getCore().compositionUpdate("ce");
+  const beforeCompositionInput = editor.getText();
+  editor._onInput(makeInputEvent("insertCompositionText", "ce", { isComposing: true }));
+  assert(editor.getText() === beforeCompositionInput, "regression B failed: composition update should stay transient");
+  editor._isComposing = false;
+  editor._compositionCommitPending = true;
+  editor._compositionEndFallbackData = "\u6D4B";
+  editor._onInput(makeInputEvent("insertFromComposition", "\u6D4B"));
+  assert(editor.getText() === "\u6D4B", "regression B failed: insertFromComposition should commit final text");
+
+  // Input regression C: printable key fallback should insert when no input event arrives.
+  editor.loadText("");
+  resetInputPipelineState(editor);
+  editor._onKeyDown(makeKeyEvent("b", { keyCode: 229 }));
+  await waitTimerTick();
+  assert(editor.getText() === "b", "regression C failed: keydown fallback should insert printable english");
+
+  // Input regression D: keydown fallback + input must not double-insert.
+  editor.loadText("");
+  resetInputPipelineState(editor);
+  editor._onKeyDown(makeKeyEvent("c", { keyCode: 229 }));
+  editor._onInput(makeInputEvent("insertText", "c"));
+  await waitTimerTick();
+  assert(editor.getText() === "c", "regression D failed: fallback path should dedupe with input event");
+
+  // Input regression E: document keydown should forward Enter to _onKeyDown when editor is active.
+  let enterForwarded = false;
+  const originalOnKeyDown = editor._onKeyDown.bind(editor);
+  editor._onKeyDown = (event) => {
+    enterForwarded = true;
+    return originalOnKeyDown(event);
+  };
+  editor._documentKeyRouteActive = true;
+  editor._handleDocumentKeyDown(makeKeyEvent("Enter", { keyCode: 13, target: document.body }));
+  editor._onKeyDown = originalOnKeyDown;
+  assert(enterForwarded, "regression E failed: Enter in document handler should forward to _onKeyDown");
+
+  editor.loadText("alpha\nbeta\ngamma");
 
   editor.setEditorIconProvider((iconId) => {
     if (iconId === 2001) return { color: 0xFFFFD166 };

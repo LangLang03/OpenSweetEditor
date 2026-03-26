@@ -923,6 +923,10 @@ export class SweetEditorWidget {
     this._compositionCommitPending = false;
     this._compositionEndFallbackData = "";
     this._compositionEndTimer = 0;
+    this._suppressNextInputEvent = false;
+    this._printableFallbackEpoch = 0;
+    this._pendingPrintableFallbackTimers = new Set();
+    this._documentKeyRouteActive = false;
     this._newLineActionProviders = [];
     this._ownedDecorationProviders = new Set();
     this._listeners = new Map();
@@ -951,6 +955,7 @@ export class SweetEditorWidget {
     this._onDocumentPointerDown = (event) => this._handleDocumentPointerDown(event);
     this._onDocumentKeyDown = (event) => this._handleDocumentKeyDown(event);
     this._onWindowBlur = () => {
+      this._documentKeyRouteActive = false;
       this._hideContextMenu();
       this.dismissCompletion();
     };
@@ -1548,6 +1553,9 @@ export class SweetEditorWidget {
   dispose() {
     if (this._disposed) return;
     this._disposed = true;
+
+    this._invalidatePrintableFallback();
+    this._suppressNextInputEvent = false;
 
     if (this._compositionEndTimer) {
       clearTimeout(this._compositionEndTimer);
@@ -2198,7 +2206,9 @@ export class SweetEditorWidget {
     this._canvas.addEventListener("contextmenu", (e) => this._onContextMenu(e));
 
     this._input.addEventListener("keydown", (e) => this._onKeyDown(e));
+    this._input.addEventListener("beforeinput", (e) => this._onBeforeInput(e));
     this._input.addEventListener("compositionstart", () => {
+      this._invalidatePrintableFallback();
       if (this._compositionEndTimer) {
         clearTimeout(this._compositionEndTimer);
         this._compositionEndTimer = 0;
@@ -2211,11 +2221,13 @@ export class SweetEditorWidget {
     });
 
     this._input.addEventListener("compositionupdate", (e) => {
+      this._invalidatePrintableFallback();
       const composingText = typeof e.data === "string" ? e.data : (this._input.value || "");
       this._core.compositionUpdate(composingText);
     });
 
     this._input.addEventListener("compositionend", (e) => {
+      this._invalidatePrintableFallback();
       this._isComposing = false;
       this._compositionCommitPending = true;
       this._compositionEndFallbackData = typeof e.data === "string" ? e.data : "";
@@ -2247,7 +2259,129 @@ export class SweetEditorWidget {
     document.addEventListener("keydown", this._onDocumentKeyDown, true);
     window.addEventListener("blur", this._onWindowBlur);
   }
+
+  _isCompositionInputType(inputType) {
+    const type = String(inputType || "");
+    return type.startsWith("insertComposition") || type.startsWith("deleteComposition");
+  }
+
+  _invalidatePrintableFallback() {
+    this._printableFallbackEpoch += 1;
+    if (!this._pendingPrintableFallbackTimers || this._pendingPrintableFallbackTimers.size === 0) {
+      return;
+    }
+    this._pendingPrintableFallbackTimers.forEach((timerId) => clearTimeout(timerId));
+    this._pendingPrintableFallbackTimers.clear();
+  }
+
+  _suppressNextInputOnce() {
+    this._suppressNextInputEvent = true;
+    Promise.resolve().then(() => {
+      this._suppressNextInputEvent = false;
+    });
+  }
+
+  _extractInputText(event, allowValueFallback = true) {
+    if (typeof event?.data === "string" && event.data.length > 0) {
+      return event.data;
+    }
+    if (!allowValueFallback) {
+      return "";
+    }
+    return String(this._input?.value || "");
+  }
+
+  _applyDomTextInput(event, options = {}) {
+    const inputType = String(event?.inputType || "");
+    const preventDefault = options.preventDefault === true;
+    const allowValueFallback = options.allowValueFallback !== false;
+
+    if (inputType === "deleteContentBackward") {
+      if (preventDefault && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      const result = this._core.backspace();
+      this._input.value = "";
+      this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+      return true;
+    }
+
+    if (inputType === "deleteContentForward") {
+      if (preventDefault && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      const result = this._core.deleteForward();
+      this._input.value = "";
+      this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+      return true;
+    }
+
+    const text = this._extractInputText(event, allowValueFallback);
+    this._input.value = "";
+    if (!text) {
+      return false;
+    }
+
+    if (preventDefault && typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+    const result = this._core.insertText(text);
+    this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+    return true;
+  }
+
+  _shouldSchedulePrintableFallback(event) {
+    if (!event || event.ctrlKey || event.metaKey || event.altKey) {
+      return false;
+    }
+    const key = typeof event.key === "string" ? event.key : "";
+    return key.length === 1;
+  }
+
+  _schedulePrintableFallback(event) {
+    if (!this._shouldSchedulePrintableFallback(event)) {
+      return false;
+    }
+    const text = event.key;
+    const epoch = this._printableFallbackEpoch;
+    const timerId = setTimeout(() => {
+      this._pendingPrintableFallbackTimers.delete(timerId);
+      if (epoch !== this._printableFallbackEpoch || this._disposed) {
+        return;
+      }
+      const result = this._core.insertText(text);
+      this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+    }, 0);
+    this._pendingPrintableFallbackTimers.add(timerId);
+    return true;
+  }
+
+  _onBeforeInput(e) {
+    this._invalidatePrintableFallback();
+
+    const inputType = e.inputType || "";
+    if (inputType === "insertFromComposition") {
+      return;
+    }
+
+    if (this._isComposing || this._isCompositionInputType(inputType) || (e.isComposing && inputType !== "insertText")) {
+      return;
+    }
+
+    const handled = this._applyDomTextInput(e, { preventDefault: true, allowValueFallback: false });
+    if (handled) {
+      this._suppressNextInputOnce();
+    }
+  }
+
   _onInput(e) {
+    this._invalidatePrintableFallback();
+    if (this._suppressNextInputEvent) {
+      this._suppressNextInputEvent = false;
+      this._input.value = "";
+      return;
+    }
+
     const inputType = e.inputType || "";
 
     if (inputType === "insertFromComposition") {
@@ -2268,36 +2402,15 @@ export class SweetEditorWidget {
       return;
     }
 
-    if (this._isComposing || e.isComposing || inputType.startsWith("insertComposition") || inputType.startsWith("deleteComposition")) {
+    if (this._isComposing || this._isCompositionInputType(inputType) || (e.isComposing && inputType === "")) {
       return;
     }
-
-    if (inputType === "deleteContentBackward") {
-      const result = this._core.backspace();
-      this._input.value = "";
-      this._handleTextEditResult(result, { action: TextChangeAction.KEY });
-      return;
-    }
-
-    if (inputType === "deleteContentForward") {
-      const result = this._core.deleteForward();
-      this._input.value = "";
-      this._handleTextEditResult(result, { action: TextChangeAction.KEY });
-      return;
-    }
-
-    const text = (typeof e.data === "string" && e.data.length > 0) ? e.data : (this._input.value || "");
-    this._input.value = "";
-    if (!text) {
-      return;
-    }
-
-    const result = this._core.insertText(text);
-    this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+    this._applyDomTextInput(e, { preventDefault: false, allowValueFallback: true });
   }
 
   _onPointerDown(event) {
     this._hideContextMenu();
+    this._documentKeyRouteActive = true;
     this._input.focus();
 
     if (typeof this._canvas.setPointerCapture === "function") {
@@ -2376,6 +2489,7 @@ export class SweetEditorWidget {
 
   _onContextMenu(event) {
     event.preventDefault();
+    this._documentKeyRouteActive = true;
     this._input.focus();
 
     const rect = this.container.getBoundingClientRect();
@@ -2388,16 +2502,82 @@ export class SweetEditorWidget {
   }
 
   _handleDocumentPointerDown(event) {
+    const target = event?.target ?? null;
+    this._documentKeyRouteActive = !!(target && this.container.contains(target));
     if (this._contextMenuVisible && this._contextMenu && !this._contextMenu.contains(event.target)) {
       this._hideContextMenu();
     }
+  }
+
+  _isBodyLikeElement(target) {
+    return target === document.body || target === document.documentElement;
+  }
+
+  _isTextEntryElement(target) {
+    if (!target || !(target instanceof Element)) {
+      return false;
+    }
+    const tagName = target.tagName;
+    return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT" || target.isContentEditable;
+  }
+
+  _shouldRouteDocumentKeyEvent(event) {
+    if (!event || this._disposed || !this._input) {
+      return false;
+    }
+
+    const target = event.target ?? null;
+    if (target === this._input) {
+      return false;
+    }
+
+    if (target && this._contextMenu && this._contextMenu.contains(target)) {
+      return false;
+    }
+
+    if (this._isTextEntryElement(target)) {
+      return false;
+    }
+
+    if (target && this.container.contains(target)) {
+      return true;
+    }
+
+    const activeElement = document.activeElement;
+    if (activeElement === this._input) {
+      return false;
+    }
+    if (activeElement && this.container.contains(activeElement)) {
+      return true;
+    }
+
+    if (!this._documentKeyRouteActive) {
+      return false;
+    }
+
+    if (!target || this._isBodyLikeElement(target)) {
+      return true;
+    }
+
+    return false;
   }
 
   _handleDocumentKeyDown(event) {
     if (event.key === "Escape") {
       this._hideContextMenu();
       this.dismissCompletion();
+      return;
     }
+
+    if (event.defaultPrevented) {
+      return;
+    }
+
+    if (!this._shouldRouteDocumentKeyEvent(event)) {
+      return;
+    }
+
+    this._onKeyDown(event);
   }
 
   _onKeyDown(event) {
@@ -2429,13 +2609,14 @@ export class SweetEditorWidget {
       }
     }
 
-    if (this._isComposing || event.isComposing || event.key === "Process" || (event.keyCode === 229 && event.key.length === 1)) {
+    if (this._isComposing || event.isComposing || event.key === "Process") {
       return;
     }
 
     const mods = this._modifiers(event);
     const keyCode = this._mapKeyCode(event);
     if (!keyCode) {
+      this._schedulePrintableFallback(event);
       return;
     }
 
@@ -3233,6 +3414,7 @@ export class SweetEditorWidget {
   }
 
   _handleClipboardPaste(event) {
+    this._invalidatePrintableFallback();
     if (!event.clipboardData || !event.clipboardData.getData) {
       return;
     }
@@ -3243,6 +3425,7 @@ export class SweetEditorWidget {
 
     const result = this._core.insertText(text);
     this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
+    this._suppressNextInputOnce();
     event.preventDefault();
   }
 }

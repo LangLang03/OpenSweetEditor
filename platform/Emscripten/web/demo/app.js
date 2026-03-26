@@ -1,4 +1,4 @@
-﻿import {
+import {
   createSweetEditor,
   CompletionItem,
   CompletionResult,
@@ -9,8 +9,8 @@
   DecorationResult,
   normalizeNewlines,
   countLogicalLines,
-} from "../index.js?v=20260326_18";
-import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_18";
+} from "../index.js?v=20260326_19";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_19";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
