@@ -9,8 +9,8 @@ import {
   DecorationResult,
   normalizeNewlines,
   countLogicalLines,
-} from "../index.js?v=20260326_19";
-import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_19";
+} from "../index.js?v=20260326_21";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_21";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;

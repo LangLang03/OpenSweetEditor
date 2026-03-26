@@ -1,4 +1,4 @@
-import { EditorEventType } from "../index.js?v=20260326_19";
+import { EditorEventType } from "../index.js?v=20260326_21";
 
 function assert(condition, message) {
   if (!condition) {
@@ -202,17 +202,26 @@ export async function runWebApiSmoke(editor) {
   await waitTimerTick();
   assert(editor.getText() === "c", "regression D failed: fallback path should dedupe with input event");
 
-  // Input regression E: document keydown should forward Enter to _onKeyDown when editor is active.
+  // Input regression E: document keydown should forward Enter to _onKeyDown when textarea is focused.
   let enterForwarded = false;
   const originalOnKeyDown = editor._onKeyDown.bind(editor);
   editor._onKeyDown = (event) => {
     enterForwarded = true;
     return originalOnKeyDown(event);
   };
+  editor._input.focus();
   editor._documentKeyRouteActive = true;
   editor._handleDocumentKeyDown(makeKeyEvent("Enter", { keyCode: 13, target: document.body }));
   editor._onKeyDown = originalOnKeyDown;
   assert(enterForwarded, "regression E failed: Enter in document handler should forward to _onKeyDown");
+
+  // Input regression F: spurious empty composing input must not cancel printable fallback insertion.
+  editor.loadText("");
+  resetInputPipelineState(editor);
+  editor._onKeyDown(makeKeyEvent("d", { keyCode: 229 }));
+  editor._onInput(makeInputEvent("", "", { isComposing: true }));
+  await waitTimerTick();
+  assert(editor.getText() === "d", "regression F failed: empty composing input should not cancel printable fallback");
 
   editor.loadText("alpha\nbeta\ngamma");
 

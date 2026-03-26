@@ -1166,7 +1166,7 @@ export class SweetEditorWidget {
   }
 
   insert(text) {
-    const result = this._core.insertText(String(text ?? ""));
+    const result = this._core.insert(String(text ?? ""));
     this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
     return result;
   }
@@ -2325,7 +2325,7 @@ export class SweetEditorWidget {
     if (preventDefault && typeof event.preventDefault === "function") {
       event.preventDefault();
     }
-    const result = this._core.insertText(text);
+    const result = this._core.insert(text);
     this._handleTextEditResult(result, { action: TextChangeAction.KEY });
     return true;
   }
@@ -2349,7 +2349,7 @@ export class SweetEditorWidget {
       if (epoch !== this._printableFallbackEpoch || this._disposed) {
         return;
       }
-      const result = this._core.insertText(text);
+      const result = this._core.insert(text);
       this._handleTextEditResult(result, { action: TextChangeAction.KEY });
     }, 0);
     this._pendingPrintableFallbackTimers.add(timerId);
@@ -2923,7 +2923,7 @@ export class SweetEditorWidget {
     if (completionItem.insertTextFormat === CompletionItem.INSERT_TEXT_FORMAT_SNIPPET) {
       insertResult = this._core.insertSnippet(text);
     } else {
-      insertResult = this._core.insertText(text);
+      insertResult = this._core.insert(text);
     }
     this._handleTextEditResult(insertResult, { action: TextChangeAction.INSERT });
   }
@@ -3342,7 +3342,7 @@ export class SweetEditorWidget {
       case "paste": {
         const text = await this._readClipboardText();
         if (text) {
-          const result = this._core.insertText(text);
+          const result = this._core.insert(text);
           this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
         }
         break;
@@ -3438,7 +3438,7 @@ export class SweetEditorWidget {
       return;
     }
 
-    const result = this._core.insertText(text);
+    const result = this._core.insert(text);
     this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
     this._suppressNextInputOnce();
     event.preventDefault();
