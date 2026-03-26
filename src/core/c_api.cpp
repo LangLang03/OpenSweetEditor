@@ -315,6 +315,8 @@ static const uint8_t* editorRenderModelToBinary(const EditorRenderModel& model, 
   appendScrollbarModel(buffer, model.vertical_scrollbar);
   appendScrollbarModel(buffer, model.horizontal_scrollbar);
 
+  appendBool(buffer, model.gutter_sticky);
+
   return allocBinaryPayload(buffer.data(), buffer.size(), out_size);
 }
 
@@ -393,6 +395,7 @@ static const uint8_t* gestureResultToBinary(const GestureResult& result, size_t*
   appendI32(buffer, static_cast<int32_t>(result.hit_target.color_value));
   appendI32(buffer, result.needs_edge_scroll ? 1 : 0);
   appendI32(buffer, result.needs_fling ? 1 : 0);
+  appendI32(buffer, result.needs_animation ? 1 : 0);
   return allocBinaryPayload(buffer.data(), buffer.size(), out_size);
 }
 
@@ -650,6 +653,14 @@ void editor_set_current_line_render_mode(intptr_t editor_handle, int mode) {
   editor_core->setCurrentLineRenderMode(static_cast<CurrentLineRenderMode>(mode));
 }
 
+void editor_set_gutter_sticky(intptr_t editor_handle, int sticky) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr) {
+    return;
+  }
+  editor_core->setGutterSticky(sticky != 0);
+}
+
 #pragma endregion
 
 #pragma region Rendering
@@ -734,6 +745,18 @@ const uint8_t* editor_tick_fling(intptr_t editor_handle, size_t* out_size) {
     return nullptr;
   }
   GestureResult result = editor_core->tickFling();
+  return gestureResultToBinary(result, out_size);
+}
+
+const uint8_t* editor_tick_animations(intptr_t editor_handle, size_t* out_size) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr) {
+    if (out_size != nullptr) {
+      *out_size = 0;
+    }
+    return nullptr;
+  }
+  GestureResult result = editor_core->tickAnimations();
   return gestureResultToBinary(result, out_size);
 }
 

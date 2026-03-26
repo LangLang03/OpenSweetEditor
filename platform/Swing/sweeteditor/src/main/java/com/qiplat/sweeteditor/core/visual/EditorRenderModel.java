@@ -26,5 +26,5 @@ public class EditorRenderModel {
     @SerializedName("linked_editing_rects") public java.util.List<LinkedEditingRect> linkedEditingRects;
     @SerializedName("bracket_highlight_rects") public java.util.List<BracketHighlightRect> bracketHighlightRects;
     @SerializedName("vertical_scrollbar") public ScrollbarModel verticalScrollbar;
-    @SerializedName("horizontal_scrollbar") public ScrollbarModel horizontalScrollbar;
+    @SerializedName(\"horizontal_scrollbar\") public ScrollbarModel horizontalScrollbar;\n    @SerializedName(\"gutter_sticky\") public boolean gutterSticky = true;
 }

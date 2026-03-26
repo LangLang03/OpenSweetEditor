@@ -183,6 +183,16 @@ public class EditorCore {
     }
 
     /**
+     * Sets whether gutter stays fixed during horizontal scroll.
+     *
+     * @param sticky true=gutter fixed (desktop style), false=gutter scrolls with content (mobile style)
+     */
+    public void setGutterSticky(boolean sticky) {
+        if (mNativeHandle == 0) return;
+        nativeSetGutterSticky(mNativeHandle, sticky);
+    }
+
+    /**
      * Sets current line render mode.
      *
      * @param mode 0=BACKGROUND(fill), 1=BORDER(stroke), 2=NONE(disabled)
@@ -255,6 +265,22 @@ public class EditorCore {
             return new GestureResult();
         }
         ByteBuffer data = nativeTickFling(mNativeHandle);
+        try {
+            return ProtocolDecoder.decodeGestureResult(data);
+        } finally {
+            nativeFreeBinaryData(data);
+        }
+    }
+
+    /**
+     * Unified animation tick: advances all active animations (edge-scroll, fling).
+     * Platform can use a single frame callback driven by GestureResult.needsAnimation.
+     */
+    public GestureResult tickAnimations() {
+        if (mNativeHandle == 0) {
+            return new GestureResult();
+        }
+        ByteBuffer data = nativeTickAnimations(mNativeHandle);
         try {
             return ProtocolDecoder.decodeGestureResult(data);
         } finally {
@@ -1563,6 +1589,11 @@ public class EditorCore {
          * Whether the platform should start/continue a ~16ms timer calling tickFling().
          */
         public final boolean needsFling;
+        /**
+         * Whether any animation is still active; platform can use a single
+         * frame callback calling tickAnimations() instead of separate tick calls.
+         */
+        public final boolean needsAnimation;
 
         public GestureResult() {
             this.type = GestureType.UNDEFINED;
@@ -1576,12 +1607,14 @@ public class EditorCore {
             this.hitTarget = HitTarget.NONE;
             this.needsEdgeScroll = false;
             this.needsFling = false;
+            this.needsAnimation = false;
         }
 
         public GestureResult(GestureType type, PointF tapPoint,
                              TextPosition cursorPosition, boolean hasSelection, TextRange selection,
                              float viewScrollX, float viewScrollY, float viewScale,
-                             HitTarget hitTarget, boolean needsEdgeScroll, boolean needsFling) {
+                             HitTarget hitTarget, boolean needsEdgeScroll, boolean needsFling,
+                             boolean needsAnimation) {
             this.type = type;
             this.tapPoint = tapPoint;
             this.cursorPosition = cursorPosition;
@@ -1593,6 +1626,7 @@ public class EditorCore {
             this.hitTarget = hitTarget;
             this.needsEdgeScroll = needsEdgeScroll;
             this.needsFling = needsFling;
+            this.needsAnimation = needsAnimation;
         }
 
         @NonNull
@@ -1670,6 +1704,9 @@ public class EditorCore {
     private static native void nativeSetShowSplitLine(long handle, boolean show);
 
     @CriticalNative
+    private static native void nativeSetGutterSticky(long handle, boolean sticky);
+
+    @CriticalNative
     private static native void nativeSetCurrentLineRenderMode(long handle, int mode);
 
     @FastNative
@@ -1683,6 +1720,9 @@ public class EditorCore {
 
     @FastNative
     private static native ByteBuffer nativeTickFling(long handle);
+
+    @FastNative
+    private static native ByteBuffer nativeTickAnimations(long handle);
 
     @FastNative
     private static native ByteBuffer nativeHandleKeyEvent(long handle, int keyCode, String text, int modifiers);

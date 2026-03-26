@@ -16,6 +16,7 @@ namespace SweetEditor {
 		private float lineSpacingMult = 1.0f;
 		private float contentStartPadding = 0f;
 		private bool showSplitLine = true;
+		private bool gutterSticky = true;
 		private CurrentLineRenderMode currentLineRenderMode = CurrentLineRenderMode.BACKGROUND;
 		private AutoIndentMode autoIndentMode = AutoIndentMode.NONE;
 		private bool readOnly = false;
@@ -90,6 +91,16 @@ namespace SweetEditor {
 
 		/// <summary>Gets whether gutter split line should be rendered.</summary>
 		public bool IsShowSplitLine() => showSplitLine;
+
+		/// <summary>Sets whether gutter stays fixed during horizontal scroll.</summary>
+		public void SetGutterSticky(bool sticky) {
+			gutterSticky = sticky;
+			editor.EditorCoreInternal.SetGutterSticky(sticky);
+			editor.Flush();
+		}
+
+		/// <summary>Gets whether gutter stays fixed during horizontal scroll.</summary>
+		public bool IsGutterSticky() => gutterSticky;
 
 		/// <summary>Sets current line render mode.</summary>
 		public void SetCurrentLineRenderMode(CurrentLineRenderMode mode) {

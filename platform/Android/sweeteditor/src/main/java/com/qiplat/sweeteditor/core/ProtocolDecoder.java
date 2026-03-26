@@ -134,8 +134,13 @@ final class ProtocolDecoder {
             needsFling = data.getInt() != 0;
         }
 
+        boolean needsAnimation = false;
+        if (data.remaining() >= 4) {
+            needsAnimation = data.getInt() != 0;
+        }
+
         return new EditorCore.GestureResult(gestureType, tapPoint,
-                cursorPosition, hasSelection, selection, viewScrollX, viewScrollY, viewScale, hitTarget, needsEdgeScroll, needsFling);
+                cursorPosition, hasSelection, selection, viewScrollX, viewScrollY, viewScale, hitTarget, needsEdgeScroll, needsFling, needsAnimation);
     }
 
     static ScrollMetrics decodeScrollMetrics(@Nullable ByteBuffer data) {
@@ -190,6 +195,9 @@ final class ProtocolDecoder {
         if (data.remaining() >= 80) {
             model.verticalScrollbar = readScrollbarModel(data);
             model.horizontalScrollbar = readScrollbarModel(data);
+        }
+        if (data.remaining() >= 4) {
+            model.gutterSticky = data.getInt() != 0;
         }
         return model;
     }

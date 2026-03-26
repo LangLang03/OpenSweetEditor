@@ -277,6 +277,9 @@ public final class EditorNative {
     private static final MethodHandle SET_SHOW_SPLIT_LINE = downcall("editor_set_show_split_line",
             FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
 
+    private static final MethodHandle SET_GUTTER_STICKY = downcall("editor_set_gutter_sticky",
+            FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+
     private static final MethodHandle SET_CURRENT_LINE_RENDER_MODE = downcall("editor_set_current_line_render_mode",
             FunctionDescriptor.ofVoid(ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
 
@@ -284,6 +287,9 @@ public final class EditorNative {
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
 
     private static final MethodHandle TICK_EDGE_SCROLL = downcall("editor_tick_edge_scroll",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+
+    private static final MethodHandle TICK_ANIMATIONS = downcall("editor_tick_animations",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
 
     private static final MethodHandle HANDLE_GESTURE_EX = downcall("handle_editor_gesture_event_ex",
@@ -686,6 +692,12 @@ public final class EditorNative {
         });
     }
 
+    public static void setGutterSticky(long handle, boolean sticky) {
+        invokeVoid(() -> {
+            SET_GUTTER_STICKY.invokeExact(handle, sticky ? 1 : 0);
+        });
+    }
+
     public static void setCurrentLineRenderMode(long handle, int mode) {
         invokeVoid(() -> {
             SET_CURRENT_LINE_RENDER_MODE.invokeExact(handle, mode);
@@ -700,6 +712,10 @@ public final class EditorNative {
 
     public static NativeBinaryResult tickEdgeScroll(long handle) {
         return invokeBinaryResult(outSize -> (MemorySegment) TICK_EDGE_SCROLL.invokeExact(handle, outSize));
+    }
+
+    public static NativeBinaryResult tickAnimations(long handle) {
+        return invokeBinaryResult(outSize -> (MemorySegment) TICK_ANIMATIONS.invokeExact(handle, outSize));
     }
 
     // ===================== Gesture/Keyboard Events =====================

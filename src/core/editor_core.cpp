@@ -60,6 +60,7 @@ namespace NS_SWEETEDITOR {
         + ", scrollbar.track_tap_mode = " + std::to_string(static_cast<int>(scrollbar.track_tap_mode))
         + ", scrollbar.fade_delay_ms = " + std::to_string(scrollbar.fade_delay_ms)
         + ", scrollbar.fade_duration_ms = " + std::to_string(scrollbar.fade_duration_ms)
+        + ", gutter_sticky = " + (gutter_sticky ? "true" : "false")
         + "}";
   }
 #pragma endregion
@@ -72,6 +73,7 @@ namespace NS_SWEETEDITOR {
     m_undo_manager_ = makeUPtr<UndoManager>(options.max_undo_stack_size);
     TouchConfig tc = options.simpleAsTouchConfig();
 m_fling_ = makeUPtr<FlingAnimator>(tc);
+    loadDocument(makePtr<LineArrayDocument>(""));
     LOGD("EditorCore::EditorCore(), options = %s", options.dump().c_str());
   }
 
@@ -126,9 +128,14 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   }
 #pragma region [Appearance-Font]
   void EditorCore::setViewport(const Viewport& viewport) {
+    PERF_TIMER("setViewport");
+    bool width_changed = (m_viewport_.width != viewport.width);
+    LOGW("setViewport: old=%s new=%s widthChanged=%d", m_viewport_.dump().c_str(), viewport.dump().c_str(), width_changed);
     m_viewport_ = viewport;
     m_text_layout_->setViewport(viewport);
-    markAllLinesDirty();
+    if (width_changed) {
+      markAllLinesDirty();
+    }
     normalizeScrollState();
     LOGD("EditorCore::setViewport, viewport = %s", m_viewport_.dump().c_str());
   }
@@ -249,6 +256,14 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     m_settings_.show_split_line = show;
   }
 
+  void EditorCore::setGutterSticky(bool sticky) {
+    if (m_settings_.gutter_sticky == sticky) return;
+    m_settings_.gutter_sticky = sticky;
+    m_text_layout_->getLayoutMetrics().gutter_sticky = sticky;
+    markAllLinesDirty();
+    normalizeScrollState();
+  }
+
   void EditorCore::setCurrentLineRenderMode(CurrentLineRenderMode mode) {
     if (m_settings_.current_line_render_mode == mode) return;
     m_settings_.current_line_render_mode = mode;
@@ -266,6 +281,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     m_text_layout_->layoutVisibleLines(model);
     model.split_line_visible = m_settings_.show_split_line;
     model.current_line_render_mode = m_settings_.current_line_render_mode;
+    model.gutter_sticky = m_settings_.gutter_sticky;
     PERF_END(compose, "buildRenderModel::layoutVisibleLines");
 
     float line_height = m_text_layout_->getLineHeight();
@@ -394,7 +410,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
       vertical.thumb.height = thumb_height;
     }
 
-    const float horizontal_track_x = std::max(0.0f, bounds.text_area_x);
+    const float horizontal_track_x = m_settings_.gutter_sticky ? std::max(0.0f, bounds.text_area_x) : 0.0f;
     const float horizontal_track_width = viewport_width - horizontal_track_x - (show_vertical ? scrollbar_thickness : 0.0f);
     const float horizontal_track_y = viewport_height - scrollbar_thickness;
     if (show_horizontal && horizontal_track_width > 0.0f && horizontal_track_y >= 0.0f) {
@@ -633,6 +649,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
           gesture_result.type = GestureType::DRAG_SELECT;
           fillGestureResult(gesture_result);
           gesture_result.needs_edge_scroll = m_edge_scroll_.active;
+          gesture_result.needs_animation = m_edge_scroll_.active;
           return gesture_result;
         }
       }
@@ -759,6 +776,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
       result.needs_edge_scroll = m_edge_scroll_.active;
     }
     result.needs_fling = m_fling_->isActive();
+    result.needs_animation = result.needs_edge_scroll || result.needs_fling;
 
     LOGD("EditorCore::handleGestureEvent, m_view_state_ = %s", m_view_state_.dump().c_str());
     return result;
@@ -771,6 +789,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     if (!m_fling_->isActive()) {
       fillGestureResult(result);
       result.needs_fling = false;
+      result.needs_animation = m_edge_scroll_.active;
       return result;
     }
 
@@ -780,17 +799,15 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     // Fling velocity is in screen space (finger direction), scroll is inverted
     m_view_state_.scroll_x -= dx;
     m_view_state_.scroll_y -= dy;
+    // Snap to integer pixels every frame to prevent sub-pixel jitter during slow fling
+    m_view_state_.scroll_x = std::round(m_view_state_.scroll_x);
+    m_view_state_.scroll_y = std::round(m_view_state_.scroll_y);
     normalizeScrollState();
     markScrollbarInteraction();
 
-    if (!still_active) {
-      m_view_state_.scroll_x = std::round(m_view_state_.scroll_x);
-      m_view_state_.scroll_y = std::round(m_view_state_.scroll_y);
-      normalizeScrollState();
-    }
-
     fillGestureResult(result);
     result.needs_fling = still_active;
+    result.needs_animation = m_edge_scroll_.active || still_active;
     return result;
   }
 
@@ -2996,17 +3013,17 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     float edge_zone = std::clamp(m_viewport_.height * kEdgeZoneRatio,
                                  kMinEdgeZone, kMaxEdgeZone);
 
-    // Max speed per 16ms tick: 2 line-heights
+    // Max speed: 2 line-heights per 16ms frame, converted to px/s
     const float line_height = m_text_layout_->getLineHeight();
-    const float max_speed = line_height * 2.0f;
+    const float max_speed_per_sec = (line_height * 2.0f) / 0.016f;
 
     float speed = 0.0f;
     if (screen_point.y < edge_zone) {
       float ratio = (edge_zone - screen_point.y) / edge_zone;
-      speed = -max_speed * ratio;
+      speed = -max_speed_per_sec * ratio;
     } else if (screen_point.y > m_viewport_.height - edge_zone) {
       float ratio = (screen_point.y - (m_viewport_.height - edge_zone)) / edge_zone;
-      speed = max_speed * ratio;
+      speed = max_speed_per_sec * ratio;
     }
 
     if (speed != 0.0f) {
@@ -3015,9 +3032,13 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
       m_edge_scroll_.last_screen_point = screen_point;
       m_edge_scroll_.is_handle_drag = is_handle_drag;
       m_edge_scroll_.is_mouse = is_mouse;
+      if (m_edge_scroll_.last_tick_time == 0) {
+        m_edge_scroll_.last_tick_time = TimeUtil::milliTime();
+      }
     } else {
       m_edge_scroll_.active = false;
       m_edge_scroll_.speed = 0.0f;
+      m_edge_scroll_.last_tick_time = 0;
     }
   }
 
@@ -3028,11 +3049,17 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     if (!m_edge_scroll_.active) {
       fillGestureResult(result);
       result.needs_edge_scroll = false;
+      result.needs_animation = m_fling_->isActive();
       return result;
     }
 
-    // Apply scroll delta; the same screen point now maps to a new text position.
-    m_view_state_.scroll_y += m_edge_scroll_.speed;
+    int64_t now = TimeUtil::milliTime();
+    float dt_sec = static_cast<float>(now - m_edge_scroll_.last_tick_time) / 1000.0f;
+    if (dt_sec <= 0) dt_sec = 0.016f;
+    dt_sec = std::min(dt_sec, 0.1f);
+    m_edge_scroll_.last_tick_time = now;
+
+    m_view_state_.scroll_y += m_edge_scroll_.speed * dt_sec;
     normalizeScrollState();
     markScrollbarInteraction();
 
@@ -3047,6 +3074,35 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
 
     fillGestureResult(result);
     result.needs_edge_scroll = m_edge_scroll_.active;
+    result.needs_animation = m_edge_scroll_.active || m_fling_->isActive();
+    return result;
+  }
+
+  GestureResult EditorCore::tickAnimations() {
+    GestureResult result;
+
+    bool did_edge_scroll = false;
+    if (m_edge_scroll_.active) {
+      result = tickEdgeScroll();
+      did_edge_scroll = true;
+    }
+
+    if (m_fling_->isActive()) {
+      GestureResult fling_result = tickFling();
+      if (!did_edge_scroll) {
+        result = fling_result;
+      } else {
+        result.needs_fling = fling_result.needs_fling;
+        result.view_scroll_x = fling_result.view_scroll_x;
+        result.view_scroll_y = fling_result.view_scroll_y;
+      }
+    }
+
+    if (!did_edge_scroll && !m_fling_->isActive()) {
+      fillGestureResult(result);
+    }
+
+    result.needs_animation = m_edge_scroll_.active || m_fling_->isActive();
     return result;
   }
 
@@ -3208,6 +3264,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   }
 
   void EditorCore::normalizeScrollState() {
+    PERF_TIMER("normalizeScrollState");
     if (m_text_layout_ == nullptr) return;
     m_text_layout_->clampScroll(m_view_state_.scroll_x, m_view_state_.scroll_y);
     m_text_layout_->setViewState(m_view_state_);

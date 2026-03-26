@@ -788,6 +788,7 @@ namespace SweetEditor {
 				BracketHighlightRects = new List<BracketHighlightRect>(),
 				VerticalScrollbar = default,
 				HorizontalScrollbar = default,
+				GutterSticky = true,
 			};
 		}
 
@@ -944,6 +945,9 @@ namespace SweetEditor {
 					offset = savedOffset;
 				}
 			}
+			if (TryReadInt32(data, ref offset, out int gutterStickyRaw)) {
+				model.GutterSticky = gutterStickyRaw != 0;
+			}
 			return model;
 		}
 
@@ -1077,6 +1081,12 @@ namespace SweetEditor {
 			}
 			if (TryReadInt32(data, ref offset, out int needsEdgeScrollInt)) {
 				result.NeedsEdgeScroll = needsEdgeScrollInt != 0;
+			}
+			if (TryReadInt32(data, ref offset, out int needsFlingInt)) {
+				result.NeedsFling = needsFlingInt != 0;
+			}
+			if (TryReadInt32(data, ref offset, out int needsAnimationInt)) {
+				result.NeedsAnimation = needsAnimationInt != 0;
 			}
 			return result;
 		}

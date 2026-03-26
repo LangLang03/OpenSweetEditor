@@ -122,6 +122,10 @@ public class EditorCore implements AutoCloseable {
         EditorNative.setShowSplitLine(nativeHandle, show);
     }
 
+    public void setGutterSticky(boolean sticky) {
+        EditorNative.setGutterSticky(nativeHandle, sticky);
+    }
+
     public void setCurrentLineRenderMode(int mode) {
         EditorNative.setCurrentLineRenderMode(nativeHandle, mode);
     }
@@ -159,6 +163,16 @@ public class EditorCore implements AutoCloseable {
     /** Advances edge-scroll by one tick and returns an updated gesture result. */
     public GestureResult tickEdgeScroll() {
         EditorNative.NativeBinaryResult result = EditorNative.tickEdgeScroll(nativeHandle);
+        try {
+            return ProtocolDecoder.decodeGestureResult(result.asByteBuffer());
+        } finally {
+            result.free();
+        }
+    }
+
+    /** Unified animation tick: advances all active animations (edge-scroll, fling). */
+    public GestureResult tickAnimations() {
+        EditorNative.NativeBinaryResult result = EditorNative.tickAnimations(nativeHandle);
         try {
             return ProtocolDecoder.decodeGestureResult(result.asByteBuffer());
         } finally {
