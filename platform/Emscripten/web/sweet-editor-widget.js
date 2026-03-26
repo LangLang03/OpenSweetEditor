@@ -78,17 +78,32 @@ function resolveEnum(moduleObj, enumName, fallback) {
   const resolved = { ...fallback };
   Object.keys(fallback).forEach((key) => {
     if (!(key in enumObj)) return;
-    const value = Number(enumObj[key]);
-    if (Number.isFinite(value)) {
+    const value = toFiniteNumber(enumObj[key]);
+    if (value !== null) {
       resolved[key] = value;
     }
   });
   return resolved;
 }
 
-function toInt(value, fallback = 0) {
+function toFiniteNumber(value) {
+  if (value && typeof value === "object" && "value" in value) {
+    const enumValue = Number(value.value);
+    if (Number.isFinite(enumValue)) {
+      return enumValue;
+    }
+  }
+
   const n = Number(value);
-  if (!Number.isFinite(n)) {
+  if (Number.isFinite(n)) {
+    return n;
+  }
+  return null;
+}
+
+function toInt(value, fallback = 0) {
+  const n = toFiniteNumber(value);
+  if (n === null) {
     return fallback;
   }
   return Math.trunc(n);

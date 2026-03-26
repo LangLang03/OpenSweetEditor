@@ -7,8 +7,8 @@ import {
   DecorationResultDispatchMode,
   DecorationProviderCallMode,
   DecorationResult,
-} from "../index.js?v=20260326_04";
-import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_04";
+} from "../index.js?v=20260326_05";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_05";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
