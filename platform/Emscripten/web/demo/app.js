@@ -456,6 +456,18 @@ function withSweetLineRange(sweetLine, range, fn) {
   }
 }
 
+function withSweetLineLineRange(sweetLine, range, fn) {
+  const slRange = new sweetLine.LineRange();
+  slRange.startLine = Math.max(0, toInt(range?.startLine, 0));
+  slRange.lineCount = Math.max(0, toInt(range?.lineCount, 0));
+
+  try {
+    return fn(slRange);
+  } finally {
+    safeDelete(slRange);
+  }
+}
+
 function registerSweetLineStyleMap(engine) {
   engine.registerStyleName("keyword", STYLE.KEYWORD);
   engine.registerStyleName("type", STYLE.TYPE);
@@ -546,10 +558,14 @@ class DemoDecorationProvider {
     this._sourceLines = normalizeNewlines(DEMO_FILE_FALLBACKS["example.kt"]).split("\n");
     this._analysisDocument = null;
     this._documentAnalyzer = null;
-    this._cacheHighlight = null;
+    this._analysisReady = false;
     this._analyzedFileName = "";
     this._liteMode = false;
     this._refreshLiteMode();
+  }
+
+  getLineCount() {
+    return Math.max(0, this._sourceLines.length);
   }
 
   setDocumentSource(fileName, text) {
@@ -571,7 +587,7 @@ class DemoDecorationProvider {
     safeDelete(this._analysisDocument);
     this._documentAnalyzer = null;
     this._analysisDocument = null;
-    this._cacheHighlight = null;
+    this._analysisReady = false;
     this._analyzedFileName = "";
   }
 
@@ -580,53 +596,88 @@ class DemoDecorationProvider {
     const sourceText = this._sourceLines.join("\n");
     this._analysisDocument = new this._sweetLine.Document(buildAnalysisUri(fileName), sourceText);
     this._documentAnalyzer = this._highlightEngine.loadDocument(this._analysisDocument);
-    this._cacheHighlight = this._documentAnalyzer.analyze();
+    this._documentAnalyzer.analyze();
+    this._analysisReady = true;
     this._analyzedFileName = fileName;
   }
 
-  _applyIncrementalChanges(changes) {
-    if (!this._documentAnalyzer || changes.length === 0) {
-      return true;
+  _toVisibleSliceRange(visibleRange) {
+    const startLine = Math.max(0, toInt(visibleRange?.start, 0));
+    const endLine = Math.max(startLine - 1, toInt(visibleRange?.end, startLine - 1));
+    const lineCount = endLine >= startLine ? (endLine - startLine + 1) : 0;
+    return { startLine, lineCount };
+  }
+
+  _analyzeVisibleSlice(changes, visibleRange) {
+    if (!this._documentAnalyzer || !this._analysisReady) {
+      return null;
     }
 
+    const sliceRange = this._toVisibleSliceRange(visibleRange);
+    if (sliceRange.lineCount <= 0) {
+      return null;
+    }
+
+    let slice = null;
     try {
       for (const change of changes) {
-        const newText = normalizeNewlines(change?.newText ?? "");
         if (!change?.range) {
           continue;
         }
+        const newText = normalizeNewlines(change?.newText ?? change?.new_text ?? "");
         withSweetLineRange(this._sweetLine, change.range, (slRange) => {
-          this._cacheHighlight = this._documentAnalyzer.analyzeIncremental(slRange, newText);
+          withSweetLineLineRange(this._sweetLine, sliceRange, (slLineRange) => {
+            safeDelete(slice);
+            slice = this._documentAnalyzer.analyzeIncrementalInLineRange(slRange, newText, slLineRange);
+          });
         });
       }
-      return true;
+
+      if (slice) {
+        return slice;
+      }
+
+      const totalLines = Math.max(1, this._sourceLines.length);
+      const anchorLine = Math.max(0, Math.min(sliceRange.startLine, totalLines - 1));
+      const collapsedRange = {
+        start: { line: anchorLine, column: 0 },
+        end: { line: anchorLine, column: 0 },
+      };
+      withSweetLineRange(this._sweetLine, collapsedRange, (slRange) => {
+        withSweetLineLineRange(this._sweetLine, sliceRange, (slLineRange) => {
+          safeDelete(slice);
+          slice = this._documentAnalyzer.analyzeIncrementalInLineRange(slRange, "", slLineRange);
+        });
+      });
+      return slice;
     } catch (error) {
-      console.error("SweetLine incremental analyze failed:", error);
-      return false;
+      safeDelete(slice);
+      console.error("SweetLine visible-slice analyze failed:", error);
+      return null;
     }
   }
 
-  _collectSyntaxSpans(startLine, endLine) {
+  _collectSyntaxSpansFromSlice(slice, visibleRange) {
+    const startLine = Math.max(0, toInt(visibleRange?.start, 0));
+    const endLine = Math.max(startLine - 1, toInt(visibleRange?.end, startLine - 1));
     const syntaxSpans = new Map();
-    const lineHighlights = this._cacheHighlight?.lines;
-    if (!lineHighlights) {
+    for (let line = startLine; line <= endLine; line += 1) {
+      syntaxSpans.set(line, []);
+    }
+    if (!slice || !slice.lines) {
       return syntaxSpans;
     }
 
-    const appendFromLineHighlight = (lineHighlight, fallbackLine) => {
-      if (!lineHighlight) {
+    const sliceStartLine = Math.max(0, toInt(slice.startLine, startLine));
+    const lineHighlights = slice.lines;
+    const appendFromLineHighlight = (lineHighlight, logicalLine) => {
+      if (!lineHighlight || !syntaxSpans.has(logicalLine)) {
         return;
       }
       forSweetLineList(lineHighlight.spans, (token) => {
-        const span = extractLineSpanItem(token, fallbackLine);
-        if (!span) {
+        const span = extractLineSpanItem(token, logicalLine);
+        if (!span || !syntaxSpans.has(span.line)) {
           return;
-        }
-        if (span.line < startLine || span.line > endLine) {
-          return;
-        }
-        if (!syntaxSpans.has(span.line)) {
-          syntaxSpans.set(span.line, []);
         }
         syntaxSpans.get(span.line).push({
           column: span.column,
@@ -639,12 +690,10 @@ class DemoDecorationProvider {
     if (typeof lineHighlights.size === "function" && typeof lineHighlights.get === "function") {
       const lineCount = Math.max(0, toInt(lineHighlights.size(), 0));
       for (let i = 0; i < lineCount; i += 1) {
-        appendFromLineHighlight(lineHighlights.get(i), i);
+        appendFromLineHighlight(lineHighlights.get(i), sliceStartLine + i);
       }
     } else if (Array.isArray(lineHighlights)) {
-      lineHighlights.forEach((lineHighlight, i) => appendFromLineHighlight(lineHighlight, i));
-    } else {
-      return syntaxSpans;
+      lineHighlights.forEach((lineHighlight, i) => appendFromLineHighlight(lineHighlight, sliceStartLine + i));
     }
 
     syntaxSpans.forEach((spans) => {
@@ -663,29 +712,23 @@ class DemoDecorationProvider {
     const changes = Array.isArray(context?.textChanges) ? context.textChanges : [];
     if (changes.length > 0) {
       for (const change of changes) {
-        applyLineChangeToLines(this._sourceLines, change.range, normalizeNewlines(change.newText ?? ""));
+        applyLineChangeToLines(
+          this._sourceLines,
+          change.range,
+          normalizeNewlines(change.newText ?? change.new_text ?? ""),
+        );
       }
       this._refreshLiteMode();
     }
 
     const snapshotFileName = this._sourceFileName;
     const fileChanged = snapshotFileName !== this._analyzedFileName;
-    if (fileChanged || !this._documentAnalyzer || !this._cacheHighlight) {
+    if (fileChanged || !this._documentAnalyzer || !this._analysisReady) {
       try {
         this._rebuildAnalyzer(snapshotFileName);
       } catch (error) {
         console.error("SweetLine full analyze failed:", error);
         this._disposeAnalyzer();
-      }
-    } else if (changes.length > 0) {
-      const incrementalOk = this._applyIncrementalChanges(changes);
-      if (!incrementalOk || !this._cacheHighlight) {
-        try {
-          this._rebuildAnalyzer(snapshotFileName);
-        } catch (error) {
-          console.error("SweetLine fallback full analyze failed:", error);
-          this._disposeAnalyzer();
-        }
       }
     }
 
@@ -698,7 +741,22 @@ class DemoDecorationProvider {
       return;
     }
 
-    const syntaxSpans = this._collectSyntaxSpans(visibleRange.start, visibleRange.end);
+    let syntaxSlice = null;
+    if (this._documentAnalyzer && this._analysisReady) {
+      syntaxSlice = this._analyzeVisibleSlice(changes, visibleRange);
+      if (!syntaxSlice && changes.length > 0) {
+        try {
+          this._rebuildAnalyzer(snapshotFileName);
+          syntaxSlice = this._analyzeVisibleSlice([], visibleRange);
+        } catch (error) {
+          console.error("SweetLine fallback full analyze failed:", error);
+          this._disposeAnalyzer();
+        }
+      }
+    }
+    const syntaxSpans = this._collectSyntaxSpansFromSlice(syntaxSlice, visibleRange);
+    safeDelete(syntaxSlice);
+
     const rendered = buildDemoInlayAndDiagnostics(
       this._sourceLines,
       snapshotFileName,
@@ -709,7 +767,7 @@ class DemoDecorationProvider {
 
     receiver.accept(new DecorationResult({
       syntaxSpans,
-      syntaxSpansMode: DecorationApplyMode.REPLACE_RANGE,
+      syntaxSpansMode: DecorationApplyMode.MERGE,
       inlayHints: rendered.inlayHints,
       inlayHintsMode: DecorationApplyMode.REPLACE_RANGE,
     }));
@@ -808,6 +866,46 @@ function registerDemoStyles(editor) {
   editor.registerTextStyle(STYLE.COLOR, 0xFFFF9E64, 0, 1);
 }
 
+function countLogicalLines(text) {
+  const source = String(text ?? "");
+  if (source.length === 0) {
+    return 1;
+  }
+
+  let lines = 1;
+  for (let i = 0; i < source.length; i += 1) {
+    const code = source.charCodeAt(i);
+    if (code === 10) {
+      lines += 1;
+      continue;
+    }
+    if (code === 13) {
+      lines += 1;
+      if (i + 1 < source.length && source.charCodeAt(i + 1) === 10) {
+        i += 1;
+      }
+    }
+  }
+  return lines;
+}
+
+function resolveDecorationRuntimeOptionsByLineCount(lineCount) {
+  const total = Math.max(0, toInt(lineCount, 0));
+  if (total >= 80000) {
+    return { scrollRefreshMinIntervalMs: 140, overscanViewportMultiplier: 0.10 };
+  }
+  if (total >= 30000) {
+    return { scrollRefreshMinIntervalMs: 110, overscanViewportMultiplier: 0.16 };
+  }
+  if (total >= 10000) {
+    return { scrollRefreshMinIntervalMs: 85, overscanViewportMultiplier: 0.24 };
+  }
+  if (total >= 3000) {
+    return { scrollRefreshMinIntervalMs: 65, overscanViewportMultiplier: 0.34 };
+  }
+  return { scrollRefreshMinIntervalMs: 50, overscanViewportMultiplier: 0.5 };
+}
+
 const host = document.getElementById("editor");
 const fileSelect = document.getElementById("fileSelect");
 const openLocalBtn = document.getElementById("openLocalBtn");
@@ -837,12 +935,16 @@ const DEMO_DECORATION_OPTIONS = Object.freeze({
 const { fileNames, fileMap, fileState } = await loadDemoFiles(wasmVersion);
 const initialFileName = fileNames[0] || "example.kt";
 const initialText = fileMap.get(initialFileName) || DEMO_FILE_FALLBACKS[initialFileName] || "";
+const initialDecorationRuntimeOptions = resolveDecorationRuntimeOptionsByLineCount(countLogicalLines(initialText));
 
 const editor = await createSweetEditor(host, {
   modulePath: `../../../../build/wasm/bin/sweeteditor.js?v=${wasmVersion}`,
   locale,
   text: initialText,
-  decorationOptions: DEMO_DECORATION_OPTIONS,
+  decorationOptions: {
+    ...DEMO_DECORATION_OPTIONS,
+    ...initialDecorationRuntimeOptions,
+  },
 });
 
 registerDemoStyles(editor);
@@ -948,6 +1050,9 @@ function loadFile(fileName) {
       editor.clearAllDecorations();
     }
     demoDecorationProvider.setDocumentSource(normalizedFileName, text);
+    editor.setDecorationProviderOptions(
+      resolveDecorationRuntimeOptionsByLineCount(demoDecorationProvider.getLineCount()),
+    );
     editor.setMetadata({ fileName: normalizedFileName });
     editor.setLanguageConfiguration(resolveLanguageConfiguration(normalizedFileName));
     editor.loadText(text);

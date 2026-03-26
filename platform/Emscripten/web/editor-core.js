@@ -887,6 +887,23 @@ export class WebEditorCore {
 
   setBatchLineSpans(layer, spansByLine) {
     const layerValue = toInt(layer, this._spanLayer.SYNTAX);
+    const batched = this._callBatchLineEntries(
+      "LineStyleSpansEntryVector",
+      "StyleSpanVector",
+      "spans",
+      spansByLine,
+      (span) => ({
+        column: ensureColumn(span.column),
+        length: ensureLength(span.length),
+        style_id: toInt(span.styleId ?? span.style_id, 0),
+      }),
+      (entryVec) => {
+        this.call("setBatchLineSpans", layerValue, entryVec);
+      },
+    );
+    if (batched) {
+      return;
+    }
     this.withBatch(() => {
       iterateLineEntries(spansByLine, (line, spans) => {
         this.setLineSpans(line, layerValue, spans);
@@ -903,6 +920,19 @@ export class WebEditorCore {
   }
 
   setBatchLineInlayHints(hintsByLine) {
+    const batched = this._callBatchLineEntries(
+      "LineInlayHintsEntryVector",
+      "InlayHintVector",
+      "hints",
+      hintsByLine,
+      (hint) => this._toNativeInlayHint(hint),
+      (entryVec) => {
+        this.call("setBatchLineInlayHints", entryVec);
+      },
+    );
+    if (batched) {
+      return;
+    }
     this.withBatch(() => {
       iterateLineEntries(hintsByLine, (line, hints) => {
         this.setLineInlayHints(line, hints);
@@ -922,6 +952,22 @@ export class WebEditorCore {
   }
 
   setBatchLinePhantomTexts(phantomsByLine) {
+    const batched = this._callBatchLineEntries(
+      "LinePhantomTextsEntryVector",
+      "PhantomTextVector",
+      "phantoms",
+      phantomsByLine,
+      (phantom) => ({
+        column: ensureColumn(phantom.column),
+        text: String(phantom.text ?? ""),
+      }),
+      (entryVec) => {
+        this.call("setBatchLinePhantomTexts", entryVec);
+      },
+    );
+    if (batched) {
+      return;
+    }
     this.withBatch(() => {
       iterateLineEntries(phantomsByLine, (line, phantoms) => {
         this.setLinePhantomTexts(line, phantoms);
@@ -940,6 +986,21 @@ export class WebEditorCore {
   }
 
   setBatchLineGutterIcons(iconsByLine) {
+    const batched = this._callBatchLineEntries(
+      "LineGutterIconsEntryVector",
+      "GutterIconVector",
+      "icons",
+      iconsByLine,
+      (icon) => ({
+        icon_id: toInt(icon.iconId ?? icon.icon_id ?? icon, 0),
+      }),
+      (entryVec) => {
+        this.call("setBatchLineGutterIcons", entryVec);
+      },
+    );
+    if (batched) {
+      return;
+    }
     this.withBatch(() => {
       iterateLineEntries(iconsByLine, (line, icons) => {
         this.setLineGutterIcons(line, icons);
@@ -961,6 +1022,24 @@ export class WebEditorCore {
   }
 
   setBatchLineDiagnostics(diagsByLine) {
+    const batched = this._callBatchLineEntries(
+      "LineDiagnosticsEntryVector",
+      "DiagnosticSpanVector",
+      "diagnostics",
+      diagsByLine,
+      (item) => ({
+        column: ensureColumn(item.column),
+        length: ensureLength(item.length),
+        severity: this._toNativeEnumValue("DiagnosticSeverity", item.severity, this._diagnosticSeverity.DIAG_HINT),
+        color: toInt(item.color, 0),
+      }),
+      (entryVec) => {
+        this.call("setBatchLineDiagnostics", entryVec);
+      },
+    );
+    if (batched) {
+      return;
+    }
     this.withBatch(() => {
       iterateLineEntries(diagsByLine, (line, diagnostics) => {
         this.setLineDiagnostics(line, diagnostics);
@@ -1102,6 +1181,51 @@ export class WebEditorCore {
       return enumValues[String(numericValue)];
     }
     return numericValue;
+  }
+
+  _callBatchLineEntries(entryVectorName, itemVectorName, entryFieldName, entriesByLine, itemMapper, fn) {
+    const normalizedEntries = [];
+    iterateLineEntries(entriesByLine, (line, items) => {
+      normalizedEntries.push({
+        line: ensureLine(line),
+        items: asArray(items),
+      });
+    });
+    if (normalizedEntries.length === 0) {
+      return true;
+    }
+
+    const EntryVectorCtor = this._wasm?.[entryVectorName];
+    const ItemVectorCtor = this._wasm?.[itemVectorName];
+    if (typeof EntryVectorCtor !== "function" || typeof ItemVectorCtor !== "function") {
+      return false;
+    }
+
+    const entryVec = new EntryVectorCtor();
+    try {
+      normalizedEntries.forEach((entry) => {
+        const itemVec = new ItemVectorCtor();
+        try {
+          entry.items.forEach((item) => {
+            itemVec.push_back(itemMapper(item));
+          });
+          entryVec.push_back({
+            line: entry.line,
+            [entryFieldName]: itemVec,
+          });
+        } finally {
+          if (typeof itemVec.delete === "function") {
+            itemVec.delete();
+          }
+        }
+      });
+      fn(entryVec);
+      return true;
+    } finally {
+      if (typeof entryVec.delete === "function") {
+        entryVec.delete();
+      }
+    }
   }
 
   _callWithVector(vectorName, items, mapper, fn) {
@@ -1838,11 +1962,11 @@ export class DecorationProviderManager {
     this._generation += 1;
     const generation = this._generation;
 
-    if (this._ensureVisibleLineRange) {
+    let visibleRange = this._resolveVisibleRange();
+    if (visibleRange.end < visibleRange.start && this._ensureVisibleLineRange) {
       safeCall(() => this._ensureVisibleLineRange());
+      visibleRange = this._resolveVisibleRange();
     }
-
-    const visibleRange = this._resolveVisibleRange();
     this._lastVisibleStartLine = visibleRange.start;
     this._lastVisibleEndLine = visibleRange.end;
 
