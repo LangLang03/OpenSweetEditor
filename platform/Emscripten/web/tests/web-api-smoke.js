@@ -1,4 +1,4 @@
-import { EditorEventType } from "../index.js?v=20260326_14";
+import { EditorEventType } from "../index.js?v=20260326_18";
 
 function assert(condition, message) {
   if (!condition) {

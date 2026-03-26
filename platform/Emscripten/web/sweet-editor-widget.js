@@ -8,6 +8,7 @@ import {
   DecorationContext,
   DecorationApplyMode,
   DecorationProviderManager,
+  SweetLineIncrementalDecorationProvider,
 } from "./editor-core.js";
 
 const FALLBACK_EVENT_TYPE = {
@@ -923,6 +924,7 @@ export class SweetEditorWidget {
     this._compositionEndFallbackData = "";
     this._compositionEndTimer = 0;
     this._newLineActionProviders = [];
+    this._ownedDecorationProviders = new Set();
     this._listeners = new Map();
 
     this._lastCursorPosition = null;
@@ -1567,6 +1569,13 @@ export class SweetEditorWidget {
       this._document = null;
     }
 
+    this._ownedDecorationProviders.forEach((provider) => {
+      if (provider && typeof provider.dispose === "function") {
+        provider.dispose();
+      }
+    });
+    this._ownedDecorationProviders.clear();
+
     this._core.dispose();
 
     if (this._contextMenu) {
@@ -1602,12 +1611,38 @@ export class SweetEditorWidget {
     this._core.clearHighlights(layer);
   }
 
+  createSweetLineDecorationProvider(options = {}) {
+    return new SweetLineIncrementalDecorationProvider({
+      ...options,
+      fileName: options.fileName ?? options.sourceFileName ?? this._metadata?.fileName,
+      text: options.text ?? options.sourceText ?? this.getText(),
+      getDocumentText: typeof options.getDocumentText === "function"
+        ? options.getDocumentText
+        : () => this.getText(),
+    });
+  }
+
+  addSweetLineDecorationProvider(options = {}) {
+    const provider = options instanceof SweetLineIncrementalDecorationProvider
+      ? options
+      : this.createSweetLineDecorationProvider(options);
+    this.addDecorationProvider(provider);
+    this._ownedDecorationProviders.add(provider);
+    return provider;
+  }
+
   addDecorationProvider(provider) {
     this._decorationProviderManager.addProvider(provider);
   }
 
   removeDecorationProvider(provider) {
     this._decorationProviderManager.removeProvider(provider);
+    if (this._ownedDecorationProviders.has(provider)) {
+      this._ownedDecorationProviders.delete(provider);
+      if (provider && typeof provider.dispose === "function") {
+        provider.dispose();
+      }
+    }
   }
 
   requestDecorationRefresh() {
@@ -2745,7 +2780,11 @@ export class SweetEditorWidget {
     const action = options.action ?? TextChangeAction.INSERT;
     const emitStateEvents = options.emitStateEvents !== false;
     const changed = Boolean(editResult.changed ?? false);
-    const changes = asArray(editResult.changes);
+    const changes = asArray(editResult.changes).map((change) => ({
+      range: cloneRange(change?.range),
+      oldText: String(change?.oldText ?? change?.old_text ?? ""),
+      newText: String(change?.newText ?? change?.new_text ?? ""),
+    }));
 
     if (!changed && changes.length === 0) {
       return;
@@ -2753,9 +2792,7 @@ export class SweetEditorWidget {
 
     if (changes.length > 0) {
       changes.forEach((change) => {
-        const range = cloneRange(change.range);
-        const text = String(change.newText ?? change.new_text ?? "");
-        this._emitTextChanged(action, range, text);
+        this._emitTextChanged(action, change.range, change.newText);
       });
     } else {
       this._emitTextChanged(action, null, null);
@@ -2785,7 +2822,7 @@ export class SweetEditorWidget {
     }
 
     const primary = changes[0] || {};
-    const newText = String(primary.new_text ?? primary.newText ?? "");
+    const newText = String(primary.newText ?? primary.new_text ?? "");
 
     if (newText.length === 1) {
       const ch = newText;

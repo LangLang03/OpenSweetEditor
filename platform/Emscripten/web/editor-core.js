@@ -62,6 +62,37 @@ function toInt(value, fallback = 0) {
   return Math.trunc(n);
 }
 
+export function normalizeNewlines(text) {
+  return String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function hasLineBreak(text) {
+  return /[\r\n]/.test(String(text ?? ""));
+}
+
+export function countLogicalLines(text) {
+  const source = String(text ?? "");
+  if (source.length === 0) {
+    return 1;
+  }
+
+  let lines = 1;
+  for (let i = 0; i < source.length; i += 1) {
+    const code = source.charCodeAt(i);
+    if (code === 10) {
+      lines += 1;
+      continue;
+    }
+    if (code === 13) {
+      lines += 1;
+      if (i + 1 < source.length && source.charCodeAt(i + 1) === 10) {
+        i += 1;
+      }
+    }
+  }
+  return lines;
+}
+
 function asArray(value) {
   if (Array.isArray(value)) {
     return value;
@@ -134,6 +165,162 @@ function ensureRange(range, fallbackPosition = null) {
     start: { line: 0, column: 0 },
     end: { line: 0, column: 0 },
   };
+}
+
+export function clampVisibleLineRange(start, end, totalLines, maxLineSpan = Number.POSITIVE_INFINITY) {
+  const total = Math.max(0, toInt(totalLines, 0));
+  if (total <= 0) {
+    return { start: 0, end: -1 };
+  }
+
+  let s = Math.max(0, toInt(start, 0));
+  let e = Math.max(s, toInt(end, s));
+  s = Math.min(s, total - 1);
+  e = Math.min(e, total - 1);
+
+  const maxSpan = Number(maxLineSpan);
+  if (Number.isFinite(maxSpan)) {
+    const limitedSpan = Math.max(1, toInt(maxSpan, 1));
+    if ((e - s + 1) > limitedSpan) {
+      e = Math.min(total - 1, s + limitedSpan - 1);
+    }
+  }
+
+  return { start: s, end: e };
+}
+
+export function applyLineChangeToLines(lines, range, newText, options = {}) {
+  if (!Array.isArray(lines)) {
+    return;
+  }
+
+  const normalizedRange = ensureRange(range);
+  if (lines.length === 0) {
+    lines.push("");
+  }
+
+  let startLine = Math.max(0, toInt(normalizedRange.start.line, 0));
+  let endLine = Math.max(0, toInt(normalizedRange.end.line, 0));
+  let startColumn = Math.max(0, toInt(normalizedRange.start.column, 0));
+  let endColumn = Math.max(0, toInt(normalizedRange.end.column, 0));
+
+  if (startLine > endLine || (startLine === endLine && startColumn > endColumn)) {
+    const swapLine = startLine;
+    startLine = endLine;
+    endLine = swapLine;
+
+    const swapColumn = startColumn;
+    startColumn = endColumn;
+    endColumn = swapColumn;
+  }
+
+  startLine = Math.min(startLine, lines.length - 1);
+  endLine = Math.min(endLine, lines.length - 1);
+
+  const startText = String(lines[startLine] ?? "");
+  const endText = String(lines[endLine] ?? "");
+  startColumn = Math.min(startColumn, startText.length);
+  endColumn = Math.min(endColumn, endText.length);
+
+  const prefix = startText.slice(0, startColumn);
+  const suffix = endText.slice(endColumn);
+
+  const normalizeChangeText = options.normalizeNewlines !== false;
+  const insertedText = normalizeChangeText ? normalizeNewlines(newText) : String(newText ?? "");
+  const inserted = insertedText.split("\n");
+  if (inserted.length === 0) {
+    inserted.push("");
+  }
+
+  const replacement = [];
+  if (inserted.length === 1) {
+    replacement.push(`${prefix}${inserted[0]}${suffix}`);
+  } else {
+    replacement.push(`${prefix}${inserted[0]}`);
+    for (let i = 1; i < inserted.length - 1; i += 1) {
+      replacement.push(inserted[i]);
+    }
+    replacement.push(`${inserted[inserted.length - 1]}${suffix}`);
+  }
+
+  lines.splice(startLine, endLine - startLine + 1, ...replacement);
+}
+
+function lineColumnToOffset(text, targetLine, targetColumn) {
+  const source = String(text ?? "");
+  const targetLineNo = Math.max(0, toInt(targetLine, 0));
+  const targetColumnNo = Math.max(0, toInt(targetColumn, 0));
+
+  let line = 0;
+  let index = 0;
+  while (index < source.length && line < targetLineNo) {
+    const code = source.charCodeAt(index);
+    if (code === 13) {
+      index += 1;
+      if (index < source.length && source.charCodeAt(index) === 10) {
+        index += 1;
+      }
+      line += 1;
+      continue;
+    }
+    if (code === 10) {
+      index += 1;
+      line += 1;
+      continue;
+    }
+    index += 1;
+  }
+
+  let column = 0;
+  while (index < source.length && column < targetColumnNo) {
+    const code = source.charCodeAt(index);
+    if (code === 10 || code === 13) {
+      break;
+    }
+    index += 1;
+    column += 1;
+  }
+  return index;
+}
+
+export function applyTextChangeToText(originalText, range, newText, options = {}) {
+  const source = String(originalText ?? "");
+  const normalizedRange = ensureRange(range);
+  let startOffset = lineColumnToOffset(source, normalizedRange.start.line, normalizedRange.start.column);
+  let endOffset = lineColumnToOffset(source, normalizedRange.end.line, normalizedRange.end.column);
+  if (startOffset > endOffset) {
+    const tmp = startOffset;
+    startOffset = endOffset;
+    endOffset = tmp;
+  }
+
+  const insertedText = options.normalizeNewlines === false
+    ? String(newText ?? "")
+    : normalizeNewlines(newText);
+  return `${source.slice(0, startOffset)}${insertedText}${source.slice(endOffset)}`;
+}
+
+export function applyTextChangesToText(originalText, changes, options = {}) {
+  let output = String(originalText ?? "");
+  asArray(changes).forEach((change) => {
+    output = applyTextChangeToText(
+      output,
+      change?.range,
+      change?.newText ?? change?.new_text ?? "",
+      options,
+    );
+  });
+  return output;
+}
+
+function isLineStructureChange(change) {
+  const range = ensureRange(change?.range);
+  if (range.start.line !== range.end.line) {
+    return true;
+  }
+
+  return hasLineBreak(change?.oldText ?? change?.old_text ?? "")
+    || hasLineBreak(change?.newText ?? change?.new_text ?? "");
 }
 
 function normalizePosition(position) {
@@ -1665,6 +1852,401 @@ export class DecorationProvider {
   }
 }
 
+function splitSourceLines(text) {
+  const lines = String(text ?? "").split("\n");
+  if (lines.length === 0) {
+    return [""];
+  }
+  return lines;
+}
+
+function safeDeleteNativeHandle(handle) {
+  if (handle && typeof handle.delete === "function") {
+    handle.delete();
+  }
+}
+
+function iterateNativeList(list, fn) {
+  if (!list || typeof fn !== "function") {
+    return;
+  }
+  if (Array.isArray(list)) {
+    list.forEach((item, index) => fn(item, index));
+    return;
+  }
+  if (typeof list.size === "function" && typeof list.get === "function") {
+    const size = Math.max(0, toInt(list.size(), 0));
+    for (let i = 0; i < size; i += 1) {
+      fn(list.get(i), i);
+    }
+  }
+}
+
+function extractSingleLineStyleSpan(token) {
+  if (!token || !token.range || !token.range.start || !token.range.end) {
+    return null;
+  }
+  const styleId = toInt(token.styleId ?? token.style_id, 0);
+  if (styleId <= 0) {
+    return null;
+  }
+  const startLine = toInt(token.range.start.line, 0);
+  const endLine = toInt(token.range.end.line, startLine);
+  const startColumn = Math.max(0, toInt(token.range.start.column, 0));
+  const endColumn = Math.max(0, toInt(token.range.end.column, startColumn));
+  if (startLine < 0 || startLine !== endLine || endColumn <= startColumn) {
+    return null;
+  }
+  return {
+    line: startLine,
+    column: startColumn,
+    length: endColumn - startColumn,
+    styleId,
+  };
+}
+
+function withSweetLineTextRange(sweetLine, range, fn) {
+  const slRange = new sweetLine.TextRange();
+  const start = new sweetLine.TextPosition();
+  const end = new sweetLine.TextPosition();
+
+  start.line = Math.max(0, toInt(range?.start?.line, 0));
+  start.column = Math.max(0, toInt(range?.start?.column, 0));
+  start.index = 0;
+
+  end.line = Math.max(0, toInt(range?.end?.line, start.line));
+  end.column = Math.max(0, toInt(range?.end?.column, start.column));
+  end.index = 0;
+
+  slRange.start = start;
+  slRange.end = end;
+
+  try {
+    return fn(slRange);
+  } finally {
+    safeDeleteNativeHandle(start);
+    safeDeleteNativeHandle(end);
+    safeDeleteNativeHandle(slRange);
+  }
+}
+
+export class SweetLineIncrementalDecorationProvider extends DecorationProvider {
+  constructor(options = {}) {
+    super();
+    this._sweetLine = options.sweetLine ?? options.runtime?.sweetLine ?? null;
+    this._highlightEngine = options.highlightEngine ?? options.runtime?.engine ?? null;
+
+    this._defaultFileName = String(options.defaultFileName ?? "example.cpp");
+    this._sourceFileName = this._defaultFileName;
+    this._sourceText = "";
+    this._sourceLines = [""];
+
+    this._analysisDocument = null;
+    this._documentAnalyzer = null;
+    this._cacheHighlight = null;
+    this._analysisReady = false;
+    this._analyzedFileName = "";
+
+    const maxRenderLinesValue = Number(options.maxRenderLinesPerPass);
+    this._maxRenderLinesPerPass = Number.isFinite(maxRenderLinesValue)
+      ? Math.max(1, toInt(maxRenderLinesValue, 1))
+      : Number.POSITIVE_INFINITY;
+    this._syntaxSpansMode = toInt(options.syntaxSpansMode, DecorationApplyMode.MERGE);
+    this._capabilities = toInt(
+      options.capabilities,
+      DecorationType.SYNTAX_HIGHLIGHT,
+    ) | DecorationType.SYNTAX_HIGHLIGHT;
+
+    this._resolveFileName = typeof options.resolveFileName === "function"
+      ? options.resolveFileName
+      : null;
+    this._buildAnalysisUri = typeof options.buildAnalysisUri === "function"
+      ? options.buildAnalysisUri
+      : (fileName) => `file:///${String(fileName || this._defaultFileName)}`;
+    this._decorate = typeof options.decorate === "function"
+      ? options.decorate
+      : null;
+    this._getDocumentText = typeof options.getDocumentText === "function"
+      ? options.getDocumentText
+      : null;
+    this._syncSourceOnTextChange = options.syncSourceOnTextChange !== false;
+
+    this.setDocumentSource(
+      options.fileName ?? options.sourceFileName ?? this._defaultFileName,
+      options.text ?? options.sourceText ?? "",
+    );
+  }
+
+  getCapabilities() {
+    return this._capabilities;
+  }
+
+  dispose() {
+    this._disposeAnalyzer();
+  }
+
+  getLineCount() {
+    return Math.max(0, this._sourceLines.length);
+  }
+
+  setDocumentSource(fileName, text) {
+    this._sourceFileName = String(fileName || this._defaultFileName);
+    this._setSourceText(text);
+    this._disposeAnalyzer();
+  }
+
+  provideDecorations(context, receiver) {
+    if (!this._sweetLine || !this._highlightEngine || !receiver) {
+      return;
+    }
+
+    const changes = asArray(context?.textChanges).map((change) => ({
+      range: ensureRange(change?.range),
+      oldText: String(change?.oldText ?? change?.old_text ?? ""),
+      newText: String(change?.newText ?? change?.new_text ?? ""),
+    }));
+
+    const resolvedFileName = this._resolveContextFileName(context);
+    const fileChanged = resolvedFileName !== this._analyzedFileName;
+    this._sourceFileName = resolvedFileName;
+
+    if ((fileChanged || !this._documentAnalyzer || !this._analysisReady) && this._getDocumentText) {
+      this._syncSourceFromDocument();
+    } else if (changes.length > 0) {
+      this._applyTextChanges(changes);
+    }
+
+    if (fileChanged || !this._documentAnalyzer || !this._analysisReady) {
+      if (!this._tryRebuildAnalyzer(resolvedFileName)) {
+        return;
+      }
+    } else if (changes.length > 0) {
+      if (!this._tryAnalyzeIncremental(changes, resolvedFileName)) {
+        return;
+      }
+    }
+
+    const totalLineCount = Math.max(
+      this._sourceLines.length,
+      Math.max(0, toInt(context?.totalLineCount, this._sourceLines.length)),
+    );
+
+    const visibleRange = clampVisibleLineRange(
+      context?.visibleStartLine ?? 0,
+      context?.visibleEndLine ?? ((context?.visibleStartLine ?? 0) + 120),
+      totalLineCount,
+      this._maxRenderLinesPerPass,
+    );
+    if (visibleRange.end < visibleRange.start) {
+      return;
+    }
+
+    const syntaxSpans = this._collectSyntaxSpans(visibleRange);
+    receiver.accept(new DecorationResult({
+      syntaxSpans,
+      syntaxSpansMode: this._syntaxSpansMode,
+    }));
+
+    if (!this._decorate) {
+      return;
+    }
+
+    const extraPatch = safeCall(() => this._decorate({
+      context,
+      receiver,
+      fileName: resolvedFileName,
+      visibleRange,
+      sourceText: this._sourceText,
+      sourceLines: this._sourceLines,
+      totalLineCount,
+      cacheHighlight: this._cacheHighlight,
+    }));
+    if (!extraPatch) {
+      return;
+    }
+
+    receiver.accept(
+      extraPatch instanceof DecorationResult
+        ? extraPatch
+        : new DecorationResult(extraPatch),
+    );
+  }
+
+  _setSourceText(text) {
+    this._sourceText = normalizeNewlines(text);
+    this._sourceLines = splitSourceLines(this._sourceText);
+  }
+
+  _resolveContextFileName(context) {
+    let fileName = this._sourceFileName || this._defaultFileName;
+    const metadataFileName = context?.editorMetadata?.fileName;
+    if (metadataFileName) {
+      fileName = String(metadataFileName);
+    }
+    if (this._resolveFileName) {
+      const resolved = safeCall(() => this._resolveFileName(context, fileName));
+      if (resolved != null && resolved !== "") {
+        fileName = String(resolved);
+      }
+    }
+    return fileName || this._defaultFileName;
+  }
+
+  _syncSourceFromDocument() {
+    if (!this._getDocumentText) {
+      return false;
+    }
+    const sourceText = safeCall(() => this._getDocumentText());
+    if (typeof sourceText !== "string") {
+      return false;
+    }
+    const normalized = normalizeNewlines(sourceText);
+    if (normalized === this._sourceText) {
+      return false;
+    }
+    this._setSourceText(normalized);
+    return true;
+  }
+
+  _applyTextChanges(changes) {
+    if (!changes || changes.length === 0) {
+      return;
+    }
+    this._sourceText = applyTextChangesToText(this._sourceText, changes);
+    this._sourceLines = splitSourceLines(this._sourceText);
+  }
+
+  _tryRebuildAnalyzer(fileName) {
+    try {
+      this._rebuildAnalyzer(fileName);
+      return true;
+    } catch (error) {
+      console.error("SweetLine full analyze failed:", error);
+      this._disposeAnalyzer();
+      return false;
+    }
+  }
+
+  _tryAnalyzeIncremental(changes, fileName) {
+    try {
+      changes.forEach((change) => {
+        if (!change?.range) {
+          return;
+        }
+        const newText = normalizeNewlines(change.newText ?? "");
+        withSweetLineTextRange(this._sweetLine, change.range, (slRange) => {
+          this._cacheHighlight = this._documentAnalyzer.analyzeIncremental(slRange, newText);
+        });
+      });
+
+      const shouldResyncText = changes.some((change) => {
+        const range = change?.range;
+        if (!range || !range.start || !range.end) {
+          return false;
+        }
+        if (range.start.line !== range.end.line) {
+          return true;
+        }
+        return hasLineBreak(change.oldText) || hasLineBreak(change.newText);
+      });
+
+      if (this._syncSourceOnTextChange && this._getDocumentText && shouldResyncText) {
+        const beforeSync = this._sourceText;
+        const synced = this._syncSourceFromDocument();
+        if (synced && this._sourceText !== beforeSync) {
+          this._rebuildAnalyzer(fileName);
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error("SweetLine incremental analyze failed:", error);
+      if (!this._tryRebuildAnalyzer(fileName)) {
+        return false;
+      }
+      return true;
+    }
+  }
+
+  _disposeAnalyzer() {
+    safeDeleteNativeHandle(this._cacheHighlight);
+    safeDeleteNativeHandle(this._documentAnalyzer);
+    safeDeleteNativeHandle(this._analysisDocument);
+    this._cacheHighlight = null;
+    this._documentAnalyzer = null;
+    this._analysisDocument = null;
+    this._analysisReady = false;
+    this._analyzedFileName = "";
+  }
+
+  _rebuildAnalyzer(fileName) {
+    this._disposeAnalyzer();
+    this._analysisDocument = new this._sweetLine.Document(
+      this._buildAnalysisUri(fileName),
+      this._sourceText,
+    );
+    this._documentAnalyzer = this._highlightEngine.loadDocument(this._analysisDocument);
+    this._cacheHighlight = this._documentAnalyzer.analyze();
+    this._analysisReady = true;
+    this._analyzedFileName = fileName;
+  }
+
+  _collectSyntaxSpans(visibleRange) {
+    const out = new Map();
+    const startLine = Math.max(0, toInt(visibleRange?.start, 0));
+    const endLine = Math.max(startLine - 1, toInt(visibleRange?.end, startLine - 1));
+    if (endLine < startLine) {
+      return out;
+    }
+
+    const lineHighlights = this._cacheHighlight?.lines;
+    if (!lineHighlights) {
+      return out;
+    }
+
+    const getLineHighlight = (line) => {
+      if (typeof lineHighlights.size === "function" && typeof lineHighlights.get === "function") {
+        const total = Math.max(0, toInt(lineHighlights.size(), 0));
+        if (line < 0 || line >= total) {
+          return null;
+        }
+        return lineHighlights.get(line);
+      }
+      if (Array.isArray(lineHighlights)) {
+        return lineHighlights[line] ?? null;
+      }
+      return null;
+    };
+
+    for (let line = startLine; line <= endLine; line += 1) {
+      const lineHighlight = getLineHighlight(line);
+      if (!lineHighlight) {
+        continue;
+      }
+      iterateNativeList(lineHighlight.spans, (token) => {
+        const span = extractSingleLineStyleSpan(token);
+        if (!span || span.line < startLine || span.line > endLine) {
+          return;
+        }
+        let lineSpans = out.get(span.line);
+        if (!lineSpans) {
+          lineSpans = [];
+          out.set(span.line, lineSpans);
+        }
+        lineSpans.push({
+          column: span.column,
+          length: span.length,
+          styleId: span.styleId,
+        });
+      });
+    }
+
+    out.forEach((spans) => {
+      spans.sort((a, b) => a.column - b.column);
+    });
+    return out;
+  }
+}
+
 class ManagedDecorationReceiver extends DecorationReceiver {
   constructor(manager, provider, generation) {
     super();
@@ -1934,12 +2516,23 @@ export class DecorationProviderManager {
   }
 
   _scheduleRefresh(delayMs, changes) {
+    let effectiveDelayMs = Math.max(0, toInt(delayMs, 0));
     if (changes && changes.length > 0) {
-      this._pendingTextChanges.push(...changes.map((change) => ({
-        range: ensureRange(change.range),
-        oldText: String(change.oldText ?? change.old_text ?? ""),
-        newText: String(change.newText ?? change.new_text ?? ""),
-      })));
+      const normalizedChanges = [];
+      changes.forEach((change) => {
+        const normalizedChange = {
+          range: ensureRange(change.range),
+          oldText: String(change.oldText ?? change.old_text ?? ""),
+          newText: String(change.newText ?? change.new_text ?? ""),
+        };
+        if (isLineStructureChange(normalizedChange)) {
+          effectiveDelayMs = 0;
+        }
+        normalizedChanges.push(normalizedChange);
+      });
+      if (normalizedChanges.length > 0) {
+        this._pendingTextChanges.push(...normalizedChanges);
+      }
     }
 
     if (this._scrollRefreshTimer) {
@@ -1955,7 +2548,7 @@ export class DecorationProviderManager {
     this._refreshTimer = setTimeout(() => {
       this._refreshTimer = 0;
       this._doRefresh();
-    }, Math.max(0, toInt(delayMs, 0)));
+    }, effectiveDelayMs);
   }
 
   _doRefresh() {

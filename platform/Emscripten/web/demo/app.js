@@ -7,8 +7,10 @@ import {
   DecorationResultDispatchMode,
   DecorationProviderCallMode,
   DecorationResult,
-} from "../index.js?v=20260326_14";
-import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_14";
+  normalizeNewlines,
+  countLogicalLines,
+} from "../index.js?v=20260326_18";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_18";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
@@ -148,10 +150,6 @@ const GLOBAL_COMPLETIONS = Object.freeze({
   ],
 });
 
-function normalizeNewlines(text) {
-  return String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
 function resolveLanguageKind(fileName) {
   const lower = String(fileName || "").toLowerCase();
   if (lower.endsWith(".java")) return "java";
@@ -180,77 +178,6 @@ function resolveLanguageConfiguration(fileName) {
       { open: "'", close: "'", autoClose: false, surround: false },
     ],
   };
-}
-
-function clampVisibleRange(start, end, totalLines) {
-  const total = Math.max(0, Number(totalLines) | 0);
-  if (total <= 0) {
-    return { start: 0, end: -1 };
-  }
-
-  let s = Math.max(0, Number(start) | 0);
-  let e = Math.max(s, Number(end) | 0);
-  s = Math.min(s, total - 1);
-  e = Math.min(e, total - 1);
-
-  if (e - s + 1 > MAX_RENDER_LINES_PER_PASS) {
-    e = Math.min(total - 1, s + MAX_RENDER_LINES_PER_PASS - 1);
-  }
-
-  return { start: s, end: e };
-}
-
-function applyLineChangeToLines(lines, range, newText) {
-  if (!range || !range.start || !range.end) {
-    return;
-  }
-  if (!Array.isArray(lines) || lines.length === 0) {
-    lines.splice(0, lines.length, "");
-  }
-
-  let startLine = Math.max(0, Number(range.start.line) | 0);
-  let endLine = Math.max(0, Number(range.end.line) | 0);
-  if (startLine > endLine) {
-    const t = startLine;
-    startLine = endLine;
-    endLine = t;
-  }
-  startLine = Math.min(startLine, lines.length - 1);
-  endLine = Math.min(endLine, lines.length - 1);
-
-  let startColumn = Math.max(0, Number(range.start.column) | 0);
-  let endColumn = Math.max(0, Number(range.end.column) | 0);
-  if (range.start.line > range.end.line) {
-    const t = startColumn;
-    startColumn = endColumn;
-    endColumn = t;
-  }
-
-  const startText = lines[startLine] || "";
-  const endText = lines[endLine] || "";
-  startColumn = Math.min(startColumn, startText.length);
-  endColumn = Math.min(endColumn, endText.length);
-
-  const prefix = startText.slice(0, startColumn);
-  const suffix = endText.slice(endColumn);
-
-  const inserted = normalizeNewlines(newText).split("\n");
-  if (inserted.length === 0) {
-    inserted.push("");
-  }
-
-  const replacement = [];
-  if (inserted.length === 1) {
-    replacement.push(`${prefix}${inserted[0]}${suffix}`);
-  } else {
-    replacement.push(`${prefix}${inserted[0]}`);
-    for (let i = 1; i < inserted.length - 1; i += 1) {
-      replacement.push(inserted[i]);
-    }
-    replacement.push(`${inserted[inserted.length - 1]}${suffix}`);
-  }
-
-  lines.splice(startLine, endLine - startLine + 1, ...replacement);
 }
 
 function truncateDemoTextForWeb(text) {
@@ -316,58 +243,6 @@ function toInt(value, fallback = 0) {
   return Math.trunc(n);
 }
 
-function safeDelete(handle) {
-  if (handle && typeof handle.delete === "function") {
-    handle.delete();
-  }
-}
-
-function forSweetLineList(list, fn) {
-  if (!list || typeof fn !== "function") {
-    return;
-  }
-
-  if (Array.isArray(list)) {
-    list.forEach((item, index) => fn(item, index));
-    return;
-  }
-
-  if (typeof list.size === "function" && typeof list.get === "function") {
-    const size = Math.max(0, toInt(list.size(), 0));
-    for (let i = 0; i < size; i += 1) {
-      fn(list.get(i), i);
-    }
-  }
-}
-
-function extractLineSpanItem(token, fallbackLine = 0) {
-  if (!token || !token.range || !token.range.start || !token.range.end) {
-    return null;
-  }
-
-  const styleId = toInt(token.styleId ?? token.style_id, 0);
-  if (styleId <= 0) {
-    return null;
-  }
-
-  const startColumn = Math.max(0, toInt(token.range.start.column, 0));
-  const endColumn = Math.max(0, toInt(token.range.end.column, 0));
-  if (endColumn <= startColumn) {
-    return null;
-  }
-
-  const rawStartLine = toInt(token.range.start.line, toInt(fallbackLine, 0));
-  const rawEndLine = toInt(token.range.end.line, rawStartLine);
-  const line = rawStartLine === rawEndLine ? rawStartLine : toInt(fallbackLine, 0);
-
-  return {
-    line: Math.max(0, line),
-    column: startColumn,
-    length: endColumn - startColumn,
-    styleId,
-  };
-}
-
 function buildDemoInlayAndDiagnostics(lines, fileName, startLine, endLine, liteMode = false) {
   const kind = resolveLanguageKind(fileName);
 
@@ -425,47 +300,6 @@ function buildDemoInlayAndDiagnostics(lines, fileName, startLine, endLine, liteM
   }
 
   return { inlayHints, diagnostics };
-}
-
-function buildAnalysisUri(fileName) {
-  return `file:///${String(fileName || "example.cpp")}`;
-}
-
-function withSweetLineRange(sweetLine, range, fn) {
-  const slRange = new sweetLine.TextRange();
-  const start = new sweetLine.TextPosition();
-  const end = new sweetLine.TextPosition();
-
-  start.line = Math.max(0, toInt(range?.start?.line, 0));
-  start.column = Math.max(0, toInt(range?.start?.column, 0));
-  start.index = 0;
-
-  end.line = Math.max(0, toInt(range?.end?.line, start.line));
-  end.column = Math.max(0, toInt(range?.end?.column, start.column));
-  end.index = 0;
-
-  slRange.start = start;
-  slRange.end = end;
-
-  try {
-    return fn(slRange);
-  } finally {
-    safeDelete(start);
-    safeDelete(end);
-    safeDelete(slRange);
-  }
-}
-
-function withSweetLineLineRange(sweetLine, range, fn) {
-  const slRange = new sweetLine.LineRange();
-  slRange.startLine = Math.max(0, toInt(range?.startLine, 0));
-  slRange.lineCount = Math.max(0, toInt(range?.lineCount, 0));
-
-  try {
-    return fn(slRange);
-  } finally {
-    safeDelete(slRange);
-  }
 }
 
 function registerSweetLineStyleMap(engine) {
@@ -550,246 +384,50 @@ async function ensureSweetLineRuntime(versionTag) {
   return sweetLineRuntimePromise;
 }
 
-class DemoDecorationProvider {
-  constructor(sweetLine, highlightEngine) {
-    this._sweetLine = sweetLine;
-    this._highlightEngine = highlightEngine;
-    this._sourceFileName = "example.kt";
-    this._sourceLines = normalizeNewlines(DEMO_FILE_FALLBACKS["example.kt"]).split("\n");
-    this._analysisDocument = null;
-    this._documentAnalyzer = null;
-    this._analysisReady = false;
-    this._analyzedFileName = "";
-    this._liteMode = false;
-    this._refreshLiteMode();
+function buildDemoDecorationPatch(payload = {}) {
+  const sourceLines = Array.isArray(payload.sourceLines) && payload.sourceLines.length > 0
+    ? payload.sourceLines
+    : [""];
+  const fileName = String(payload.fileName || "example.kt");
+  const visibleStart = Math.max(0, toInt(payload.visibleRange?.start, 0));
+  const visibleEnd = Math.max(visibleStart - 1, toInt(payload.visibleRange?.end, visibleStart - 1));
+  if (visibleEnd < visibleStart) {
+    return null;
   }
 
-  getLineCount() {
-    return Math.max(0, this._sourceLines.length);
-  }
+  const liteMode = sourceLines.length > 1200;
+  const rendered = buildDemoInlayAndDiagnostics(
+    sourceLines,
+    fileName,
+    visibleStart,
+    visibleEnd,
+    liteMode,
+  );
 
-  setDocumentSource(fileName, text) {
-    this._sourceFileName = String(fileName || "example.kt");
-    this._sourceLines = normalizeNewlines(text).split("\n");
-    if (this._sourceLines.length === 0) {
-      this._sourceLines = [""];
-    }
-    this._refreshLiteMode();
-    this._disposeAnalyzer();
-  }
-
-  _refreshLiteMode() {
-    this._liteMode = this._sourceLines.length > 1200;
-  }
-
-  _disposeAnalyzer() {
-    safeDelete(this._documentAnalyzer);
-    safeDelete(this._analysisDocument);
-    this._documentAnalyzer = null;
-    this._analysisDocument = null;
-    this._analysisReady = false;
-    this._analyzedFileName = "";
-  }
-
-  _rebuildAnalyzer(fileName) {
-    this._disposeAnalyzer();
-    const sourceText = this._sourceLines.join("\n");
-    this._analysisDocument = new this._sweetLine.Document(buildAnalysisUri(fileName), sourceText);
-    this._documentAnalyzer = this._highlightEngine.loadDocument(this._analysisDocument);
-    this._documentAnalyzer.analyze();
-    this._analysisReady = true;
-    this._analyzedFileName = fileName;
-  }
-
-  _toVisibleSliceRange(visibleRange) {
-    const startLine = Math.max(0, toInt(visibleRange?.start, 0));
-    const endLine = Math.max(startLine - 1, toInt(visibleRange?.end, startLine - 1));
-    const lineCount = endLine >= startLine ? (endLine - startLine + 1) : 0;
-    return { startLine, lineCount };
-  }
-
-  _analyzeVisibleSlice(changes, visibleRange) {
-    if (!this._documentAnalyzer || !this._analysisReady) {
-      return null;
-    }
-
-    const sliceRange = this._toVisibleSliceRange(visibleRange);
-    if (sliceRange.lineCount <= 0) {
-      return null;
-    }
-
-    let slice = null;
-    try {
-      for (const change of changes) {
-        if (!change?.range) {
-          continue;
-        }
-        const newText = normalizeNewlines(change?.newText ?? change?.new_text ?? "");
-        withSweetLineRange(this._sweetLine, change.range, (slRange) => {
-          withSweetLineLineRange(this._sweetLine, sliceRange, (slLineRange) => {
-            safeDelete(slice);
-            slice = this._documentAnalyzer.analyzeIncrementalInLineRange(slRange, newText, slLineRange);
-          });
-        });
-      }
-
-      if (slice) {
-        return slice;
-      }
-
-      const totalLines = Math.max(1, this._sourceLines.length);
-      const anchorLine = Math.max(0, Math.min(sliceRange.startLine, totalLines - 1));
-      const collapsedRange = {
-        start: { line: anchorLine, column: 0 },
-        end: { line: anchorLine, column: 0 },
-      };
-      withSweetLineRange(this._sweetLine, collapsedRange, (slRange) => {
-        withSweetLineLineRange(this._sweetLine, sliceRange, (slLineRange) => {
-          safeDelete(slice);
-          slice = this._documentAnalyzer.analyzeIncrementalInLineRange(slRange, "", slLineRange);
-        });
-      });
-      return slice;
-    } catch (error) {
-      safeDelete(slice);
-      console.error("SweetLine visible-slice analyze failed:", error);
-      return null;
-    }
-  }
-
-  _collectSyntaxSpansFromSlice(slice, visibleRange) {
-    const startLine = Math.max(0, toInt(visibleRange?.start, 0));
-    const endLine = Math.max(startLine - 1, toInt(visibleRange?.end, startLine - 1));
-    const syntaxSpans = new Map();
-    for (let line = startLine; line <= endLine; line += 1) {
-      syntaxSpans.set(line, []);
-    }
-    if (!slice || !slice.lines) {
-      return syntaxSpans;
-    }
-
-    const sliceStartLine = Math.max(0, toInt(slice.startLine, startLine));
-    const lineHighlights = slice.lines;
-    const appendFromLineHighlight = (lineHighlight, logicalLine) => {
-      if (!lineHighlight || !syntaxSpans.has(logicalLine)) {
-        return;
-      }
-      forSweetLineList(lineHighlight.spans, (token) => {
-        const span = extractLineSpanItem(token, logicalLine);
-        if (!span || !syntaxSpans.has(span.line)) {
-          return;
-        }
-        syntaxSpans.get(span.line).push({
-          column: span.column,
-          length: span.length,
-          styleId: span.styleId,
-        });
-      });
-    };
-
-    if (typeof lineHighlights.size === "function" && typeof lineHighlights.get === "function") {
-      const lineCount = Math.max(0, toInt(lineHighlights.size(), 0));
-      for (let i = 0; i < lineCount; i += 1) {
-        appendFromLineHighlight(lineHighlights.get(i), sliceStartLine + i);
-      }
-    } else if (Array.isArray(lineHighlights)) {
-      lineHighlights.forEach((lineHighlight, i) => appendFromLineHighlight(lineHighlight, sliceStartLine + i));
-    }
-
-    syntaxSpans.forEach((spans) => {
-      spans.sort((a, b) => a.column - b.column);
-    });
-
-    return syntaxSpans;
-  }
-
-  provideDecorations(context, receiver) {
-    const contextFileName = context?.editorMetadata?.fileName;
-    if (contextFileName && contextFileName !== this._sourceFileName) {
-      this._sourceFileName = contextFileName;
-    }
-
-    const changes = Array.isArray(context?.textChanges) ? context.textChanges : [];
-    if (changes.length > 0) {
-      for (const change of changes) {
-        applyLineChangeToLines(
-          this._sourceLines,
-          change.range,
-          normalizeNewlines(change.newText ?? change.new_text ?? ""),
-        );
-      }
-      this._refreshLiteMode();
-    }
-
-    const snapshotFileName = this._sourceFileName;
-    const fileChanged = snapshotFileName !== this._analyzedFileName;
-    if (fileChanged || !this._documentAnalyzer || !this._analysisReady) {
-      try {
-        this._rebuildAnalyzer(snapshotFileName);
-      } catch (error) {
-        console.error("SweetLine full analyze failed:", error);
-        this._disposeAnalyzer();
-      }
-    }
-
-    const visibleRange = clampVisibleRange(
-      context?.visibleStartLine ?? 0,
-      context?.visibleEndLine ?? ((context?.visibleStartLine ?? 0) + 120),
-      this._sourceLines.length,
-    );
-    if (visibleRange.end < visibleRange.start) {
-      return;
-    }
-
-    let syntaxSlice = null;
-    if (this._documentAnalyzer && this._analysisReady) {
-      syntaxSlice = this._analyzeVisibleSlice(changes, visibleRange);
-      if (!syntaxSlice && changes.length > 0) {
-        try {
-          this._rebuildAnalyzer(snapshotFileName);
-          syntaxSlice = this._analyzeVisibleSlice([], visibleRange);
-        } catch (error) {
-          console.error("SweetLine fallback full analyze failed:", error);
-          this._disposeAnalyzer();
-        }
-      }
-    }
-    const syntaxSpans = this._collectSyntaxSpansFromSlice(syntaxSlice, visibleRange);
-    safeDelete(syntaxSlice);
-
-    const rendered = buildDemoInlayAndDiagnostics(
-      this._sourceLines,
-      snapshotFileName,
-      visibleRange.start,
-      visibleRange.end,
-      this._liteMode,
-    );
-
-    receiver.accept(new DecorationResult({
-      syntaxSpans,
-      syntaxSpansMode: DecorationApplyMode.MERGE,
+  if (liteMode) {
+    return new DecorationResult({
       inlayHints: rendered.inlayHints,
       inlayHintsMode: DecorationApplyMode.REPLACE_RANGE,
-    }));
+      diagnostics: new Map(),
+      diagnosticsMode: DecorationApplyMode.REPLACE_RANGE,
+    });
+  }
 
-    if (this._liteMode) {
-      receiver.accept(new DecorationResult({
-        diagnostics: new Map(),
-        diagnosticsMode: DecorationApplyMode.REPLACE_RANGE,
-      }));
+  const receiver = payload.receiver;
+  setTimeout(() => {
+    if (!receiver || receiver.isCancelled) {
       return;
     }
+    receiver.accept(new DecorationResult({
+      diagnostics: rendered.diagnostics,
+      diagnosticsMode: DecorationApplyMode.REPLACE_RANGE,
+    }));
+  }, 90);
 
-    setTimeout(() => {
-      if (receiver.isCancelled) {
-        return;
-      }
-      receiver.accept(new DecorationResult({
-        diagnostics: rendered.diagnostics,
-        diagnosticsMode: DecorationApplyMode.REPLACE_RANGE,
-      }));
-    }, 90);
-  }
+  return new DecorationResult({
+    inlayHints: rendered.inlayHints,
+    inlayHintsMode: DecorationApplyMode.REPLACE_RANGE,
+  });
 }
 
 class DemoCompletionProvider {
@@ -866,29 +504,6 @@ function registerDemoStyles(editor) {
   editor.registerTextStyle(STYLE.COLOR, 0xFFFF9E64, 0, 1);
 }
 
-function countLogicalLines(text) {
-  const source = String(text ?? "");
-  if (source.length === 0) {
-    return 1;
-  }
-
-  let lines = 1;
-  for (let i = 0; i < source.length; i += 1) {
-    const code = source.charCodeAt(i);
-    if (code === 10) {
-      lines += 1;
-      continue;
-    }
-    if (code === 13) {
-      lines += 1;
-      if (i + 1 < source.length && source.charCodeAt(i + 1) === 10) {
-        i += 1;
-      }
-    }
-  }
-  return lines;
-}
-
 function resolveDecorationRuntimeOptionsByLineCount(lineCount) {
   const total = Math.max(0, toInt(lineCount, 0));
   if (total >= 80000) {
@@ -951,12 +566,16 @@ registerDemoStyles(editor);
 const sweetLineRuntime = await ensureSweetLineRuntime(wasmVersion);
 
 let activeFileName = initialFileName;
-const demoDecorationProvider = new DemoDecorationProvider(
-  sweetLineRuntime.sweetLine,
-  sweetLineRuntime.engine,
-);
-demoDecorationProvider.setDocumentSource(initialFileName, initialText);
-editor.addDecorationProvider(demoDecorationProvider);
+const demoDecorationProvider = editor.addSweetLineDecorationProvider({
+  sweetLine: sweetLineRuntime.sweetLine,
+  highlightEngine: sweetLineRuntime.engine,
+  fileName: initialFileName,
+  text: initialText,
+  maxRenderLinesPerPass: MAX_RENDER_LINES_PER_PASS,
+  syntaxSpansMode: DecorationApplyMode.MERGE,
+  syncSourceOnTextChange: true,
+  decorate: buildDemoDecorationPatch,
+});
 
 const demoCompletionProvider = new DemoCompletionProvider(() => activeFileName);
 editor.addCompletionProvider(demoCompletionProvider);

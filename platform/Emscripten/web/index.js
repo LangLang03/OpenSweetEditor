@@ -1,5 +1,5 @@
-import { loadSweetEditorCore } from "./editor-core.js?v=20260326_14";
-import { SweetEditorWidget } from "./sweet-editor-widget.js?v=20260326_14";
+import { loadSweetEditorCore } from "./editor-core.js?v=20260326_18";
+import { SweetEditorWidget } from "./sweet-editor-widget.js?v=20260326_18";
 
 export {
   loadSweetEditorCore,
@@ -23,9 +23,16 @@ export {
   DecorationProvider,
   DecorationReceiver,
   DecorationProviderManager,
-} from "./editor-core.js?v=20260326_14";
+  SweetLineIncrementalDecorationProvider,
+  normalizeNewlines,
+  countLogicalLines,
+  clampVisibleLineRange,
+  applyLineChangeToLines,
+  applyTextChangeToText,
+  applyTextChangesToText,
+} from "./editor-core.js?v=20260326_18";
 
-export { SweetEditorWidget, EditorEventType } from "./sweet-editor-widget.js?v=20260326_14";
+export { SweetEditorWidget, EditorEventType } from "./sweet-editor-widget.js?v=20260326_18";
 
 export async function createSweetEditor(container, options = {}) {
   if (!container) {
