@@ -1,4 +1,4 @@
-import {
+﻿import {
   createSweetEditor,
   CompletionItem,
   CompletionResult,
@@ -563,6 +563,7 @@ const editor = await createSweetEditor(host, {
 });
 
 registerDemoStyles(editor);
+editor.setContentStartPadding(5);
 const sweetLineRuntime = await ensureSweetLineRuntime(wasmVersion);
 
 let activeFileName = initialFileName;

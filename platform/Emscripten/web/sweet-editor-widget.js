@@ -1129,6 +1129,16 @@ export class SweetEditorWidget {
     this._core.setLineSpacing(this._settingsState.lineSpacingAdd, this._settingsState.lineSpacingMult);
   }
 
+  setContentStartPadding(padding) {
+    const value = Number(padding);
+    this._settingsState.contentStartPadding = Number.isFinite(value) ? value : 0;
+    this._core.setContentStartPadding(this._settingsState.contentStartPadding);
+  }
+
+  getContentStartPadding() {
+    return this._settingsState.contentStartPadding || 0;
+  }
+
   setDecorationScrollRefreshMinIntervalMs(intervalMs) {
     const value = Math.max(0, toInt(intervalMs, 0));
     this.setDecorationProviderOptions({ scrollRefreshMinIntervalMs: value });

@@ -634,11 +634,15 @@ export class WebEditorCore {
 
   loadDocument(document) {
     const nativeDoc = typeof document?.getNative === "function" ? document.getNative() : document;
-    this.call("loadDocument", nativeDoc);
+    const result = this._native.loadDocument(nativeDoc);
+    this._notifyMutate();
+    return result;
   }
 
   setViewport(width, height) {
-    this.call("setViewport", { width, height });
+    const result = this._native.setViewport({ width, height });
+    this._notifyMutate();
+    return result;
   }
 
   buildRenderModel() {
@@ -646,8 +650,7 @@ export class WebEditorCore {
   }
 
   handleGestureEvent(eventData) {
-    return this.call(
-      "handleGestureEventRaw",
+    const result = this._native.handleGestureEventRaw(
       eventData.type ?? 0,
       eventData.points,
       eventData.modifiers ?? 0,
@@ -655,69 +658,93 @@ export class WebEditorCore {
       eventData.wheel_delta_y ?? 0,
       eventData.direct_scale ?? 1.0,
     );
+    this._notifyMutate();
+    return result;
   }
 
   handleKeyEvent(eventData) {
-    return this.call(
-      "handleKeyEventRaw",
+    const result = this._native.handleKeyEventRaw(
       eventData.key_code ?? 0,
       eventData.text ?? "",
       eventData.modifiers ?? 0,
     );
+    this._notifyMutate();
+    return result;
   }
 
   tickEdgeScroll() {
-    return this.call("tickEdgeScroll");
+    const result = this._native.tickEdgeScroll();
+    this._notifyMutate();
+    return result;
   }
 
   tickFling() {
-    return this.call("tickFling");
+    const result = this._native.tickFling();
+    this._notifyMutate();
+    return result;
   }
 
   onFontMetricsChanged() {
-    this.call("onFontMetricsChanged");
+    const result = this._native.onFontMetricsChanged();
+    this._notifyMutate();
+    return result;
   }
 
   setFoldArrowMode(mode) {
-    this.call("setFoldArrowMode", toInt(mode, 0));
+    const result = this._native.setFoldArrowMode(toInt(mode, 0));
+    this._notifyMutate();
+    return result;
   }
 
   setWrapMode(mode) {
-    this.call("setWrapMode", toInt(mode, 0));
+    const result = this._native.setWrapMode(toInt(mode, 0));
+    this._notifyMutate();
+    return result;
   }
 
   setTabSize(tabSize) {
     if (typeof this._native?.setTabSize === "function") {
-      this.call("setTabSize", Math.max(1, toInt(tabSize, 4)));
+      const result = this._native.setTabSize(Math.max(1, toInt(tabSize, 4)));
+      this._notifyMutate();
+      return result;
     }
   }
 
   setScale(scale) {
     const value = Number(scale);
-    this.call("setScale", Number.isFinite(value) ? value : 1.0);
+    const result = this._native.setScale(Number.isFinite(value) ? value : 1.0);
+    this._notifyMutate();
+    return result;
   }
 
   setLineSpacing(add, mult) {
     const addValue = Number(add);
     const multValue = Number(mult);
-    this.call(
-      "setLineSpacing",
+    const result = this._native.setLineSpacing(
       Number.isFinite(addValue) ? addValue : 0.0,
       Number.isFinite(multValue) ? multValue : 1.0,
     );
+    this._notifyMutate();
+    return result;
   }
 
   setContentStartPadding(padding) {
     const value = Number(padding);
-    this.call("setContentStartPadding", Number.isFinite(value) ? value : 0.0);
+    const result = this._native.setContentStartPadding(Number.isFinite(value) ? value : 0.0);
+    this._notifyMutate();
+    return result;
   }
 
   setShowSplitLine(show) {
-    this.call("setShowSplitLine", Boolean(show));
+    const result = this._native.setShowSplitLine(Boolean(show));
+    this._notifyMutate();
+    return result;
   }
 
   setCurrentLineRenderMode(mode) {
-    this.call("setCurrentLineRenderMode", toInt(mode, 0));
+    const result = this._native.setCurrentLineRenderMode(toInt(mode, 0));
+    this._notifyMutate();
+    return result;
   }
 
   getViewState() {
@@ -732,91 +759,127 @@ export class WebEditorCore {
     return this.read("getLayoutMetrics");
   }
 
-  insertText(text) {
-    return this.call("insertText", String(text ?? ""));
+  insert(text) {
+    const result = this._native.insertText(String(text ?? ""));
+    this._notifyMutate();
+    return result;
   }
 
   replaceText(range, newText) {
-    return this.call("replaceText", ensureRange(range), String(newText ?? ""));
+    const result = this._native.replaceText(ensureRange(range), String(newText ?? ""));
+    this._notifyMutate();
+    return result;
   }
 
   deleteText(range) {
-    return this.call("deleteText", ensureRange(range));
+    const result = this._native.deleteText(ensureRange(range));
+    this._notifyMutate();
+    return result;
   }
 
   backspace() {
-    return this.call("backspace");
+    const result = this._native.backspace();
+    this._notifyMutate();
+    return result;
   }
 
   deleteForward() {
-    return this.call("deleteForward");
+    const result = this._native.deleteForward();
+    this._notifyMutate();
+    return result;
   }
 
   moveLineUp() {
-    return this.call("moveLineUp");
+    const result = this._native.moveLineUp();
+    this._notifyMutate();
+    return result;
   }
 
   moveLineDown() {
-    return this.call("moveLineDown");
+    const result = this._native.moveLineDown();
+    this._notifyMutate();
+    return result;
   }
 
   copyLineUp() {
-    return this.call("copyLineUp");
+    const result = this._native.copyLineUp();
+    this._notifyMutate();
+    return result;
   }
 
   copyLineDown() {
-    return this.call("copyLineDown");
+    const result = this._native.copyLineDown();
+    this._notifyMutate();
+    return result;
   }
 
   deleteLine() {
-    return this.call("deleteLine");
+    const result = this._native.deleteLine();
+    this._notifyMutate();
+    return result;
   }
 
   insertLineAbove() {
-    return this.call("insertLineAbove");
+    const result = this._native.insertLineAbove();
+    this._notifyMutate();
+    return result;
   }
 
   insertLineBelow() {
-    return this.call("insertLineBelow");
+    const result = this._native.insertLineBelow();
+    this._notifyMutate();
+    return result;
   }
 
   undo() {
-    return this.call("undo");
+    const result = this._native.undo();
+    this._notifyMutate();
+    return result;
   }
 
   redo() {
-    return this.call("redo");
+    const result = this._native.redo();
+    this._notifyMutate();
+    return result;
   }
 
   setCursorPosition(position) {
-    this.call("setCursorPosition", normalizePosition(position));
+    const result = this._native.setCursorPosition(normalizePosition(position));
+    this._notifyMutate();
+    return result;
   }
 
   setSelection(startOrRange, startColumn, endLine, endColumn) {
+    let result;
     if (startOrRange && typeof startOrRange === "object" && startOrRange.start && startOrRange.end) {
-      this.call("setSelection", ensureRange(startOrRange));
-      return;
+      result = this._native.setSelection(ensureRange(startOrRange));
+    } else {
+      const range = ensureRange({
+        start: {
+          line: ensureLine(startOrRange),
+          column: ensureColumn(startColumn),
+        },
+        end: {
+          line: ensureLine(endLine),
+          column: ensureColumn(endColumn),
+        },
+      });
+      result = this._native.setSelection(range);
     }
-
-    const range = ensureRange({
-      start: {
-        line: ensureLine(startOrRange),
-        column: ensureColumn(startColumn),
-      },
-      end: {
-        line: ensureLine(endLine),
-        column: ensureColumn(endColumn),
-      },
-    });
-    this.call("setSelection", range);
+    this._notifyMutate();
+    return result;
   }
 
   clearSelection() {
-    this.call("clearSelection");
+    const result = this._native.clearSelection();
+    this._notifyMutate();
+    return result;
   }
 
   selectAll() {
-    this.call("selectAll");
+    const result = this._native.selectAll();
+    this._notifyMutate();
+    return result;
   }
 
   getSelectedText() {
@@ -824,43 +887,63 @@ export class WebEditorCore {
   }
 
   moveCursorLeft(extendSelection = false) {
-    this.call("moveCursorLeft", Boolean(extendSelection));
+    const result = this._native.moveCursorLeft(Boolean(extendSelection));
+    this._notifyMutate();
+    return result;
   }
 
   moveCursorRight(extendSelection = false) {
-    this.call("moveCursorRight", Boolean(extendSelection));
+    const result = this._native.moveCursorRight(Boolean(extendSelection));
+    this._notifyMutate();
+    return result;
   }
 
   moveCursorUp(extendSelection = false) {
-    this.call("moveCursorUp", Boolean(extendSelection));
+    const result = this._native.moveCursorUp(Boolean(extendSelection));
+    this._notifyMutate();
+    return result;
   }
 
   moveCursorDown(extendSelection = false) {
-    this.call("moveCursorDown", Boolean(extendSelection));
+    const result = this._native.moveCursorDown(Boolean(extendSelection));
+    this._notifyMutate();
+    return result;
   }
 
   moveCursorToLineStart(extendSelection = false) {
-    this.call("moveCursorToLineStart", Boolean(extendSelection));
+    const result = this._native.moveCursorToLineStart(Boolean(extendSelection));
+    this._notifyMutate();
+    return result;
   }
 
   moveCursorToLineEnd(extendSelection = false) {
-    this.call("moveCursorToLineEnd", Boolean(extendSelection));
+    const result = this._native.moveCursorToLineEnd(Boolean(extendSelection));
+    this._notifyMutate();
+    return result;
   }
 
   compositionStart() {
-    this.call("compositionStart");
+    const result = this._native.compositionStart();
+    this._notifyMutate();
+    return result;
   }
 
   compositionUpdate(text) {
-    this.call("compositionUpdate", String(text ?? ""));
+    const result = this._native.compositionUpdate(String(text ?? ""));
+    this._notifyMutate();
+    return result;
   }
 
   compositionEnd(committedText) {
-    return this.call("compositionEnd", String(committedText ?? ""));
+    const result = this._native.compositionEnd(String(committedText ?? ""));
+    this._notifyMutate();
+    return result;
   }
 
   compositionCancel() {
-    this.call("compositionCancel");
+    const result = this._native.compositionCancel();
+    this._notifyMutate();
+    return result;
   }
 
   isComposing() {
@@ -868,7 +951,9 @@ export class WebEditorCore {
   }
 
   setCompositionEnabled(enabled) {
-    this.call("setCompositionEnabled", Boolean(enabled));
+    const result = this._native.setCompositionEnabled(Boolean(enabled));
+    this._notifyMutate();
+    return result;
   }
 
   isCompositionEnabled() {
@@ -876,7 +961,9 @@ export class WebEditorCore {
   }
 
   setReadOnly(readOnly) {
-    this.call("setReadOnly", Boolean(readOnly));
+    const result = this._native.setReadOnly(Boolean(readOnly));
+    this._notifyMutate();
+    return result;
   }
 
   isReadOnly() {
@@ -884,7 +971,9 @@ export class WebEditorCore {
   }
 
   setAutoIndentMode(mode) {
-    this.call("setAutoIndentMode", toInt(mode, 0));
+    const result = this._native.setAutoIndentMode(toInt(mode, 0));
+    this._notifyMutate();
+    return result;
   }
 
   getAutoIndentMode() {
@@ -892,7 +981,9 @@ export class WebEditorCore {
   }
 
   setHandleConfig(config) {
-    this.call("setHandleConfig", config || {});
+    const result = this._native.setHandleConfig(config || {});
+    this._notifyMutate();
+    return result;
   }
 
   getHandleConfig() {
@@ -903,7 +994,9 @@ export class WebEditorCore {
   }
 
   setScrollbarConfig(config) {
-    this.call("setScrollbarConfig", config || {});
+    const result = this._native.setScrollbarConfig(config || {});
+    this._notifyMutate();
+    return result;
   }
 
   getScrollbarConfig() {
@@ -928,29 +1021,38 @@ export class WebEditorCore {
   }
 
   scrollToLine(line, behavior = 0) {
-    this.call("scrollToLine", ensureLine(line), toInt(behavior, 0));
+    const result = this._native.scrollToLine(ensureLine(line), toInt(behavior, 0));
+    this._notifyMutate();
+    return result;
   }
 
   gotoPosition(line, column) {
-    this.call("gotoPosition", ensureLine(line), ensureColumn(column));
+    const result = this._native.gotoPosition(ensureLine(line), ensureColumn(column));
+    this._notifyMutate();
+    return result;
   }
 
   setScroll(scrollX, scrollY) {
     const x = Number(scrollX);
     const y = Number(scrollY);
-    this.call(
-      "setScroll",
+    const result = this._native.setScroll(
       Number.isFinite(x) ? x : 0.0,
       Number.isFinite(y) ? y : 0.0,
     );
+    this._notifyMutate();
+    return result;
   }
 
   insertSnippet(snippetTemplate) {
-    return this.call("insertSnippet", String(snippetTemplate ?? ""));
+    const result = this._native.insertSnippet(String(snippetTemplate ?? ""));
+    this._notifyMutate();
+    return result;
   }
 
   startLinkedEditing(model) {
-    this.call("startLinkedEditing", model || {});
+    const result = this._native.startLinkedEditing(model || {});
+    this._notifyMutate();
+    return result;
   }
 
   linkedEditingNext() {
@@ -959,7 +1061,9 @@ export class WebEditorCore {
       this._notifyMutate();
       return result;
     }
-    return this.call("linkedEditingNext");
+    const result = this._native.linkedEditingNext();
+    this._notifyMutate();
+    return result;
   }
 
   linkedEditingPrev() {
@@ -968,35 +1072,51 @@ export class WebEditorCore {
       this._notifyMutate();
       return result;
     }
-    return this.call("linkedEditingPrev");
+    const result = this._native.linkedEditingPrev();
+    this._notifyMutate();
+    return result;
   }
 
   cancelLinkedEditing() {
-    this.call("cancelLinkedEditing");
+    const result = this._native.cancelLinkedEditing();
+    this._notifyMutate();
+    return result;
   }
 
   finishLinkedEditing() {
-    this.call("finishLinkedEditing");
+    const result = this._native.finishLinkedEditing();
+    this._notifyMutate();
+    return result;
   }
 
   toggleFoldAt(line) {
-    return this.call("toggleFoldAt", ensureLine(line));
+    const result = this._native.toggleFoldAt(ensureLine(line));
+    this._notifyMutate();
+    return result;
   }
 
   foldAt(line) {
-    return this.call("foldAt", ensureLine(line));
+    const result = this._native.foldAt(ensureLine(line));
+    this._notifyMutate();
+    return result;
   }
 
   unfoldAt(line) {
-    return this.call("unfoldAt", ensureLine(line));
+    const result = this._native.unfoldAt(ensureLine(line));
+    this._notifyMutate();
+    return result;
   }
 
   foldAll() {
-    this.call("foldAll");
+    const result = this._native.foldAll();
+    this._notifyMutate();
+    return result;
   }
 
   unfoldAll() {
-    this.call("unfoldAll");
+    const result = this._native.unfoldAll();
+    this._notifyMutate();
+    return result;
   }
 
   isLineVisible(line) {
@@ -1004,18 +1124,22 @@ export class WebEditorCore {
   }
 
   setMatchedBrackets(open, close) {
+    let result;
     if (arguments.length >= 4) {
       const openPosition = { line: ensureLine(arguments[0]), column: ensureColumn(arguments[1]) };
       const closePosition = { line: ensureLine(arguments[2]), column: ensureColumn(arguments[3]) };
-      this.call("setMatchedBrackets", openPosition, closePosition);
-      return;
+      result = this._native.setMatchedBrackets(openPosition, closePosition);
+    } else {
+      result = this._native.setMatchedBrackets(normalizePosition(open), normalizePosition(close));
     }
-
-    this.call("setMatchedBrackets", normalizePosition(open), normalizePosition(close));
+    this._notifyMutate();
+    return result;
   }
 
   clearMatchedBrackets() {
-    this.call("clearMatchedBrackets");
+    const result = this._native.clearMatchedBrackets();
+    this._notifyMutate();
+    return result;
   }
 
   getCursorPosition() {
@@ -1056,7 +1180,9 @@ export class WebEditorCore {
       background_color: toInt(backgroundColor, 0),
       font_style: toInt(fontStyle, 0),
     };
-    this.call("registerTextStyle", toInt(styleId, 0), style);
+    const result = this._native.registerTextStyle(toInt(styleId, 0), style);
+    this._notifyMutate();
+    return result;
   }
 
   setLineSpans(line, layer, spans) {
@@ -1068,7 +1194,9 @@ export class WebEditorCore {
       length: ensureLength(span.length),
       style_id: toInt(span.styleId ?? span.style_id, 0),
     }), (vec) => {
-      this.call("setLineSpans", lineNo, layerValue, vec);
+      const result = this._native.setLineSpans(lineNo, layerValue, vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1085,10 +1213,12 @@ export class WebEditorCore {
         style_id: toInt(span.styleId ?? span.style_id, 0),
       }),
       (entryVec) => {
-        this.call("setBatchLineSpans", layerValue, entryVec);
+        const result = this._native.setBatchLineSpans(layerValue, entryVec);
+        return result;
       },
     );
     if (batched) {
+      this._notifyMutate();
       return;
     }
     this.withBatch(() => {
@@ -1102,7 +1232,9 @@ export class WebEditorCore {
     const lineNo = ensureLine(line);
     const src = asArray(hints);
     this._callWithVector("InlayHintVector", src, (hint) => this._toNativeInlayHint(hint), (vec) => {
-      this.call("setLineInlayHints", lineNo, vec);
+      const result = this._native.setLineInlayHints(lineNo, vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1114,10 +1246,12 @@ export class WebEditorCore {
       hintsByLine,
       (hint) => this._toNativeInlayHint(hint),
       (entryVec) => {
-        this.call("setBatchLineInlayHints", entryVec);
+        const result = this._native.setBatchLineInlayHints(entryVec);
+        return result;
       },
     );
     if (batched) {
+      this._notifyMutate();
       return;
     }
     this.withBatch(() => {
@@ -1134,7 +1268,9 @@ export class WebEditorCore {
       column: ensureColumn(phantom.column),
       text: String(phantom.text ?? ""),
     }), (vec) => {
-      this.call("setLinePhantomTexts", lineNo, vec);
+      const result = this._native.setLinePhantomTexts(lineNo, vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1149,10 +1285,12 @@ export class WebEditorCore {
         text: String(phantom.text ?? ""),
       }),
       (entryVec) => {
-        this.call("setBatchLinePhantomTexts", entryVec);
+        const result = this._native.setBatchLinePhantomTexts(entryVec);
+        return result;
       },
     );
     if (batched) {
+      this._notifyMutate();
       return;
     }
     this.withBatch(() => {
@@ -1168,7 +1306,9 @@ export class WebEditorCore {
     this._callWithVector("GutterIconVector", src, (icon) => ({
       icon_id: toInt(icon.iconId ?? icon.icon_id ?? icon, 0),
     }), (vec) => {
-      this.call("setLineGutterIcons", lineNo, vec);
+      const result = this._native.setLineGutterIcons(lineNo, vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1182,10 +1322,12 @@ export class WebEditorCore {
         icon_id: toInt(icon.iconId ?? icon.icon_id ?? icon, 0),
       }),
       (entryVec) => {
-        this.call("setBatchLineGutterIcons", entryVec);
+        const result = this._native.setBatchLineGutterIcons(entryVec);
+        return result;
       },
     );
     if (batched) {
+      this._notifyMutate();
       return;
     }
     this.withBatch(() => {
@@ -1204,7 +1346,9 @@ export class WebEditorCore {
       severity: this._toNativeEnumValue("DiagnosticSeverity", item.severity, this._diagnosticSeverity.DIAG_HINT),
       color: toInt(item.color, 0),
     }), (vec) => {
-      this.call("setLineDiagnostics", lineNo, vec);
+      const result = this._native.setLineDiagnostics(lineNo, vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1221,10 +1365,12 @@ export class WebEditorCore {
         color: toInt(item.color, 0),
       }),
       (entryVec) => {
-        this.call("setBatchLineDiagnostics", entryVec);
+        const result = this._native.setBatchLineDiagnostics(entryVec);
+        return result;
       },
     );
     if (batched) {
+      this._notifyMutate();
       return;
     }
     this.withBatch(() => {
@@ -1239,7 +1385,9 @@ export class WebEditorCore {
       start: normalizePosition(item.start),
       end: normalizePosition(item.end),
     }), (vec) => {
-      this.call("setIndentGuides", vec);
+      const result = this._native.setIndentGuides(vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1249,7 +1397,9 @@ export class WebEditorCore {
       end: normalizePosition(item.end),
       children: asArray(item.children).map((child) => normalizePosition(child)),
     }), (vec) => {
-      this.call("setBracketGuides", vec);
+      const result = this._native.setBracketGuides(vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1258,7 +1408,9 @@ export class WebEditorCore {
       start: normalizePosition(item.start),
       end: normalizePosition(item.end),
     }), (vec) => {
-      this.call("setFlowGuides", vec);
+      const result = this._native.setFlowGuides(vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1269,7 +1421,9 @@ export class WebEditorCore {
       count: Math.max(0, toInt(item.count, 0)),
       text_end_column: Math.max(0, toInt(item.textEndColumn ?? item.text_end_column, 0)),
     }), (vec) => {
-      this.call("setSeparatorGuides", vec);
+      const result = this._native.setSeparatorGuides(vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
@@ -1279,44 +1433,63 @@ export class WebEditorCore {
       end_line: ensureLine(item.endLine ?? item.end_line),
       collapsed: Boolean(item.collapsed),
     }), (vec) => {
-      this.call("setFoldRegions", vec);
+      const result = this._native.setFoldRegions(vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
   setMaxGutterIcons(count) {
-    this.call("setMaxGutterIcons", Math.max(0, toInt(count, 0)));
+    const result = this._native.setMaxGutterIcons(Math.max(0, toInt(count, 0)));
+    this._notifyMutate();
+    return result;
   }
 
   clearHighlights(layer = null) {
+    let result;
     if (layer == null) {
-      this.call("clearHighlights");
-      return;
+      result = this._native.clearHighlights();
+    } else {
+      result = this._native.clearHighlights(toInt(layer, this._spanLayer.SYNTAX));
     }
-    this.call("clearHighlights", toInt(layer, this._spanLayer.SYNTAX));
+    this._notifyMutate();
+    return result;
   }
 
   clearInlayHints() {
-    this.call("clearInlayHints");
+    const result = this._native.clearInlayHints();
+    this._notifyMutate();
+    return result;
   }
 
   clearPhantomTexts() {
-    this.call("clearPhantomTexts");
+    const result = this._native.clearPhantomTexts();
+    this._notifyMutate();
+    return result;
   }
 
   clearGutterIcons() {
-    this.call("clearGutterIcons");
+    const result = this._native.clearGutterIcons();
+    this._notifyMutate();
+    return result;
   }
 
   clearDiagnostics() {
-    this.call("clearDiagnostics");
+    const result = this._native.clearDiagnostics();
+    this._notifyMutate();
+    return result;
   }
 
   clearGuides() {
-    this.call("clearGuides");
+    const result = this._native.clearGuides();
+    this._notifyMutate();
+    return result;
   }
 
   clearAllDecorations() {
-    this.call("clearAllDecorations");
+    const result = this._native.clearAllDecorations();
+    this._notifyMutate();
+    return result;
   }
 
   setBracketPairs(bracketPairs) {
@@ -1326,7 +1499,9 @@ export class WebEditorCore {
       auto_close: Boolean(pair.autoClose ?? pair.auto_close),
       surround: Boolean(pair.surround),
     }), (vec) => {
-      this.call("setBracketPairs", vec);
+      const result = this._native.setBracketPairs(vec);
+      this._notifyMutate();
+      return result;
     });
   }
 
