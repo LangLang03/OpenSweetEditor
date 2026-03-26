@@ -2206,9 +2206,13 @@ export class SweetLineIncrementalDecorationProvider extends DecorationProvider {
       Math.max(0, toInt(context?.totalLineCount, this._sourceLines.length)),
     );
 
+    const visibleStartLine = context?.visibleStartLine ?? 0;
+    const originalVisibleEndLine = context?.visibleEndLine ?? (visibleStartLine + 120);
+    const visibleEndLine = Math.floor((originalVisibleEndLine - visibleStartLine) * 1.75) + visibleStartLine;
+    
     const visibleRange = clampVisibleLineRange(
-      context?.visibleStartLine ?? 0,
-      context?.visibleEndLine ?? ((context?.visibleStartLine ?? 0) + 120),
+      visibleStartLine,
+      visibleEndLine,
       totalLineCount,
       this._maxRenderLinesPerPass,
     );
