@@ -72,6 +72,7 @@ namespace NS_SWEETEDITOR {
     m_undo_manager_ = makeUPtr<UndoManager>(options.max_undo_stack_size);
     TouchConfig tc = options.simpleAsTouchConfig();
 m_fling_ = makeUPtr<FlingAnimator>(tc);
+    loadDocument(makePtr<LineArrayDocument>(""));
     LOGD("EditorCore::EditorCore(), options = %s", options.dump().c_str());
   }
 
