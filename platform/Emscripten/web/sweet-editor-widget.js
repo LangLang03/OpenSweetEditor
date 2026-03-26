@@ -70,6 +70,16 @@ const FALLBACK_SPAN_LAYER = {
   SEMANTIC: 1,
 };
 
+const FALLBACK_HIT_TARGET_TYPE = {
+  NONE: 0,
+  INLAY_HINT_TEXT: 1,
+  INLAY_HINT_ICON: 2,
+  GUTTER_ICON: 3,
+  FOLD_PLACEHOLDER: 4,
+  FOLD_GUTTER: 5,
+  INLAY_HINT_COLOR: 6,
+};
+
 function resolveEnum(moduleObj, enumName, fallback) {
   const enumObj = moduleObj && moduleObj[enumName];
   if (!enumObj || typeof enumObj !== "object") {
@@ -138,6 +148,10 @@ function asArray(value) {
   return [];
 }
 
+function cloneTheme(theme) {
+  return { ...theme };
+}
+
 function forVector(vec, fn) {
   if (!vec || typeof vec.size !== "function") return;
   const size = vec.size();
@@ -182,7 +196,86 @@ const DEFAULT_THEME = {
   foldPlaceholderBg: "rgba(70,70,70,0.9)",
   foldPlaceholderText: "#cfcfcf",
   phantomText: "rgba(180,180,180,0.75)",
+  gutterIconFallback: "rgba(255,255,255,0.68)",
 };
+
+export const EditorEventType = Object.freeze({
+  TEXT_CHANGED: "TextChanged",
+  CURSOR_CHANGED: "CursorChanged",
+  SELECTION_CHANGED: "SelectionChanged",
+  SCROLL_CHANGED: "ScrollChanged",
+  SCALE_CHANGED: "ScaleChanged",
+  LONG_PRESS: "LongPress",
+  DOUBLE_TAP: "DoubleTap",
+  CONTEXT_MENU: "ContextMenu",
+  INLAY_HINT_CLICK: "InlayHintClick",
+  GUTTER_ICON_CLICK: "GutterIconClick",
+  FOLD_TOGGLE: "FoldToggle",
+  DOCUMENT_LOADED: "DocumentLoaded",
+});
+
+const TextChangeAction = Object.freeze({
+  INSERT: "Insert",
+  UNDO: "Undo",
+  REDO: "Redo",
+  KEY: "Key",
+  COMPOSITION: "Composition",
+});
+
+function clonePosition(position) {
+  if (!position) {
+    return null;
+  }
+  return {
+    line: toInt(position.line, 0),
+    column: toInt(position.column, 0),
+  };
+}
+
+function cloneRange(range) {
+  if (!range || !range.start || !range.end) {
+    return null;
+  }
+  return {
+    start: clonePosition(range.start),
+    end: clonePosition(range.end),
+  };
+}
+
+function equalPosition(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return toInt(a.line, -1) === toInt(b.line, -1)
+    && toInt(a.column, -1) === toInt(b.column, -1);
+}
+
+function equalRange(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return equalPosition(a.start, b.start) && equalPosition(a.end, b.end);
+}
+
+function isImageLikeObject(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  if (typeof ImageBitmap !== "undefined" && value instanceof ImageBitmap) {
+    return true;
+  }
+  if (typeof HTMLImageElement !== "undefined" && value instanceof HTMLImageElement) {
+    return true;
+  }
+  if (typeof HTMLCanvasElement !== "undefined" && value instanceof HTMLCanvasElement) {
+    return true;
+  }
+  if (typeof OffscreenCanvas !== "undefined" && value instanceof OffscreenCanvas) {
+    return true;
+  }
+  if (typeof ImageData !== "undefined" && value instanceof ImageData) {
+    return true;
+  }
+  return false;
+}
 
 function argbToCss(argb, fallback) {
   if (!argb) return fallback;
@@ -195,11 +288,12 @@ function argbToCss(argb, fallback) {
 
 class Canvas2DRenderer {
   constructor(theme = {}) {
-    this.theme = { ...DEFAULT_THEME, ...theme };
+    this.theme = { ...DEFAULT_THEME, ...cloneTheme(theme) };
     this._measureCanvas = document.createElement("canvas");
     this._measureCtx = this._measureCanvas.getContext("2d");
     this._baseFontSize = 14;
     this._fontFamily = "Menlo, Consolas, Monaco, monospace";
+    this._iconProvider = null;
   }
 
   createTextMeasurerCallbacks() {
@@ -212,7 +306,14 @@ class Canvas2DRenderer {
         this._measureCtx.font = `12px ${this._fontFamily}`;
         return this._measureCtx.measureText(text || "").width;
       },
-      measureIconWidth: () => this._baseFontSize,
+      measureIconWidth: (iconId) => {
+        const iconDescriptor = this._resolveIconDescriptor(iconId);
+        const width = Number(iconDescriptor?.width);
+        if (Number.isFinite(width) && width > 0) {
+          return width;
+        }
+        return this._baseFontSize;
+      },
       getFontMetrics: () => {
         this._measureCtx.font = this._fontByStyle(0);
         const metrics = this._measureCtx.measureText("Mg");
@@ -221,6 +322,23 @@ class Canvas2DRenderer {
         return { ascent: -ascent, descent };
       },
     };
+  }
+
+  applyTheme(theme = {}) {
+    this.theme = { ...DEFAULT_THEME, ...cloneTheme(theme) };
+    return this.getTheme();
+  }
+
+  getTheme() {
+    return cloneTheme(this.theme);
+  }
+
+  setEditorIconProvider(provider) {
+    this._iconProvider = provider || null;
+  }
+
+  getEditorIconProvider() {
+    return this._iconProvider;
   }
 
   render(ctx, model, viewportWidth, viewportHeight) {
@@ -269,15 +387,13 @@ class Canvas2DRenderer {
       ctx.fillRect(run.x, topY, run.width, this._baseFontSize * 1.3);
     }
 
-    if (run.type === 3) {
-      ctx.fillStyle = this.theme.inlayHintBg;
-      ctx.fillRect(run.x, topY, run.width, this._baseFontSize * 1.3);
-    }
-
     if (run.type === 5) {
       ctx.fillStyle = this.theme.foldPlaceholderBg;
       ctx.fillRect(run.x, topY, run.width, this._baseFontSize * 1.3);
       ctx.fillStyle = this.theme.foldPlaceholderText;
+    } else if (run.type === 3) {
+      this._drawInlayHintRun(ctx, run, topY, style, text);
+      return;
     } else if (run.type === 4) {
       ctx.fillStyle = this.theme.phantomText;
     } else {
@@ -316,6 +432,14 @@ class Canvas2DRenderer {
       const p = line.line_number_position;
       ctx.fillText(String(line.logical_line + 1), p.x, p.y);
     });
+
+    forVector(model.gutter_icons, (item) => {
+      this._drawGutterIcon(ctx, item);
+    });
+
+    forVector(model.fold_markers, (item) => {
+      this._drawFoldMarker(ctx, item);
+    });
   }
 
   _fontByStyle(fontStyle) {
@@ -324,6 +448,193 @@ class Canvas2DRenderer {
     const weight = bold ? "700" : "400";
     const slope = italic ? "italic" : "normal";
     return `${slope} ${weight} ${this._baseFontSize}px ${this._fontFamily}`;
+  }
+
+  _drawInlayHintRun(ctx, run, topY, style, text) {
+    const margin = Math.max(0, Number(run.margin) || 0);
+    const padding = Math.max(0, Number(run.padding) || 0);
+    const runHeight = this._baseFontSize * 1.3;
+    const bgX = run.x + margin;
+    const bgY = topY;
+    const bgWidth = Math.max(1, run.width - margin * 2);
+    const bgHeight = runHeight;
+
+    if (run.color_value) {
+      const blockSize = Math.max(4, Math.min(bgHeight, bgWidth));
+      const blockX = bgX;
+      const blockY = bgY + (bgHeight - blockSize) * 0.5;
+      const color = argbToCss(toInt(run.color_value, 0), this.theme.inlayHintBg);
+      ctx.fillStyle = color;
+      ctx.fillRect(blockX, blockY, blockSize, blockSize);
+      ctx.strokeStyle = "rgba(0,0,0,0.24)";
+      ctx.strokeRect(blockX + 0.5, blockY + 0.5, Math.max(1, blockSize - 1), Math.max(1, blockSize - 1));
+      return;
+    }
+
+    ctx.fillStyle = this.theme.inlayHintBg;
+    ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
+
+    if (toInt(run.icon_id, 0) > 0) {
+      const iconSize = Math.max(4, Math.min(bgHeight - padding * 2, bgWidth - padding * 2));
+      const iconX = bgX + (bgWidth - iconSize) * 0.5;
+      const iconY = bgY + (bgHeight - iconSize) * 0.5;
+      this._drawIconGlyphOrImage(ctx, toInt(run.icon_id, 0), iconX, iconY, iconSize, iconSize, true);
+      return;
+    }
+
+    ctx.fillStyle = argbToCss(style.color, this.theme.text);
+    if (text.length > 0) {
+      ctx.font = this._fontByStyle(style.font_style || 0);
+      const textX = bgX + padding;
+      ctx.fillText(text, textX, run.y);
+    }
+  }
+
+  _drawGutterIcon(ctx, item) {
+    if (!item) return;
+    const width = Number(item.width);
+    const height = Number(item.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return;
+    }
+    const iconId = toInt(item.icon_id, 0);
+    const x = Number(item.origin?.x) || 0;
+    const y = Number(item.origin?.y) || 0;
+    this._drawIconGlyphOrImage(ctx, iconId, x, y, width, height, false);
+  }
+
+  _drawFoldMarker(ctx, marker) {
+    if (!marker) return;
+    const width = Number(marker.width);
+    const height = Number(marker.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return;
+    }
+    const state = toInt(marker.fold_state, 0);
+    if (state <= 0) {
+      return;
+    }
+
+    const x = Number(marker.origin?.x) || 0;
+    const y = Number(marker.origin?.y) || 0;
+    const centerX = x + width * 0.5;
+    const centerY = y + height * 0.5;
+    const halfSize = Math.max(2, Math.min(width, height) * 0.28);
+    ctx.strokeStyle = this.theme.lineNumber;
+    ctx.lineWidth = Math.max(1, height * 0.1);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    if (state === 2) {
+      ctx.moveTo(centerX - halfSize * 0.5, centerY - halfSize);
+      ctx.lineTo(centerX + halfSize * 0.5, centerY);
+      ctx.lineTo(centerX - halfSize * 0.5, centerY + halfSize);
+    } else {
+      ctx.moveTo(centerX - halfSize, centerY - halfSize * 0.5);
+      ctx.lineTo(centerX, centerY + halfSize * 0.5);
+      ctx.lineTo(centerX + halfSize, centerY - halfSize * 0.5);
+    }
+    ctx.stroke();
+  }
+
+  _drawIconGlyphOrImage(ctx, iconId, x, y, width, height, inlay = false) {
+    if (iconId <= 0 || width <= 0 || height <= 0) {
+      return;
+    }
+    const descriptor = this._resolveIconDescriptor(iconId);
+    if (descriptor?.image && isImageLikeObject(descriptor.image)) {
+      try {
+        ctx.drawImage(descriptor.image, x, y, width, height);
+        return;
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    const color = descriptor?.color ?? this.theme.gutterIconFallback;
+    const cssColor = typeof color === "number"
+      ? argbToCss(color >>> 0, this.theme.gutterIconFallback)
+      : String(color || this.theme.gutterIconFallback);
+
+    if (descriptor?.glyph || descriptor?.text) {
+      const glyph = String(descriptor.glyph ?? descriptor.text ?? "");
+      if (glyph.length > 0) {
+        ctx.fillStyle = cssColor;
+        ctx.font = `${Math.max(8, Math.floor(Math.min(width, height) * 0.8))}px ${this._fontFamily}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(glyph, x + width * 0.5, y + height * 0.5);
+        ctx.textAlign = "start";
+        ctx.textBaseline = "alphabetic";
+        return;
+      }
+    }
+
+    if (descriptor?.color || !inlay) {
+      ctx.fillStyle = cssColor;
+      const radius = Math.max(2, Math.min(width, height) * 0.22);
+      const cx = x + width * 0.5;
+      const cy = y + height * 0.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    ctx.fillStyle = cssColor;
+    ctx.fillRect(x, y, width, height);
+  }
+
+  _resolveIconDescriptor(iconId) {
+    const provider = this._iconProvider;
+    if (!provider) {
+      return null;
+    }
+
+    let raw = null;
+    try {
+      if (typeof provider === "function") {
+        raw = provider(iconId);
+      } else if (typeof provider.getIconDescriptor === "function") {
+        raw = provider.getIconDescriptor(iconId);
+      } else if (typeof provider.getIcon === "function") {
+        raw = provider.getIcon(iconId);
+      } else if (typeof provider.getIconImage === "function") {
+        raw = provider.getIconImage(iconId);
+      }
+    } catch (error) {
+      console.warn("Editor icon provider error:", error);
+      return null;
+    }
+
+    if (raw == null) {
+      return null;
+    }
+
+    if (isImageLikeObject(raw)) {
+      return { image: raw };
+    }
+
+    if (typeof raw === "string") {
+      return { glyph: raw };
+    }
+
+    if (typeof raw === "number") {
+      return { color: raw >>> 0 };
+    }
+
+    if (typeof raw === "object") {
+      const descriptor = { ...raw };
+      if (descriptor.canvas && !descriptor.image) {
+        descriptor.image = descriptor.canvas;
+      }
+      if (descriptor.image && !isImageLikeObject(descriptor.image)) {
+        delete descriptor.image;
+      }
+      return descriptor;
+    }
+
+    return null;
   }
 }
 
@@ -581,6 +892,7 @@ export class SweetEditorWidget {
     this._keyCode = resolveEnum(wasmModule, "KeyCode", FALLBACK_KEY_CODE);
     this._modifier = resolveEnum(wasmModule, "Modifier", FALLBACK_MODIFIER);
     this._spanLayer = resolveEnum(wasmModule, "SpanLayer", FALLBACK_SPAN_LAYER);
+    this._hitTargetType = resolveEnum(wasmModule, "HitTargetType", FALLBACK_HIT_TARGET_TYPE);
 
     this._renderer = new Canvas2DRenderer(options.theme || {});
     this._core = new WebEditorCore(
@@ -609,10 +921,29 @@ export class SweetEditorWidget {
     this._compositionCommitPending = false;
     this._compositionEndFallbackData = "";
     this._compositionEndTimer = 0;
+    this._newLineActionProviders = [];
+    this._listeners = new Map();
+
+    this._lastCursorPosition = null;
+    this._lastSelection = null;
+    this._lastHasSelection = false;
+    this._lastScrollX = 0;
+    this._lastScrollY = 0;
+    this._lastScale = 1.0;
 
     this._contextMenuVisible = false;
     this._contextMenuButtons = {};
     this._bracketPairsUnsupportedLogged = false;
+    this._lastContextMenuEvent = { time: 0, x: 0, y: 0 };
+    this._settingsState = {
+      wrapMode: options.editorOptions?.wrapMode ?? null,
+      readOnly: !!options.editorOptions?.readOnly,
+      autoIndentMode: options.editorOptions?.autoIndentMode ?? null,
+      maxGutterIcons: options.editorOptions?.maxGutterIcons ?? 0,
+      lineSpacingAdd: options.editorOptions?.lineSpacingAdd ?? 0,
+      lineSpacingMult: options.editorOptions?.lineSpacingMult ?? 1,
+    };
+    this._settingsFacade = this._createSettingsFacade();
 
     this._onDocumentPointerDown = (event) => this._handleDocumentPointerDown(event);
     this._onDocumentKeyDown = (event) => this._handleDocumentKeyDown(event);
@@ -656,13 +987,20 @@ export class SweetEditorWidget {
     this._bindEvents();
     this._resize();
 
-    this._core.call("setCompositionEnabled", options.enableComposition ?? true);
+    this._core.setCompositionEnabled(options.enableComposition ?? true);
+    if (options.editorIconProvider) {
+      this.setEditorIconProvider(options.editorIconProvider);
+    }
+    if (options.settings && typeof options.settings === "object") {
+      this._applySettingsObject(options.settings);
+    }
     this._applyLanguageBracketPairs();
 
     if (options.text != null) {
       this.loadText(options.text, { kind: options.documentKind || "piece-table" });
     }
 
+    this._syncEventStateFromCore();
     this._markDirty();
   }
 
@@ -672,6 +1010,477 @@ export class SweetEditorWidget {
 
   getDocumentFactory() {
     return this._documentFactory;
+  }
+
+  subscribe(eventType, listener) {
+    const key = String(eventType || "");
+    if (!key || typeof listener !== "function") {
+      return () => {};
+    }
+    if (!this._listeners.has(key)) {
+      this._listeners.set(key, new Set());
+    }
+    const bucket = this._listeners.get(key);
+    bucket.add(listener);
+    return () => {
+      this.unsubscribe(key, listener);
+    };
+  }
+
+  unsubscribe(eventType, listener) {
+    const key = String(eventType || "");
+    if (!key || typeof listener !== "function") {
+      return;
+    }
+    const bucket = this._listeners.get(key);
+    if (!bucket) {
+      return;
+    }
+    bucket.delete(listener);
+    if (bucket.size === 0) {
+      this._listeners.delete(key);
+    }
+  }
+
+  getSettings() {
+    return this._settingsFacade;
+  }
+
+  applyTheme(theme = {}) {
+    this._renderer.applyTheme(theme || {});
+    this._markDirty();
+    return this.getTheme();
+  }
+
+  getTheme() {
+    return this._renderer.getTheme();
+  }
+
+  setEditorIconProvider(provider) {
+    this._renderer.setEditorIconProvider(provider || null);
+    this._markDirty();
+  }
+
+  getEditorIconProvider() {
+    return this._renderer.getEditorIconProvider();
+  }
+
+  addNewLineActionProvider(provider) {
+    if (typeof provider !== "function") {
+      return;
+    }
+    if (!this._newLineActionProviders.includes(provider)) {
+      this._newLineActionProviders.push(provider);
+    }
+  }
+
+  removeNewLineActionProvider(provider) {
+    const index = this._newLineActionProviders.indexOf(provider);
+    if (index >= 0) {
+      this._newLineActionProviders.splice(index, 1);
+    }
+  }
+
+  setScale(scale) {
+    this._core.setScale(scale);
+    this._emitScrollScaleFromCore(false, true);
+  }
+
+  setWrapMode(mode) {
+    const value = toInt(mode, 0);
+    this._settingsState.wrapMode = value;
+    this._core.setWrapMode(value);
+  }
+
+  setReadOnly(readOnly) {
+    const value = !!readOnly;
+    this._settingsState.readOnly = value;
+    this._core.setReadOnly(value);
+  }
+
+  isReadOnly() {
+    return !!this._core.isReadOnly();
+  }
+
+  setAutoIndentMode(mode) {
+    const value = toInt(mode, 0);
+    this._settingsState.autoIndentMode = value;
+    this._core.setAutoIndentMode(value);
+  }
+
+  getAutoIndentMode() {
+    return this._core.getAutoIndentMode();
+  }
+
+  setMaxGutterIcons(count) {
+    const value = Math.max(0, toInt(count, 0));
+    this._settingsState.maxGutterIcons = value;
+    this._core.setMaxGutterIcons(value);
+  }
+
+  setLineSpacing(add, mult) {
+    const addValue = Number(add);
+    const multValue = Number(mult);
+    this._settingsState.lineSpacingAdd = Number.isFinite(addValue) ? addValue : 0;
+    this._settingsState.lineSpacingMult = Number.isFinite(multValue) ? multValue : 1;
+    this._core.setLineSpacing(this._settingsState.lineSpacingAdd, this._settingsState.lineSpacingMult);
+  }
+
+  setDecorationScrollRefreshMinIntervalMs(intervalMs) {
+    const value = Math.max(0, toInt(intervalMs, 0));
+    this.setDecorationProviderOptions({ scrollRefreshMinIntervalMs: value });
+  }
+
+  getDecorationScrollRefreshMinIntervalMs() {
+    return toInt(this.getDecorationProviderOptions()?.scrollRefreshMinIntervalMs, 0);
+  }
+
+  setDecorationOverscanViewportMultiplier(multiplier) {
+    const value = Number(multiplier);
+    this.setDecorationProviderOptions({
+      overscanViewportMultiplier: Number.isFinite(value) ? Math.max(0, value) : 0.5,
+    });
+  }
+
+  getDecorationOverscanViewportMultiplier() {
+    const value = Number(this.getDecorationProviderOptions()?.overscanViewportMultiplier);
+    return Number.isFinite(value) ? value : 0.5;
+  }
+
+  insert(text) {
+    const result = this._core.insertText(String(text ?? ""));
+    this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
+    return result;
+  }
+
+  insertText(text) {
+    return this.insert(text);
+  }
+
+  replace(range, newText) {
+    const result = this._core.replaceText(range, String(newText ?? ""));
+    this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
+    return result;
+  }
+
+  replaceText(range, newText) {
+    return this.replace(range, newText);
+  }
+
+  delete(range) {
+    const result = this._core.deleteText(range);
+    this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
+    return result;
+  }
+
+  deleteText(range) {
+    return this.delete(range);
+  }
+
+  undo() {
+    const result = this._core.undo();
+    this._handleTextEditResult(result, { action: TextChangeAction.UNDO });
+    return !!(result && (result.changed || asArray(result.changes).length > 0));
+  }
+
+  redo() {
+    const result = this._core.redo();
+    this._handleTextEditResult(result, { action: TextChangeAction.REDO });
+    return !!(result && (result.changed || asArray(result.changes).length > 0));
+  }
+
+  canUndo() {
+    return !!this._core.canUndo();
+  }
+
+  canRedo() {
+    return !!this._core.canRedo();
+  }
+
+  getCursorPosition() {
+    return this._core.getCursorPosition();
+  }
+
+  setCursorPosition(position) {
+    this._core.setCursorPosition(position);
+    this._emitStateEventsFromCore({ forceCursor: true });
+  }
+
+  getSelection() {
+    if (!this._core.hasSelection()) {
+      return { hasSelection: false, range: null };
+    }
+    return {
+      hasSelection: true,
+      range: this._core.getSelection(),
+    };
+  }
+
+  getSelectionRange() {
+    return this._core.getSelection();
+  }
+
+  hasSelection() {
+    return !!this._core.hasSelection();
+  }
+
+  setSelection(startOrRange, startColumn, endLine, endColumn) {
+    this._core.setSelection(startOrRange, startColumn, endLine, endColumn);
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: true });
+  }
+
+  clearSelection() {
+    this._core.clearSelection();
+    this._emitStateEventsFromCore({ forceSelection: true });
+  }
+
+  selectAll() {
+    this._core.selectAll();
+    this._emitStateEventsFromCore({ forceSelection: true, forceCursor: true });
+  }
+
+  getSelectedText() {
+    return String(this._core.getSelectedText() ?? "");
+  }
+
+  moveCursorLeft(extendSelection = false) {
+    this._core.moveCursorLeft(extendSelection);
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: !!extendSelection });
+  }
+
+  moveCursorRight(extendSelection = false) {
+    this._core.moveCursorRight(extendSelection);
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: !!extendSelection });
+  }
+
+  moveCursorUp(extendSelection = false) {
+    this._core.moveCursorUp(extendSelection);
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: !!extendSelection });
+  }
+
+  moveCursorDown(extendSelection = false) {
+    this._core.moveCursorDown(extendSelection);
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: !!extendSelection });
+  }
+
+  moveCursorToLineStart(extendSelection = false) {
+    this._core.moveCursorToLineStart(extendSelection);
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: !!extendSelection });
+  }
+
+  moveCursorToLineEnd(extendSelection = false) {
+    this._core.moveCursorToLineEnd(extendSelection);
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: !!extendSelection });
+  }
+
+  goto(line, column = 0) {
+    this.gotoPosition(line, column);
+  }
+
+  gotoPosition(line, column = 0) {
+    this._core.gotoPosition(line, column);
+    this._emitStateEventsFromCore({ forceCursor: true, includeScrollScale: true });
+  }
+
+  scrollToLine(line, behavior = 0) {
+    this._core.scrollToLine(line, behavior);
+    this._emitScrollScaleFromCore(true, false);
+  }
+
+  setScroll(scrollX, scrollY) {
+    this._core.setScroll(scrollX, scrollY);
+    this._emitScrollScaleFromCore(true, false);
+  }
+
+  getScrollMetrics() {
+    return this._core.getScrollMetrics();
+  }
+
+  getPositionRect(line, column) {
+    return this._core.getPositionRect(line, column);
+  }
+
+  getCursorRect() {
+    return this._core.getCursorRect();
+  }
+
+  getViewState() {
+    return this._core.getViewState();
+  }
+
+  getLayoutMetrics() {
+    return this._core.getLayoutMetrics();
+  }
+
+  setLineInlayHints(line, hints) {
+    this._core.setLineInlayHints(line, hints);
+  }
+
+  setBatchLineInlayHints(hintsByLine) {
+    this._core.setBatchLineInlayHints(hintsByLine);
+  }
+
+  setLinePhantomTexts(line, phantoms) {
+    this._core.setLinePhantomTexts(line, phantoms);
+  }
+
+  setBatchLinePhantomTexts(phantomsByLine) {
+    this._core.setBatchLinePhantomTexts(phantomsByLine);
+  }
+
+  setLineGutterIcons(line, icons) {
+    this._core.setLineGutterIcons(line, icons);
+  }
+
+  setBatchLineGutterIcons(iconsByLine) {
+    this._core.setBatchLineGutterIcons(iconsByLine);
+  }
+
+  setLineDiagnostics(line, diagnostics) {
+    this._core.setLineDiagnostics(line, diagnostics);
+  }
+
+  setBatchLineDiagnostics(diagsByLine) {
+    this._core.setBatchLineDiagnostics(diagsByLine);
+  }
+
+  setIndentGuides(guides) {
+    this._core.setIndentGuides(guides);
+  }
+
+  setBatchIndentGuides(guides) {
+    this.setIndentGuides(guides);
+  }
+
+  setBracketGuides(guides) {
+    this._core.setBracketGuides(guides);
+  }
+
+  setBatchBracketGuides(guides) {
+    this.setBracketGuides(guides);
+  }
+
+  setFlowGuides(guides) {
+    this._core.setFlowGuides(guides);
+  }
+
+  setBatchFlowGuides(guides) {
+    this.setFlowGuides(guides);
+  }
+
+  setSeparatorGuides(guides) {
+    this._core.setSeparatorGuides(guides);
+  }
+
+  setBatchSeparatorGuides(guides) {
+    this.setSeparatorGuides(guides);
+  }
+
+  setFoldRegions(regions) {
+    this._core.setFoldRegions(regions);
+  }
+
+  setBatchFoldRegions(regions) {
+    this.setFoldRegions(regions);
+  }
+
+  clearInlayHints() {
+    this._core.clearInlayHints();
+  }
+
+  clearPhantomTexts() {
+    this._core.clearPhantomTexts();
+  }
+
+  clearGutterIcons() {
+    this._core.clearGutterIcons();
+  }
+
+  clearDiagnostics() {
+    this._core.clearDiagnostics();
+  }
+
+  clearGuides() {
+    this._core.clearGuides();
+  }
+
+  clearAllDecorations() {
+    this._core.clearAllDecorations();
+  }
+
+  insertSnippet(snippetTemplate) {
+    const result = this._core.insertSnippet(snippetTemplate);
+    this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
+    return result;
+  }
+
+  startLinkedEditing(model) {
+    this._core.startLinkedEditing(model || {});
+    this._markDirty();
+  }
+
+  isInLinkedEditing() {
+    return !!this._core.isInLinkedEditing();
+  }
+
+  linkedEditingNext() {
+    const result = this._core.linkedEditingNext();
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: true });
+    return !!result;
+  }
+
+  linkedEditingPrev() {
+    const result = this._core.linkedEditingPrev();
+    this._emitStateEventsFromCore({ forceCursor: true, forceSelection: true });
+    return !!result;
+  }
+
+  cancelLinkedEditing() {
+    this._core.cancelLinkedEditing();
+  }
+
+  finishLinkedEditing() {
+    this._core.finishLinkedEditing();
+  }
+
+  toggleFoldAt(line) {
+    return !!this._core.toggleFoldAt(line);
+  }
+
+  toggleFold(line) {
+    return this.toggleFoldAt(line);
+  }
+
+  foldAt(line) {
+    return !!this._core.foldAt(line);
+  }
+
+  unfoldAt(line) {
+    return !!this._core.unfoldAt(line);
+  }
+
+  foldAll() {
+    this._core.foldAll();
+  }
+
+  unfoldAll() {
+    this._core.unfoldAll();
+  }
+
+  isLineVisible(line) {
+    return !!this._core.isLineVisible(line);
+  }
+
+  setMatchedBrackets(open, close, closeLine, closeColumn) {
+    if (arguments.length >= 4) {
+      this._core.setMatchedBrackets(open, close, closeLine, closeColumn);
+      return;
+    }
+    this._core.setMatchedBrackets(open, close);
+  }
+
+  clearMatchedBrackets() {
+    this._core.clearMatchedBrackets();
   }
 
   setLocale(locale) {
@@ -715,6 +1524,11 @@ export class SweetEditorWidget {
 
     this._decorationProviderManager.onDocumentLoaded();
     this.dismissCompletion();
+    this._syncEventStateFromCore();
+    this._emitEvent(EditorEventType.DOCUMENT_LOADED, {
+      textLength: this.getText().length,
+      lineCount: this.getTotalLineCount(),
+    });
     this._markDirty();
   }
 
@@ -764,6 +1578,9 @@ export class SweetEditorWidget {
       this._completionPopupController = null;
     }
 
+    this._listeners.clear();
+    this._newLineActionProviders = [];
+
     this._canvas.remove();
     this._input.remove();
   }
@@ -798,6 +1615,9 @@ export class SweetEditorWidget {
 
   setDecorationProviderOptions(options = {}) {
     this._decorationProviderManager.setOptions(options);
+    if ("scrollRefreshMinIntervalMs" in options || "overscanViewportMultiplier" in options) {
+      this._settingsFacade = this._createSettingsFacade();
+    }
   }
 
   getDecorationProviderOptions() {
@@ -875,6 +1695,414 @@ export class SweetEditorWidget {
     return toInt(this._document.getLineCount(), 0);
   }
 
+  _createSettingsFacade() {
+    return {
+      setScale: (scale) => this.setScale(scale),
+      getScale: () => {
+        const view = this._core.getViewState() || {};
+        const value = Number(view.scale);
+        return Number.isFinite(value) ? value : 1;
+      },
+      setWrapMode: (mode) => this.setWrapMode(mode),
+      getWrapMode: () => this._settingsState.wrapMode,
+      setReadOnly: (readOnly) => this.setReadOnly(readOnly),
+      isReadOnly: () => this.isReadOnly(),
+      setAutoIndentMode: (mode) => this.setAutoIndentMode(mode),
+      getAutoIndentMode: () => this.getAutoIndentMode(),
+      setMaxGutterIcons: (count) => this.setMaxGutterIcons(count),
+      getMaxGutterIcons: () => this._settingsState.maxGutterIcons,
+      setLineSpacing: (add, mult) => this.setLineSpacing(add, mult),
+      getLineSpacing: () => ({
+        add: this._settingsState.lineSpacingAdd,
+        mult: this._settingsState.lineSpacingMult,
+      }),
+      setDecorationScrollRefreshMinIntervalMs: (intervalMs) =>
+        this.setDecorationScrollRefreshMinIntervalMs(intervalMs),
+      getDecorationScrollRefreshMinIntervalMs: () =>
+        this.getDecorationScrollRefreshMinIntervalMs(),
+      setDecorationOverscanViewportMultiplier: (multiplier) =>
+        this.setDecorationOverscanViewportMultiplier(multiplier),
+      getDecorationOverscanViewportMultiplier: () =>
+        this.getDecorationOverscanViewportMultiplier(),
+    };
+  }
+
+  _applySettingsObject(settings) {
+    if (!settings || typeof settings !== "object") {
+      return;
+    }
+    if ("scale" in settings) {
+      this.setScale(settings.scale);
+    }
+    if ("wrapMode" in settings) {
+      this.setWrapMode(settings.wrapMode);
+    }
+    if ("readOnly" in settings) {
+      this.setReadOnly(settings.readOnly);
+    }
+    if ("autoIndentMode" in settings) {
+      this.setAutoIndentMode(settings.autoIndentMode);
+    }
+    if ("maxGutterIcons" in settings) {
+      this.setMaxGutterIcons(settings.maxGutterIcons);
+    }
+    if ("lineSpacingAdd" in settings || "lineSpacingMult" in settings) {
+      const add = "lineSpacingAdd" in settings ? settings.lineSpacingAdd : this._settingsState.lineSpacingAdd;
+      const mult = "lineSpacingMult" in settings ? settings.lineSpacingMult : this._settingsState.lineSpacingMult;
+      this.setLineSpacing(add, mult);
+    }
+    if ("scrollRefreshMinIntervalMs" in settings) {
+      this.setDecorationScrollRefreshMinIntervalMs(settings.scrollRefreshMinIntervalMs);
+    }
+    if ("overscanViewportMultiplier" in settings) {
+      this.setDecorationOverscanViewportMultiplier(settings.overscanViewportMultiplier);
+    }
+  }
+
+  _emitEvent(eventType, payload = {}) {
+    const key = String(eventType || "");
+    if (!key) {
+      return;
+    }
+    const listeners = this._listeners.get(key);
+    if (!listeners || listeners.size === 0) {
+      return;
+    }
+    const event = {
+      type: key,
+      editor: this,
+      timestamp: Date.now(),
+      ...payload,
+    };
+    listeners.forEach((listener) => {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error(`SweetEditorWidget listener error (${key}):`, error);
+      }
+    });
+  }
+
+  _emitTextChanged(action, range, text) {
+    this._emitEvent(EditorEventType.TEXT_CHANGED, {
+      action: String(action || TextChangeAction.INSERT),
+      changeRange: cloneRange(range),
+      range: cloneRange(range),
+      text: text == null ? null : String(text),
+      newText: text == null ? null : String(text),
+    });
+  }
+
+  _emitContextMenuEvent(cursorPosition, screenPoint, nativeEvent) {
+    const x = Number(screenPoint?.x) || 0;
+    const y = Number(screenPoint?.y) || 0;
+    const now = Date.now();
+    const last = this._lastContextMenuEvent || { time: 0, x: 0, y: 0 };
+    if (now - last.time < 40 && Math.abs(x - last.x) < 1 && Math.abs(y - last.y) < 1) {
+      return;
+    }
+    this._lastContextMenuEvent = { time: now, x, y };
+    this._emitEvent(EditorEventType.CONTEXT_MENU, {
+      cursorPosition: clonePosition(cursorPosition),
+      screenPoint: { x, y },
+      nativeEvent,
+    });
+  }
+
+  _safeGetScrollMetrics() {
+    try {
+      return this._core.getScrollMetrics();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  _syncEventStateFromCore() {
+    this._lastCursorPosition = clonePosition(this._core.getCursorPosition());
+    let hasSelection = false;
+    let selection = null;
+    try {
+      hasSelection = !!this._core.hasSelection();
+      selection = hasSelection ? cloneRange(this._core.getSelection()) : null;
+    } catch (_) {
+      hasSelection = false;
+      selection = null;
+    }
+    this._lastHasSelection = hasSelection;
+    this._lastSelection = selection;
+    const metrics = this._safeGetScrollMetrics();
+    this._lastScrollX = Number(metrics?.scroll_x ?? metrics?.scrollX ?? 0) || 0;
+    this._lastScrollY = Number(metrics?.scroll_y ?? metrics?.scrollY ?? 0) || 0;
+    this._lastScale = Number(metrics?.scale ?? 1) || 1;
+  }
+
+  _emitCursorChanged(cursorPosition, force = false) {
+    const cursor = clonePosition(cursorPosition);
+    if (!force && equalPosition(cursor, this._lastCursorPosition)) {
+      return;
+    }
+    this._lastCursorPosition = cursor;
+    this._emitEvent(EditorEventType.CURSOR_CHANGED, {
+      cursorPosition: clonePosition(cursor),
+    });
+  }
+
+  _emitSelectionChanged(hasSelection, selection, cursorPosition, force = false) {
+    const normalizedHasSelection = !!hasSelection;
+    const normalizedSelection = normalizedHasSelection ? cloneRange(selection) : null;
+    if (
+      !force
+      && normalizedHasSelection === this._lastHasSelection
+      && equalRange(normalizedSelection, this._lastSelection)
+    ) {
+      return;
+    }
+    this._lastHasSelection = normalizedHasSelection;
+    this._lastSelection = normalizedSelection;
+    this._lastCursorPosition = clonePosition(cursorPosition);
+    this._emitEvent(EditorEventType.SELECTION_CHANGED, {
+      hasSelection: normalizedHasSelection,
+      selection: cloneRange(normalizedSelection),
+      cursorPosition: clonePosition(cursorPosition),
+    });
+  }
+
+  _emitScrollScaleValues(scrollX, scrollY, scale, forceScroll = false, forceScale = false) {
+    const nextScrollX = Number.isFinite(scrollX) ? scrollX : this._lastScrollX;
+    const nextScrollY = Number.isFinite(scrollY) ? scrollY : this._lastScrollY;
+    const nextScale = Number.isFinite(scale) ? scale : this._lastScale;
+
+    const scrollChanged = forceScroll
+      || Math.abs(nextScrollX - this._lastScrollX) > 0.01
+      || Math.abs(nextScrollY - this._lastScrollY) > 0.01;
+    const scaleChanged = forceScale || Math.abs(nextScale - this._lastScale) > 1e-5;
+
+    this._lastScrollX = nextScrollX;
+    this._lastScrollY = nextScrollY;
+    this._lastScale = nextScale;
+
+    if (scrollChanged) {
+      this._emitEvent(EditorEventType.SCROLL_CHANGED, {
+        scrollX: nextScrollX,
+        scrollY: nextScrollY,
+      });
+    }
+    if (scaleChanged) {
+      this._emitEvent(EditorEventType.SCALE_CHANGED, {
+        scale: nextScale,
+      });
+    }
+  }
+
+  _emitScrollScaleFromCore(forceScroll = false, forceScale = false) {
+    const metrics = this._safeGetScrollMetrics();
+    if (!metrics) {
+      return;
+    }
+    this._emitScrollScaleValues(
+      Number(metrics.scroll_x ?? metrics.scrollX),
+      Number(metrics.scroll_y ?? metrics.scrollY),
+      Number(metrics.scale),
+      forceScroll,
+      forceScale,
+    );
+  }
+
+  _emitScrollScaleFromGestureResult(result, emitScroll = true, emitScale = false) {
+    if (!result) {
+      return;
+    }
+    const scrollX = Number(result.view_scroll_x ?? result.viewScrollX ?? this._lastScrollX);
+    const scrollY = Number(result.view_scroll_y ?? result.viewScrollY ?? this._lastScrollY);
+    const scale = Number(result.view_scale ?? result.viewScale ?? this._lastScale);
+    this._emitScrollScaleValues(scrollX, scrollY, scale, emitScroll, emitScale);
+  }
+
+  _emitStateEventsFromCore(options = {}) {
+    const forceCursor = !!options.forceCursor;
+    const forceSelection = !!options.forceSelection;
+    const includeScrollScale = !!options.includeScrollScale;
+
+    const cursor = clonePosition(this._core.getCursorPosition());
+    this._emitCursorChanged(cursor, forceCursor);
+
+    let hasSelection = false;
+    let selection = null;
+    try {
+      hasSelection = !!this._core.hasSelection();
+      selection = hasSelection ? this._core.getSelection() : null;
+    } catch (_) {
+      hasSelection = false;
+      selection = null;
+    }
+    this._emitSelectionChanged(hasSelection, selection, cursor, forceSelection);
+
+    if (includeScrollScale) {
+      this._emitScrollScaleFromCore();
+    }
+  }
+
+  _dispatchHitTargetEvents(hitTarget, screenPoint, nativeEvent) {
+    if (!hitTarget) {
+      return;
+    }
+    const hitType = toInt(hitTarget.type, this._hitTargetType.NONE);
+    if (hitType === this._hitTargetType.NONE) {
+      return;
+    }
+
+    const line = toInt(hitTarget.line, 0);
+    const column = toInt(hitTarget.column, 0);
+    const iconId = toInt(hitTarget.icon_id ?? hitTarget.iconId, 0);
+    const colorValue = toInt(hitTarget.color_value ?? hitTarget.colorValue, 0);
+
+    if (hitType === this._hitTargetType.INLAY_HINT_TEXT || hitType === this._hitTargetType.INLAY_HINT_ICON) {
+      this._emitEvent(EditorEventType.INLAY_HINT_CLICK, {
+        line,
+        column,
+        iconId,
+        isIcon: hitType === this._hitTargetType.INLAY_HINT_ICON,
+        screenPoint,
+        nativeEvent,
+      });
+      return;
+    }
+
+    if (hitType === this._hitTargetType.INLAY_HINT_COLOR) {
+      this._emitEvent(EditorEventType.INLAY_HINT_CLICK, {
+        line,
+        column,
+        colorValue,
+        isColor: true,
+        screenPoint,
+        nativeEvent,
+      });
+      return;
+    }
+
+    if (hitType === this._hitTargetType.GUTTER_ICON) {
+      this._emitEvent(EditorEventType.GUTTER_ICON_CLICK, {
+        line,
+        iconId,
+        screenPoint,
+        nativeEvent,
+      });
+      return;
+    }
+
+    if (hitType === this._hitTargetType.FOLD_PLACEHOLDER || hitType === this._hitTargetType.FOLD_GUTTER) {
+      this._emitEvent(EditorEventType.FOLD_TOGGLE, {
+        line,
+        fromGutter: hitType === this._hitTargetType.FOLD_GUTTER,
+        screenPoint,
+        nativeEvent,
+      });
+    }
+  }
+
+  _fireGestureEvents(result, screenPoint, nativeEvent = null) {
+    if (!result) {
+      return;
+    }
+    const point = {
+      x: Number(screenPoint?.x) || 0,
+      y: Number(screenPoint?.y) || 0,
+    };
+    const cursor = clonePosition(result.cursor_position ?? result.cursorPosition ?? this._core.getCursorPosition());
+    const hasSelection = !!(result.has_selection ?? result.hasSelection ?? false);
+    const selection = cloneRange(result.selection);
+    const gestureType = toInt(result.type, this._gestureType.UNDEFINED);
+
+    switch (gestureType) {
+      case this._gestureType.LONG_PRESS:
+        this._emitEvent(EditorEventType.LONG_PRESS, {
+          cursorPosition: clonePosition(cursor),
+          screenPoint: point,
+          nativeEvent,
+        });
+        this._emitCursorChanged(cursor, true);
+        this._lastHasSelection = hasSelection;
+        this._lastSelection = hasSelection ? cloneRange(selection) : null;
+        break;
+      case this._gestureType.DOUBLE_TAP:
+        this._emitEvent(EditorEventType.DOUBLE_TAP, {
+          cursorPosition: clonePosition(cursor),
+          hasSelection,
+          selection: cloneRange(selection),
+          screenPoint: point,
+          nativeEvent,
+        });
+        this._emitCursorChanged(cursor, true);
+        if (hasSelection) {
+          this._emitSelectionChanged(true, selection, cursor, true);
+        } else {
+          this._lastHasSelection = false;
+          this._lastSelection = null;
+        }
+        break;
+      case this._gestureType.TAP:
+        this._emitCursorChanged(cursor, true);
+        this._lastHasSelection = hasSelection;
+        this._lastSelection = hasSelection ? cloneRange(selection) : null;
+        this.dismissCompletion();
+        this._dispatchHitTargetEvents(result.hit_target ?? result.hitTarget, point, nativeEvent);
+        break;
+      case this._gestureType.SCROLL:
+      case this._gestureType.FAST_SCROLL:
+        this._emitScrollScaleFromGestureResult(result, true, false);
+        this._decorationProviderManager.onScrollChanged();
+        this.dismissCompletion();
+        break;
+      case this._gestureType.SCALE:
+        this._emitScrollScaleFromGestureResult(result, false, true);
+        break;
+      case this._gestureType.DRAG_SELECT:
+        this._emitSelectionChanged(hasSelection, selection, cursor, true);
+        break;
+      case this._gestureType.CONTEXT_MENU:
+        this._emitContextMenuEvent(cursor, point, nativeEvent);
+        this._updateContextMenuState();
+        this._showContextMenu(point.x, point.y);
+        break;
+      default:
+        break;
+    }
+  }
+
+  _provideNewLineAction() {
+    if (!Array.isArray(this._newLineActionProviders) || this._newLineActionProviders.length === 0) {
+      return null;
+    }
+    const cursor = clonePosition(this._core.getCursorPosition()) || { line: 0, column: 0 };
+    const lineText = this._document
+      ? String(this._document.getLineText(cursor.line) ?? "")
+      : "";
+    const context = {
+      lineNumber: cursor.line,
+      column: cursor.column,
+      lineText,
+      languageConfiguration: this._languageConfiguration,
+      editorMetadata: this._metadata,
+    };
+    for (const provider of this._newLineActionProviders) {
+      try {
+        const action = provider(context);
+        if (action == null) {
+          continue;
+        }
+        if (typeof action === "string") {
+          return { text: action };
+        }
+        if (typeof action === "object" && typeof action.text === "string") {
+          return action;
+        }
+      } catch (error) {
+        console.error("NewLineActionProvider error:", error);
+      }
+    }
+    return null;
+  }
+
   _setupDom() {
     this.container.style.position = this.container.style.position || "relative";
     this.container.style.overflow = "hidden";
@@ -933,12 +2161,12 @@ export class SweetEditorWidget {
       this._compositionCommitPending = false;
       this._compositionEndFallbackData = "";
       this._input.value = "";
-      this._core.call("compositionStart");
+      this._core.compositionStart();
     });
 
     this._input.addEventListener("compositionupdate", (e) => {
       const composingText = typeof e.data === "string" ? e.data : (this._input.value || "");
-      this._core.call("compositionUpdate", composingText);
+      this._core.compositionUpdate(composingText);
     });
 
     this._input.addEventListener("compositionend", (e) => {
@@ -957,10 +2185,10 @@ export class SweetEditorWidget {
         this._compositionEndFallbackData = "";
 
         const result = fallbackCommit
-          ? this._core.call("compositionEnd", fallbackCommit)
-          : this._core.call("compositionCancel");
+          ? this._core.compositionEnd(fallbackCommit)
+          : this._core.compositionCancel();
 
-        this._handleTextEditResult(result);
+        this._handleTextEditResult(result, { action: TextChangeAction.COMPOSITION });
       }, 0);
     });
 
@@ -987,8 +2215,8 @@ export class SweetEditorWidget {
           ? e.data
           : (this._input.value || this._compositionEndFallbackData || "");
         this._compositionEndFallbackData = "";
-        const result = this._core.call("compositionEnd", committedText);
-        this._handleTextEditResult(result);
+        const result = this._core.compositionEnd(committedText);
+        this._handleTextEditResult(result, { action: TextChangeAction.COMPOSITION });
       }
       this._input.value = "";
       return;
@@ -999,16 +2227,16 @@ export class SweetEditorWidget {
     }
 
     if (inputType === "deleteContentBackward") {
-      const result = this._core.call("backspace");
+      const result = this._core.backspace();
       this._input.value = "";
-      this._handleTextEditResult(result);
+      this._handleTextEditResult(result, { action: TextChangeAction.KEY });
       return;
     }
 
     if (inputType === "deleteContentForward") {
-      const result = this._core.call("deleteForward");
+      const result = this._core.deleteForward();
       this._input.value = "";
-      this._handleTextEditResult(result);
+      this._handleTextEditResult(result, { action: TextChangeAction.KEY });
       return;
     }
 
@@ -1018,8 +2246,8 @@ export class SweetEditorWidget {
       return;
     }
 
-    const result = this._core.call("insertText", text);
-    this._handleTextEditResult(result);
+    const result = this._core.insertText(text);
+    this._handleTextEditResult(result, { action: TextChangeAction.KEY });
   }
 
   _onPointerDown(event) {
@@ -1110,6 +2338,7 @@ export class SweetEditorWidget {
 
     this._updateContextMenuState();
     this._showContextMenu(x, y);
+    this._emitContextMenuEvent(this._core.getCursorPosition(), { x, y }, event);
   }
 
   _handleDocumentPointerDown(event) {
@@ -1158,6 +2387,19 @@ export class SweetEditorWidget {
       return;
     }
 
+    if (event.key === "Enter") {
+      const providerAction = this._provideNewLineAction();
+      if (providerAction != null) {
+        const text = String(providerAction?.text ?? providerAction ?? "");
+        if (text.length > 0) {
+          const editResult = this._core.insertText(text);
+          this._handleTextEditResult(editResult, { action: TextChangeAction.KEY });
+          event.preventDefault();
+          return;
+        }
+      }
+    }
+
     const mods = this._modifiers(event);
     const keyCode = this._mapKeyCode(event);
     if (!keyCode) {
@@ -1166,21 +2408,21 @@ export class SweetEditorWidget {
 
     const result = this._core.handleKeyEvent({ key_code: keyCode, text: "", modifiers: mods });
     if (result && (result.handled ?? result.Handled)) {
-      this._handleKeyEventResult(result);
+      this._handleKeyEventResult(result, { action: TextChangeAction.KEY });
       event.preventDefault();
       return;
     }
 
     if (event.key === "Backspace") {
-      const edit = this._core.call("backspace");
-      this._handleTextEditResult(edit);
+      const edit = this._core.backspace();
+      this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
       event.preventDefault();
       return;
     }
 
     if (event.key === "Delete") {
-      const edit = this._core.call("deleteForward");
-      this._handleTextEditResult(edit);
+      const edit = this._core.deleteForward();
+      this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
       event.preventDefault();
     }
   }
@@ -1202,13 +2444,10 @@ export class SweetEditorWidget {
       pointVector.delete();
     }
 
-    const gestureType = toInt(result?.type, 0);
-    if (gestureType === this._gestureType.SCROLL || gestureType === this._gestureType.FAST_SCROLL) {
-      this._decorationProviderManager.onScrollChanged();
-      this.dismissCompletion();
-    } else if (gestureType === this._gestureType.TAP) {
-      this.dismissCompletion();
-    }
+    const screenPoint = points && points.length > 0
+      ? { x: Number(points[0].x) || 0, y: Number(points[0].y) || 0 }
+      : { x: 0, y: 0 };
+    this._fireGestureEvents(result, screenPoint, domEvent);
 
     if (result && result.needs_edge_scroll) {
       this._startEdgeScroll();
@@ -1222,6 +2461,7 @@ export class SweetEditorWidget {
     this._edgeTimer = setInterval(() => {
       const result = this._core.tickEdgeScroll();
       if (result && result.needs_edge_scroll) {
+        this._emitScrollScaleFromGestureResult(result, false);
         this._decorationProviderManager.onScrollChanged();
       } else {
         this._stopEdgeScroll();
@@ -1446,17 +2686,17 @@ export class SweetEditorWidget {
     }
 
     if (replaceRange) {
-      const deleteResult = this._core.call("deleteText", replaceRange);
-      this._handleTextEditResult(deleteResult);
+      const deleteResult = this._core.deleteText(replaceRange);
+      this._handleTextEditResult(deleteResult, { action: TextChangeAction.INSERT });
     }
 
     let insertResult = null;
     if (completionItem.insertTextFormat === CompletionItem.INSERT_TEXT_FORMAT_SNIPPET) {
-      insertResult = this._core.call("insertSnippet", text);
+      insertResult = this._core.insertSnippet(text);
     } else {
-      insertResult = this._core.call("insertText", text);
+      insertResult = this._core.insertText(text);
     }
-    this._handleTextEditResult(insertResult);
+    this._handleTextEditResult(insertResult, { action: TextChangeAction.INSERT });
   }
 
   _isEmptyRange(range) {
@@ -1466,33 +2706,43 @@ export class SweetEditorWidget {
     return range.start.line === range.end.line && range.start.column === range.end.column;
   }
 
-  _handleKeyEventResult(result) {
+  _handleKeyEventResult(result, options = {}) {
     if (!result) {
       return;
     }
 
     const contentChanged = Boolean(result.content_changed ?? result.contentChanged ?? false);
-    if (!contentChanged) {
-      return;
+    const action = options.action ?? TextChangeAction.KEY;
+    if (contentChanged) {
+      const editResult = result.edit_result ?? result.editResult ?? null;
+      if (editResult) {
+        this._handleTextEditResult(editResult, { action, emitStateEvents: false });
+      } else {
+        this._emitTextChanged(action, null, null);
+        this._decorationProviderManager.onTextChanged([]);
+        if (this._completionPopupController.isShowing) {
+          this._completionProviderManager.triggerCompletion(CompletionTriggerKind.RETRIGGER, null);
+        }
+      }
     }
 
-    const editResult = result.edit_result ?? result.editResult ?? null;
-    if (editResult) {
-      this._handleTextEditResult(editResult);
-      return;
-    }
-
-    this._decorationProviderManager.onTextChanged([]);
-    if (this._completionPopupController.isShowing) {
-      this._completionProviderManager.triggerCompletion(CompletionTriggerKind.RETRIGGER, null);
+    const cursorChanged = Boolean(result.cursor_changed ?? result.cursorChanged ?? false);
+    const selectionChanged = Boolean(result.selection_changed ?? result.selectionChanged ?? false);
+    if (cursorChanged || selectionChanged) {
+      this._emitStateEventsFromCore({
+        forceCursor: cursorChanged,
+        forceSelection: selectionChanged,
+      });
     }
   }
 
-  _handleTextEditResult(editResult) {
+  _handleTextEditResult(editResult, options = {}) {
     if (!editResult) {
       return;
     }
 
+    const action = options.action ?? TextChangeAction.INSERT;
+    const emitStateEvents = options.emitStateEvents !== false;
     const changed = Boolean(editResult.changed ?? false);
     const changes = asArray(editResult.changes);
 
@@ -1500,8 +2750,21 @@ export class SweetEditorWidget {
       return;
     }
 
+    if (changes.length > 0) {
+      changes.forEach((change) => {
+        const range = cloneRange(change.range);
+        const text = String(change.newText ?? change.new_text ?? "");
+        this._emitTextChanged(action, range, text);
+      });
+    } else {
+      this._emitTextChanged(action, null, null);
+    }
+
     this._decorationProviderManager.onTextChanged(changes);
     this._triggerCompletionFromTextChanges(changes);
+    if (emitStateEvents) {
+      this._emitStateEventsFromCore();
+    }
   }
 
   _triggerCompletionFromTextChanges(changes) {
@@ -1825,17 +3088,18 @@ export class SweetEditorWidget {
   async _runContextAction(action) {
     switch (action) {
       case "undo": {
-        const result = this._core.call("undo");
-        this._handleTextEditResult(result);
+        const result = this._core.undo();
+        this._handleTextEditResult(result, { action: TextChangeAction.UNDO });
         break;
       }
       case "redo": {
-        const result = this._core.call("redo");
-        this._handleTextEditResult(result);
+        const result = this._core.redo();
+        this._handleTextEditResult(result, { action: TextChangeAction.REDO });
         break;
       }
       case "selectAll":
-        this._core.call("selectAll");
+        this._core.selectAll();
+        this._emitStateEventsFromCore({ forceSelection: true, forceCursor: true });
         break;
       case "copy":
         await this._copySelectionToClipboard(false);
@@ -1846,8 +3110,8 @@ export class SweetEditorWidget {
       case "paste": {
         const text = await this._readClipboardText();
         if (text) {
-          const result = this._core.call("insertText", text);
-          this._handleTextEditResult(result);
+          const result = this._core.insertText(text);
+          this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
         }
         break;
       }
@@ -1858,15 +3122,15 @@ export class SweetEditorWidget {
 
   async _copySelectionToClipboard(isCut) {
     if (!this._core.hasSelection()) return;
-    const selectedText = this._core.read("getSelectedText") || "";
+    const selectedText = this._core.getSelectedText() || "";
     if (!selectedText) return;
 
     const copied = await this._writeClipboardText(selectedText);
     if (isCut && copied) {
       const selection = this._core.getSelection();
       if (selection) {
-        const result = this._core.call("deleteText", selection);
-        this._handleTextEditResult(result);
+        const result = this._core.deleteText(selection);
+        this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
       }
     }
   }
@@ -1910,7 +3174,7 @@ export class SweetEditorWidget {
       return;
     }
 
-    const selectedText = this._core.read("getSelectedText") || "";
+    const selectedText = this._core.getSelectedText() || "";
     if (!selectedText) {
       return;
     }
@@ -1921,8 +3185,8 @@ export class SweetEditorWidget {
       if (isCut) {
         const selection = this._core.getSelection();
         if (selection) {
-          const result = this._core.call("deleteText", selection);
-          this._handleTextEditResult(result);
+          const result = this._core.deleteText(selection);
+          this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
         }
       }
       return;
@@ -1941,8 +3205,8 @@ export class SweetEditorWidget {
       return;
     }
 
-    const result = this._core.call("insertText", text);
-    this._handleTextEditResult(result);
+    const result = this._core.insertText(text);
+    this._handleTextEditResult(result, { action: TextChangeAction.INSERT });
     event.preventDefault();
   }
 }

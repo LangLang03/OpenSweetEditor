@@ -483,6 +483,354 @@ export class WebEditorCore {
     return this.call("tickEdgeScroll");
   }
 
+  tickFling() {
+    return this.call("tickFling");
+  }
+
+  onFontMetricsChanged() {
+    this.call("onFontMetricsChanged");
+  }
+
+  setFoldArrowMode(mode) {
+    this.call("setFoldArrowMode", toInt(mode, 0));
+  }
+
+  setWrapMode(mode) {
+    this.call("setWrapMode", toInt(mode, 0));
+  }
+
+  setTabSize(tabSize) {
+    if (typeof this._native?.setTabSize === "function") {
+      this.call("setTabSize", Math.max(1, toInt(tabSize, 4)));
+    }
+  }
+
+  setScale(scale) {
+    const value = Number(scale);
+    this.call("setScale", Number.isFinite(value) ? value : 1.0);
+  }
+
+  setLineSpacing(add, mult) {
+    const addValue = Number(add);
+    const multValue = Number(mult);
+    this.call(
+      "setLineSpacing",
+      Number.isFinite(addValue) ? addValue : 0.0,
+      Number.isFinite(multValue) ? multValue : 1.0,
+    );
+  }
+
+  setContentStartPadding(padding) {
+    const value = Number(padding);
+    this.call("setContentStartPadding", Number.isFinite(value) ? value : 0.0);
+  }
+
+  setShowSplitLine(show) {
+    this.call("setShowSplitLine", Boolean(show));
+  }
+
+  setCurrentLineRenderMode(mode) {
+    this.call("setCurrentLineRenderMode", toInt(mode, 0));
+  }
+
+  getViewState() {
+    return this.read("getViewState");
+  }
+
+  getScrollMetrics() {
+    return this.read("getScrollMetrics");
+  }
+
+  getLayoutMetrics() {
+    return this.read("getLayoutMetrics");
+  }
+
+  insertText(text) {
+    return this.call("insertText", String(text ?? ""));
+  }
+
+  replaceText(range, newText) {
+    return this.call("replaceText", ensureRange(range), String(newText ?? ""));
+  }
+
+  deleteText(range) {
+    return this.call("deleteText", ensureRange(range));
+  }
+
+  backspace() {
+    return this.call("backspace");
+  }
+
+  deleteForward() {
+    return this.call("deleteForward");
+  }
+
+  moveLineUp() {
+    return this.call("moveLineUp");
+  }
+
+  moveLineDown() {
+    return this.call("moveLineDown");
+  }
+
+  copyLineUp() {
+    return this.call("copyLineUp");
+  }
+
+  copyLineDown() {
+    return this.call("copyLineDown");
+  }
+
+  deleteLine() {
+    return this.call("deleteLine");
+  }
+
+  insertLineAbove() {
+    return this.call("insertLineAbove");
+  }
+
+  insertLineBelow() {
+    return this.call("insertLineBelow");
+  }
+
+  undo() {
+    return this.call("undo");
+  }
+
+  redo() {
+    return this.call("redo");
+  }
+
+  setCursorPosition(position) {
+    this.call("setCursorPosition", normalizePosition(position));
+  }
+
+  setSelection(startOrRange, startColumn, endLine, endColumn) {
+    if (startOrRange && typeof startOrRange === "object" && startOrRange.start && startOrRange.end) {
+      this.call("setSelection", ensureRange(startOrRange));
+      return;
+    }
+
+    const range = ensureRange({
+      start: {
+        line: ensureLine(startOrRange),
+        column: ensureColumn(startColumn),
+      },
+      end: {
+        line: ensureLine(endLine),
+        column: ensureColumn(endColumn),
+      },
+    });
+    this.call("setSelection", range);
+  }
+
+  clearSelection() {
+    this.call("clearSelection");
+  }
+
+  selectAll() {
+    this.call("selectAll");
+  }
+
+  getSelectedText() {
+    return this.read("getSelectedText");
+  }
+
+  moveCursorLeft(extendSelection = false) {
+    this.call("moveCursorLeft", Boolean(extendSelection));
+  }
+
+  moveCursorRight(extendSelection = false) {
+    this.call("moveCursorRight", Boolean(extendSelection));
+  }
+
+  moveCursorUp(extendSelection = false) {
+    this.call("moveCursorUp", Boolean(extendSelection));
+  }
+
+  moveCursorDown(extendSelection = false) {
+    this.call("moveCursorDown", Boolean(extendSelection));
+  }
+
+  moveCursorToLineStart(extendSelection = false) {
+    this.call("moveCursorToLineStart", Boolean(extendSelection));
+  }
+
+  moveCursorToLineEnd(extendSelection = false) {
+    this.call("moveCursorToLineEnd", Boolean(extendSelection));
+  }
+
+  compositionStart() {
+    this.call("compositionStart");
+  }
+
+  compositionUpdate(text) {
+    this.call("compositionUpdate", String(text ?? ""));
+  }
+
+  compositionEnd(committedText) {
+    return this.call("compositionEnd", String(committedText ?? ""));
+  }
+
+  compositionCancel() {
+    this.call("compositionCancel");
+  }
+
+  isComposing() {
+    return this.read("isComposing");
+  }
+
+  setCompositionEnabled(enabled) {
+    this.call("setCompositionEnabled", Boolean(enabled));
+  }
+
+  isCompositionEnabled() {
+    return this.read("isCompositionEnabled");
+  }
+
+  setReadOnly(readOnly) {
+    this.call("setReadOnly", Boolean(readOnly));
+  }
+
+  isReadOnly() {
+    return this.read("isReadOnly");
+  }
+
+  setAutoIndentMode(mode) {
+    this.call("setAutoIndentMode", toInt(mode, 0));
+  }
+
+  getAutoIndentMode() {
+    return this.read("getAutoIndentMode");
+  }
+
+  setHandleConfig(config) {
+    this.call("setHandleConfig", config || {});
+  }
+
+  getHandleConfig() {
+    if (typeof this._native?.getHandleConfig === "function") {
+      return this.read("getHandleConfig");
+    }
+    return null;
+  }
+
+  setScrollbarConfig(config) {
+    this.call("setScrollbarConfig", config || {});
+  }
+
+  getScrollbarConfig() {
+    if (typeof this._native?.getScrollbarConfig === "function") {
+      return this.read("getScrollbarConfig");
+    }
+    return null;
+  }
+
+  getPositionRect(line, column) {
+    if (typeof this._native?.getPositionScreenRect === "function") {
+      return this.read("getPositionScreenRect", ensureLine(line), ensureColumn(column));
+    }
+    return this.read("getPositionRect", ensureLine(line), ensureColumn(column));
+  }
+
+  getCursorRect() {
+    if (typeof this._native?.getCursorScreenRect === "function") {
+      return this.read("getCursorScreenRect");
+    }
+    return this.read("getCursorRect");
+  }
+
+  scrollToLine(line, behavior = 0) {
+    this.call("scrollToLine", ensureLine(line), toInt(behavior, 0));
+  }
+
+  gotoPosition(line, column) {
+    this.call("gotoPosition", ensureLine(line), ensureColumn(column));
+  }
+
+  setScroll(scrollX, scrollY) {
+    const x = Number(scrollX);
+    const y = Number(scrollY);
+    this.call(
+      "setScroll",
+      Number.isFinite(x) ? x : 0.0,
+      Number.isFinite(y) ? y : 0.0,
+    );
+  }
+
+  insertSnippet(snippetTemplate) {
+    return this.call("insertSnippet", String(snippetTemplate ?? ""));
+  }
+
+  startLinkedEditing(model) {
+    this.call("startLinkedEditing", model || {});
+  }
+
+  linkedEditingNext() {
+    if (typeof this._native?.linkedEditingNextTabStop === "function") {
+      const result = this._native.linkedEditingNextTabStop();
+      this._notifyMutate();
+      return result;
+    }
+    return this.call("linkedEditingNext");
+  }
+
+  linkedEditingPrev() {
+    if (typeof this._native?.linkedEditingPrevTabStop === "function") {
+      const result = this._native.linkedEditingPrevTabStop();
+      this._notifyMutate();
+      return result;
+    }
+    return this.call("linkedEditingPrev");
+  }
+
+  cancelLinkedEditing() {
+    this.call("cancelLinkedEditing");
+  }
+
+  finishLinkedEditing() {
+    this.call("finishLinkedEditing");
+  }
+
+  toggleFoldAt(line) {
+    return this.call("toggleFoldAt", ensureLine(line));
+  }
+
+  foldAt(line) {
+    return this.call("foldAt", ensureLine(line));
+  }
+
+  unfoldAt(line) {
+    return this.call("unfoldAt", ensureLine(line));
+  }
+
+  foldAll() {
+    this.call("foldAll");
+  }
+
+  unfoldAll() {
+    this.call("unfoldAll");
+  }
+
+  isLineVisible(line) {
+    return this.read("isLineVisible", ensureLine(line));
+  }
+
+  setMatchedBrackets(open, close) {
+    if (arguments.length >= 4) {
+      const openPosition = { line: ensureLine(arguments[0]), column: ensureColumn(arguments[1]) };
+      const closePosition = { line: ensureLine(arguments[2]), column: ensureColumn(arguments[3]) };
+      this.call("setMatchedBrackets", openPosition, closePosition);
+      return;
+    }
+
+    this.call("setMatchedBrackets", normalizePosition(open), normalizePosition(close));
+  }
+
+  clearMatchedBrackets() {
+    this.call("clearMatchedBrackets");
+  }
+
   getCursorPosition() {
     return this.read("getCursorPosition");
   }

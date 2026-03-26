@@ -1,4 +1,4 @@
-import {
+﻿import {
   createSweetEditor,
   CompletionItem,
   CompletionResult,
@@ -7,8 +7,8 @@ import {
   DecorationResultDispatchMode,
   DecorationProviderCallMode,
   DecorationResult,
-} from "../index.js?v=20260326_10";
-import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_10";
+} from "../index.js?v=20260326_11";
+import loadSweetLineModule from "../libs/sweetline/libsweetline.js?v=20260326_11";
 
 const DEMO_FILE_FALLBACKS = Object.freeze({
   "View.java": `package demo;
@@ -846,7 +846,6 @@ const editor = await createSweetEditor(host, {
 });
 
 registerDemoStyles(editor);
-const core = editor.getCore();
 const sweetLineRuntime = await ensureSweetLineRuntime(wasmVersion);
 
 let activeFileName = initialFileName;
@@ -945,18 +944,14 @@ function loadFile(fileName) {
 
   try {
     activeFileName = normalizedFileName;
-    if (typeof core.clearAllDecorations === "function") {
-      core.clearAllDecorations();
+    if (typeof editor.clearAllDecorations === "function") {
+      editor.clearAllDecorations();
     }
     demoDecorationProvider.setDocumentSource(normalizedFileName, text);
     editor.setMetadata({ fileName: normalizedFileName });
     editor.setLanguageConfiguration(resolveLanguageConfiguration(normalizedFileName));
     editor.loadText(text);
-    try {
-      core.call("setScroll", 0, 0);
-    } catch (_) {
-      // ignore when setScroll is not exposed in current runtime
-    }
+    editor.setScroll(0, 0);
     editor.requestDecorationRefresh();
     setStatus(`Loaded: ${normalizedFileName}`);
   } catch (error) {
@@ -1010,11 +1005,11 @@ if (openLocalBtn && localFileInput) {
 }
 
 undoBtn.addEventListener("click", () => {
-  core.call("undo");
+  editor.undo();
 });
 
 redoBtn.addEventListener("click", () => {
-  core.call("redo");
+  editor.redo();
 });
 
 completeBtn.addEventListener("click", () => {
