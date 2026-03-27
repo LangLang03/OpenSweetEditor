@@ -2308,6 +2308,12 @@ export class SweetLineIncrementalDecorationProvider extends DecorationProvider {
 
   _tryAnalyzeIncremental(changes, fileName) {
     try {
+      const hasStructuralChange = changes.some((change) => isLineStructureChange(change));
+      if (hasStructuralChange) {
+        this._rebuildAnalyzer(fileName);
+        return true;
+      }
+
       changes.forEach((change) => {
         if (!change?.range) {
           return;

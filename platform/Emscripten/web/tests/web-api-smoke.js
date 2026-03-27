@@ -1,4 +1,4 @@
-import { EditorEventType } from "../index.js?v=20260326_22";
+import { EditorEventType } from "../index.js?v=20260326_27";
 
 function assert(condition, message) {
   if (!condition) {
@@ -145,6 +145,9 @@ export async function runWebApiSmoke(editor) {
     assert(typeof editor[name] === "function", `missing method: ${name}`);
   });
 
+  assert(!!editor._performanceOverlay, "performance overlay not mounted");
+  assert(editor._performanceOverlay.style.pointerEvents === "none", "performance overlay should not block input");
+
   const eventCounters = Object.create(null);
   const subs = [];
   Object.values(EditorEventType).forEach((eventType) => {
@@ -235,6 +238,12 @@ export async function runWebApiSmoke(editor) {
   assert(editor.getText() === "", "regression G failed: Enter should not insert newline while composition commit is pending");
   editor._onInput(makeInputEvent("insertFromComposition", "\u8BD5"));
   assert(editor.getText() === "\u8BD5", "regression G failed: pending composition should commit normally");
+
+  // Input regression H: legacy keyCode Enter should still work when key is unrecognized.
+  editor.loadText("");
+  resetInputPipelineState(editor);
+  editor._onKeyDown(makeKeyEvent("Unidentified", { keyCode: 13, which: 13 }));
+  assert(editor.getText() === "\n", "regression H failed: legacy Enter keyCode should insert newline");
 
   editor.loadText("alpha\nbeta\ngamma");
 

@@ -1007,6 +1007,10 @@ export class SweetEditorWidget {
       lastScrollSampleAt: 0,
       scrollSpeedY: 0,
     };
+    this._debugInputLogsEnabled = options.debugInputLogs === undefined
+      ? true
+      : Boolean(options.debugInputLogs);
+    this._debugInputLogSeq = 0;
 
     this._isComposing = false;
     this._compositionCommitPending = false;
@@ -2302,7 +2306,11 @@ export class SweetEditorWidget {
 
     this._input.addEventListener("keydown", (e) => this._onKeyDown(e));
     this._input.addEventListener("beforeinput", (e) => this._onBeforeInput(e));
-    this._input.addEventListener("compositionstart", () => {
+    this._input.addEventListener("compositionstart", (e) => {
+      this._debugInputLog("compositionstart", {
+        data: typeof e?.data === "string" ? e.data : "",
+        inputValueLength: String(this._input?.value || "").length,
+      });
       this._invalidatePrintableFallback();
       if (this._compositionEndTimer) {
         clearTimeout(this._compositionEndTimer);
@@ -2318,10 +2326,18 @@ export class SweetEditorWidget {
     this._input.addEventListener("compositionupdate", (e) => {
       this._invalidatePrintableFallback();
       const composingText = typeof e.data === "string" ? e.data : (this._input.value || "");
+      this._debugInputLog("compositionupdate", {
+        data: typeof e.data === "string" ? e.data : "",
+        composingText,
+      });
       this._core.compositionUpdate(composingText);
     });
 
     this._input.addEventListener("compositionend", (e) => {
+      this._debugInputLog("compositionend", {
+        data: typeof e.data === "string" ? e.data : "",
+        inputValueLength: String(this._input?.value || "").length,
+      });
       this._invalidatePrintableFallback();
       this._isComposing = false;
       this._compositionCommitPending = true;
@@ -2330,6 +2346,9 @@ export class SweetEditorWidget {
       this._compositionEndTimer = setTimeout(() => {
         this._compositionEndTimer = 0;
         if (!this._compositionCommitPending) {
+          this._debugInputLog("compositionend.timer.skip", {
+            reason: "commitPendingFalse",
+          });
           return;
         }
 
@@ -2342,6 +2361,10 @@ export class SweetEditorWidget {
           : this._core.compositionCancel();
 
         this._handleTextEditResult(result, { action: TextChangeAction.COMPOSITION });
+        this._debugInputLog("compositionend.timer.commit", {
+          fallbackCommit,
+          changed: !!result?.changed,
+        });
       }, 0);
     });
 
@@ -2477,6 +2500,39 @@ export class SweetEditorWidget {
     ].join("\n");
   }
 
+  _debugInputTargetName(target) {
+    if (!target) {
+      return "null";
+    }
+    if (target === document.body) {
+      return "BODY";
+    }
+    if (target === document.documentElement) {
+      return "HTML";
+    }
+    if (!(target instanceof Element)) {
+      return typeof target;
+    }
+    const tag = target.tagName || target.nodeName || "UNKNOWN";
+    const id = target.id ? `#${target.id}` : "";
+    const cls = target.className && typeof target.className === "string"
+      ? `.${target.className.trim().replace(/\s+/g, ".")}`
+      : "";
+    return `${tag}${id}${cls}`;
+  }
+
+  _debugInputLog(eventName, payload = {}) {
+    if (!this._debugInputLogsEnabled) {
+      return;
+    }
+    const seq = ++this._debugInputLogSeq;
+    try {
+      console.log(`[SweetEditorDebug/Input#${seq}] ${eventName}`, payload);
+    } catch (_) {
+      // ignore
+    }
+  }
+
   _hasActiveCompositionFlow() {
     if (this._isComposing || this._compositionCommitPending) {
       return true;
@@ -2521,6 +2577,14 @@ export class SweetEditorWidget {
     const inputType = String(event?.inputType || "");
     const preventDefault = options.preventDefault === true;
     const allowValueFallback = options.allowValueFallback !== false;
+    this._debugInputLog("applyDomTextInput.start", {
+      inputType,
+      data: typeof event?.data === "string" ? event.data : "",
+      preventDefault,
+      allowValueFallback,
+      inputValueLength: String(this._input?.value || "").length,
+      isComposing: !!event?.isComposing,
+    });
 
     if (inputType === "deleteContentBackward") {
       if (preventDefault && typeof event.preventDefault === "function") {
@@ -2529,6 +2593,9 @@ export class SweetEditorWidget {
       const result = this._core.backspace();
       this._input.value = "";
       this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+      this._debugInputLog("applyDomTextInput.backspace", {
+        changed: !!result?.changed,
+      });
       return true;
     }
 
@@ -2539,12 +2606,16 @@ export class SweetEditorWidget {
       const result = this._core.deleteForward();
       this._input.value = "";
       this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+      this._debugInputLog("applyDomTextInput.deleteForward", {
+        changed: !!result?.changed,
+      });
       return true;
     }
 
     const text = this._extractInputText(event, allowValueFallback);
     this._input.value = "";
     if (!text) {
+      this._debugInputLog("applyDomTextInput.noText", { inputType });
       return false;
     }
 
@@ -2553,6 +2624,11 @@ export class SweetEditorWidget {
     }
     const result = this._core.insert(text);
     this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+    this._debugInputLog("applyDomTextInput.insert", {
+      inputType,
+      text,
+      changed: !!result?.changed,
+    });
     return true;
   }
 
@@ -2566,17 +2642,39 @@ export class SweetEditorWidget {
 
   _schedulePrintableFallback(event) {
     if (!this._shouldSchedulePrintableFallback(event)) {
+      this._debugInputLog("fallback.skip", {
+        key: event?.key ?? "",
+        ctrl: !!event?.ctrlKey,
+        alt: !!event?.altKey,
+        meta: !!event?.metaKey,
+      });
       return false;
     }
     const text = event.key;
     const epoch = this._printableFallbackEpoch;
+    this._debugInputLog("fallback.schedule", {
+      text,
+      epoch,
+      keyCode: Number(event?.keyCode ?? 0) || 0,
+      which: Number(event?.which ?? 0) || 0,
+    });
     const timerId = setTimeout(() => {
       this._pendingPrintableFallbackTimers.delete(timerId);
       if (epoch !== this._printableFallbackEpoch || this._disposed) {
+        this._debugInputLog("fallback.cancelled", {
+          text,
+          scheduledEpoch: epoch,
+          currentEpoch: this._printableFallbackEpoch,
+          disposed: this._disposed,
+        });
         return;
       }
       const result = this._core.insert(text);
       this._handleTextEditResult(result, { action: TextChangeAction.KEY });
+      this._debugInputLog("fallback.fire", {
+        text,
+        changed: !!result?.changed,
+      });
     }, 0);
     this._pendingPrintableFallbackTimers.add(timerId);
     return true;
@@ -2584,20 +2682,34 @@ export class SweetEditorWidget {
 
   _onBeforeInput(e) {
     const inputType = e.inputType || "";
+    this._debugInputLog("beforeinput.start", {
+      inputType,
+      data: typeof e.data === "string" ? e.data : "",
+      eventIsComposing: !!e.isComposing,
+      flowComposing: this._hasActiveCompositionFlow(),
+      inputValueLength: String(this._input?.value || "").length,
+    });
     if (inputType === "insertFromComposition") {
       this._invalidatePrintableFallback();
+      this._debugInputLog("beforeinput.skip.insertFromComposition", {});
       return;
     }
 
     if (this._hasActiveCompositionFlow() || this._isCompositionInputType(inputType)) {
       this._invalidatePrintableFallback();
+      this._debugInputLog("beforeinput.skip.compositionFlow", {
+        inputType,
+        flowComposing: this._hasActiveCompositionFlow(),
+      });
       return;
     }
     if (e.isComposing && inputType !== "insertText") {
+      this._debugInputLog("beforeinput.skip.eventComposing", { inputType });
       return;
     }
 
     const handled = this._applyDomTextInput(e, { preventDefault: true, allowValueFallback: false });
+    this._debugInputLog("beforeinput.handled", { inputType, handled });
     if (handled) {
       this._invalidatePrintableFallback();
       this._suppressNextInputOnce();
@@ -2605,10 +2717,20 @@ export class SweetEditorWidget {
   }
 
   _onInput(e) {
+    this._debugInputLog("input.start", {
+      inputType: e.inputType || "",
+      data: typeof e.data === "string" ? e.data : "",
+      eventIsComposing: !!e.isComposing,
+      flowComposing: this._hasActiveCompositionFlow(),
+      suppressNext: this._suppressNextInputEvent,
+      commitPending: this._compositionCommitPending,
+      inputValueLength: String(this._input?.value || "").length,
+    });
     if (this._suppressNextInputEvent) {
       this._invalidatePrintableFallback();
       this._suppressNextInputEvent = false;
       this._input.value = "";
+      this._debugInputLog("input.skip.suppressed", {});
       return;
     }
 
@@ -2628,19 +2750,27 @@ export class SweetEditorWidget {
         this._compositionEndFallbackData = "";
         const result = this._core.compositionEnd(committedText);
         this._handleTextEditResult(result, { action: TextChangeAction.COMPOSITION });
+        this._debugInputLog("input.compositionCommit", {
+          committedText,
+          changed: !!result?.changed,
+        });
       }
       this._input.value = "";
+      this._debugInputLog("input.skip.insertFromComposition", {});
       return;
     }
 
     if (this._hasActiveCompositionFlow() || this._isCompositionInputType(inputType)) {
       this._invalidatePrintableFallback();
+      this._debugInputLog("input.skip.compositionFlow", { inputType });
       return;
     }
     if (e.isComposing && inputType === "") {
+      this._debugInputLog("input.skip.emptyComposingEvent", {});
       return;
     }
     const handled = this._applyDomTextInput(e, { preventDefault: false, allowValueFallback: true });
+    this._debugInputLog("input.handled", { inputType, handled });
     if (handled) {
       this._invalidatePrintableFallback();
     }
@@ -2804,6 +2934,19 @@ export class SweetEditorWidget {
   }
 
   _handleDocumentKeyDown(event) {
+    const targetName = this._debugInputTargetName(event?.target ?? null);
+    const shouldRoute = !event.defaultPrevented && this._shouldRouteDocumentKeyEvent(event);
+    this._debugInputLog("document.keydown", {
+      key: event?.key ?? "",
+      keyCode: Number(event?.keyCode ?? 0) || 0,
+      which: Number(event?.which ?? 0) || 0,
+      defaultPrevented: !!event?.defaultPrevented,
+      shouldRoute,
+      target: targetName,
+      routeActive: !!this._documentKeyRouteActive,
+      activeElement: this._debugInputTargetName(document.activeElement),
+    });
+
     if (event.key === "Escape") {
       this._hideContextMenu();
       this.dismissCompletion();
@@ -2814,7 +2957,7 @@ export class SweetEditorWidget {
       return;
     }
 
-    if (!this._shouldRouteDocumentKeyEvent(event)) {
+    if (!shouldRoute) {
       return;
     }
 
@@ -2822,9 +2965,24 @@ export class SweetEditorWidget {
   }
 
   _onKeyDown(event) {
+    const hasCompositionFlow = this._hasActiveCompositionFlow();
+    this._debugInputLog("keydown.start", {
+      key: event?.key ?? "",
+      keyCode: Number(event?.keyCode ?? 0) || 0,
+      which: Number(event?.which ?? 0) || 0,
+      ctrl: !!event?.ctrlKey,
+      shift: !!event?.shiftKey,
+      alt: !!event?.altKey,
+      meta: !!event?.metaKey,
+      eventIsComposing: !!event?.isComposing,
+      flowComposing: hasCompositionFlow,
+    });
     this._hideContextMenu();
 
     if (this._completionPopupController.handleKeyEvent(event)) {
+      this._debugInputLog("keydown.handled.completionPopup", {
+        key: event?.key ?? "",
+      });
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -2834,43 +2992,80 @@ export class SweetEditorWidget {
     if (cmd && !event.altKey) {
       const key = (event.key || "").toLowerCase();
       if (key === "c") {
+        this._debugInputLog("keydown.handled.copy", {});
         void this._copySelectionToClipboard(false);
         event.preventDefault();
         return;
       }
       if (key === "x") {
+        this._debugInputLog("keydown.handled.cut", {});
         void this._copySelectionToClipboard(true);
         event.preventDefault();
         return;
       }
       if (key === " ") {
+        this._debugInputLog("keydown.handled.triggerCompletion", {});
         this.triggerCompletion();
         event.preventDefault();
         return;
       }
     }
 
-    if (this._hasActiveCompositionFlow() || event.isComposing || event.key === "Process") {
+    if (hasCompositionFlow || event.isComposing || event.key === "Process") {
+      this._debugInputLog("keydown.skip.composing", {
+        flowComposing: hasCompositionFlow,
+        eventIsComposing: !!event.isComposing,
+        key: event?.key ?? "",
+      });
       return;
     }
 
     const mods = this._modifiers(event);
-    const keyCode = this._mapKeyCode(event);
+    let keyCode = this._mapKeyCode(event);
+    const mappedKeyCode = keyCode;
     if (!keyCode) {
-      this._schedulePrintableFallback(event);
-      return;
+      keyCode = this._mapLegacyKeyCode(event);
+    }
+    this._debugInputLog("keydown.map", {
+      key: event?.key ?? "",
+      mappedKeyCode,
+      legacyMappedKeyCode: keyCode,
+      mods,
+    });
+    if (!keyCode) {
+      if (this._schedulePrintableFallback(event)) {
+        this._debugInputLog("keydown.defer.fallback", {
+          key: event?.key ?? "",
+        });
+        return;
+      }
+      this._debugInputLog("keydown.noop.unhandledNoKeyCode", {
+        key: event?.key ?? "",
+      });
     }
 
-    const result = this._core.handleKeyEvent({ key_code: keyCode, text: "", modifiers: mods });
-    if (result && (result.handled ?? result.Handled)) {
-      this._handleKeyEventResult(result, { action: TextChangeAction.KEY });
-      event.preventDefault();
-      return;
+    if (keyCode) {
+      const result = this._core.handleKeyEvent({ key_code: keyCode, text: "", modifiers: mods });
+      this._debugInputLog("keydown.coreResult", {
+        keyCode,
+        handled: !!(result && (result.handled ?? result.Handled)),
+        contentChanged: !!(result && (result.content_changed ?? result.contentChanged)),
+        cursorChanged: !!(result && (result.cursor_changed ?? result.cursorChanged)),
+        selectionChanged: !!(result && (result.selection_changed ?? result.selectionChanged)),
+      });
+      if (result && (result.handled ?? result.Handled)) {
+        this._handleKeyEventResult(result, { action: TextChangeAction.KEY });
+        event.preventDefault();
+        return;
+      }
     }
 
     if (event.key === "Backspace") {
       const edit = this._core.backspace();
       this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
+      this._debugInputLog("keydown.fallback.backspace", {
+        changed: !!edit?.changed,
+      });
       event.preventDefault();
       return;
     }
@@ -2878,6 +3073,9 @@ export class SweetEditorWidget {
     if (event.key === "Delete") {
       const edit = this._core.deleteForward();
       this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
+      this._debugInputLog("keydown.fallback.deleteForward", {
+        changed: !!edit?.changed,
+      });
       event.preventDefault();
     }
   }
@@ -2965,6 +3163,30 @@ export class SweetEditorWidget {
       }
     }
     return 0;
+  }
+
+  _mapLegacyKeyCode(event) {
+    const rawCode = Number(event?.keyCode ?? event?.which);
+    if (!Number.isFinite(rawCode)) {
+      return 0;
+    }
+    switch (Math.trunc(rawCode)) {
+      case 8: return this._keyCode.BACKSPACE;
+      case 9: return this._keyCode.TAB;
+      case 13: return this._keyCode.ENTER;
+      case 27: return this._keyCode.ESCAPE;
+      case 33: return this._keyCode.PAGE_UP;
+      case 34: return this._keyCode.PAGE_DOWN;
+      case 35: return this._keyCode.END;
+      case 36: return this._keyCode.HOME;
+      case 37: return this._keyCode.LEFT;
+      case 38: return this._keyCode.UP;
+      case 39: return this._keyCode.RIGHT;
+      case 40: return this._keyCode.DOWN;
+      case 46: return this._keyCode.DELETE_KEY;
+      default:
+        return 0;
+    }
   }
 
   _eventPoint(event) {
@@ -3187,11 +3409,24 @@ export class SweetEditorWidget {
 
     const contentChanged = Boolean(result.content_changed ?? result.contentChanged ?? false);
     const action = options.action ?? TextChangeAction.KEY;
+    const editResult = result.edit_result ?? result.editResult ?? null;
+    this._debugInputLog("keyEventResult.dispatch", {
+      action,
+      contentChanged,
+      cursorChanged: Boolean(result.cursor_changed ?? result.cursorChanged ?? false),
+      selectionChanged: Boolean(result.selection_changed ?? result.selectionChanged ?? false),
+      hasEditResult: !!editResult,
+      editChanged: Boolean(editResult?.changed ?? false),
+      editChangesCount: asArray(editResult?.changes).length,
+    });
     if (contentChanged) {
-      const editResult = result.edit_result ?? result.editResult ?? null;
       if (editResult) {
         this._handleTextEditResult(editResult, { action, emitStateEvents: false });
       } else {
+        this._debugInputLog("keyEventResult.missingEditResult", {
+          action,
+          contentChanged,
+        });
         this._emitTextChanged(action, null, null);
         this._decorationProviderManager.onTextChanged([]);
         if (this._completionPopupController.isShowing) {
@@ -3224,6 +3459,17 @@ export class SweetEditorWidget {
       oldText: String(change?.oldText ?? change?.old_text ?? ""),
       newText: String(change?.newText ?? change?.new_text ?? ""),
     }));
+    const firstChange = changes[0] || null;
+    this._debugInputLog("textEdit.apply", {
+      action,
+      changed,
+      emitStateEvents,
+      changesCount: changes.length,
+      firstRange: firstChange?.range ?? null,
+      firstOldLen: firstChange ? firstChange.oldText.length : 0,
+      firstNewLen: firstChange ? firstChange.newText.length : 0,
+      firstHasNewline: firstChange ? (firstChange.oldText.includes("\n") || firstChange.newText.includes("\n")) : false,
+    });
 
     if (!changed && changes.length === 0) {
       return;
