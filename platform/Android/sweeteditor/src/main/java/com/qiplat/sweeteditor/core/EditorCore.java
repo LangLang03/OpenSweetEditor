@@ -27,6 +27,7 @@ import com.qiplat.sweeteditor.core.adornment.TextStyle;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Map;
 
 import dalvik.annotation.optimization.CriticalNative;
 import dalvik.annotation.optimization.FastNative;
@@ -841,6 +842,27 @@ public class EditorCore {
     }
 
     /**
+     * Registers multiple highlight styles in one JNI call.
+     *
+     * @param stylesById style ID -> style mapping
+     */
+    public void registerBatchTextStyles(@Nullable Map<Integer, TextStyle> stylesById) {
+        if (mNativeHandle == 0 || stylesById == null || stylesById.isEmpty()) return;
+        ByteBuffer payload = ProtocolEncoder.packBatchTextStyles(stylesById);
+        registerBatchTextStyles(payload);
+    }
+
+    /**
+     * Registers multiple highlight styles in one JNI call (already encoded by caller).
+     *
+     * @param payload Packed ByteBuffer
+     */
+    public void registerBatchTextStyles(@Nullable ByteBuffer payload) {
+        if (mNativeHandle == 0 || payload == null) return;
+        nativeRegisterBatchTextStyles(mNativeHandle, payload, payload.remaining());
+    }
+
+    /**
      * Sets highlight spans for the specified line.
      *
      * @param line        Line number (0-based)
@@ -1604,6 +1626,10 @@ public class EditorCore {
          * frame callback calling tickAnimations() instead of separate tick calls.
          */
         public final boolean needsAnimation;
+        /**
+         * Whether this gesture event is part of a selection handle drag.
+         */
+        public final boolean isHandleDrag;
 
         public GestureResult() {
             this.type = GestureType.UNDEFINED;
@@ -1618,13 +1644,14 @@ public class EditorCore {
             this.needsEdgeScroll = false;
             this.needsFling = false;
             this.needsAnimation = false;
+            this.isHandleDrag = false;
         }
 
         public GestureResult(GestureType type, PointF tapPoint,
                              TextPosition cursorPosition, boolean hasSelection, TextRange selection,
                              float viewScrollX, float viewScrollY, float viewScale,
                              HitTarget hitTarget, boolean needsEdgeScroll, boolean needsFling,
-                             boolean needsAnimation) {
+                             boolean needsAnimation, boolean isHandleDrag) {
             this.type = type;
             this.tapPoint = tapPoint;
             this.cursorPosition = cursorPosition;
@@ -1637,6 +1664,7 @@ public class EditorCore {
             this.needsEdgeScroll = needsEdgeScroll;
             this.needsFling = needsFling;
             this.needsAnimation = needsAnimation;
+            this.isHandleDrag = isHandleDrag;
         }
 
         @NonNull
@@ -1873,6 +1901,9 @@ public class EditorCore {
     private static native void nativeRegisterTextStyle(long handle, int styleId, int color, int backgroundColor, int fontStyle);
 
     @FastNative
+    private static native void nativeRegisterBatchTextStyles(long handle, ByteBuffer data, int size);
+
+    @FastNative
     private static native void nativeSetLineSpans(long handle, ByteBuffer data, int size);
 
     @FastNative
@@ -1996,4 +2027,3 @@ public class EditorCore {
         System.loadLibrary("sweeteditor");
     }
 }
-

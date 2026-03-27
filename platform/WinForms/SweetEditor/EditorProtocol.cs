@@ -9,7 +9,7 @@ namespace SweetEditor {
 
 		#region EditorOptions
 
-	internal static byte[] PackEditorOptions(EditorOptions options) {
+		internal static byte[] PackEditorOptions(EditorOptions options) {
 			// 4 + 8 + 8 + 4 + 4 + 4 + 8 = 40 bytes
 			byte[] payload = new byte[40];
 			int offset = 0;
@@ -26,6 +26,27 @@ namespace SweetEditor {
 		#endregion
 
 		#region Spans
+
+		internal static byte[] PackBatchTextStyles(IReadOnlyDictionary<uint, TextStyle> stylesById) {
+			if (stylesById == null || stylesById.Count == 0) {
+				return Array.Empty<byte>();
+			}
+
+			var styleIds = new List<uint>(stylesById.Keys);
+			styleIds.Sort();
+			byte[] payload = new byte[4 + styleIds.Count * 16];
+			int offset = 0;
+			WriteInt32LE(payload, ref offset, styleIds.Count);
+			for (int i = 0; i < styleIds.Count; i++) {
+				uint styleId = styleIds[i];
+				TextStyle style = stylesById[styleId];
+				WriteUInt32LE(payload, ref offset, styleId);
+				WriteInt32LE(payload, ref offset, style.Color);
+				WriteInt32LE(payload, ref offset, style.BackgroundColor);
+				WriteInt32LE(payload, ref offset, style.FontStyle);
+			}
+			return payload;
+		}
 
 		internal static byte[] PackLineSpans(int line, int layer, IList<StyleSpan> spans) {
 			int count = spans.Count;

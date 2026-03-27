@@ -463,6 +463,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     result.view_scroll_x = m_view_state_.scroll_x;
     result.view_scroll_y = m_view_state_.scroll_y;
     result.view_scale = m_view_state_.scale;
+    result.is_handle_drag = (m_dragging_handle_ != HandleDragTarget::NONE);
   }
 
   bool EditorCore::handleScrollbarGesture(const GestureEvent& event, GestureResult& result) {
@@ -657,6 +658,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
           dragHandleTo(m_dragging_handle_, event.points[0]);
           m_text_layout_->setViewState(m_view_state_);
           gesture_result.type = GestureType::DRAG_SELECT;
+          gesture_result.is_handle_drag = true;
           fillGestureResult(gesture_result);
           gesture_result.needs_edge_scroll = m_edge_scroll_.active;
           gesture_result.needs_animation = m_edge_scroll_.active;
@@ -719,6 +721,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
             cancelLinkedEditing();
           }
         }
+        // Single tap should collapse selection and place caret.
         placeCursorAt(result.tap_point);
       }
       // Check whether InlayHint, GutterIcon, or fold-related targets were hit
@@ -2371,6 +2374,16 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
 #pragma region [Decorations]
   void EditorCore::registerTextStyle(uint32_t style_id, TextStyle&& style) {
     m_decorations_->getTextStyleRegistry()->registerTextStyle(style_id, std::move(style));
+    markAllLinesDirty();
+  }
+
+  void EditorCore::registerBatchTextStyles(Vector<std::pair<uint32_t, TextStyle>>&& entries) {
+    if (entries.empty()) return;
+    auto registry = m_decorations_->getTextStyleRegistry();
+    for (auto& [style_id, style] : entries) {
+      registry->registerTextStyle(style_id, std::move(style));
+    }
+    markAllLinesDirty();
   }
 
   void EditorCore::setLineSpans(size_t line, SpanLayer layer, Vector<StyleSpan>&& spans) {
@@ -3404,4 +3417,3 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   }
 #pragma endregion
 }
-

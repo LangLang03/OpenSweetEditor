@@ -397,6 +397,7 @@ static const uint8_t* gestureResultToBinary(const GestureResult& result, size_t*
   appendI32(buffer, result.needs_edge_scroll ? 1 : 0);
   appendI32(buffer, result.needs_fling ? 1 : 0);
   appendI32(buffer, result.needs_animation ? 1 : 0);
+  appendI32(buffer, result.is_handle_drag ? 1 : 0);
   return allocBinaryPayload(buffer.data(), buffer.size(), out_size);
 }
 
@@ -1396,6 +1397,30 @@ void editor_set_batch_line_spans(intptr_t editor_handle, const uint8_t* data, si
   editor_core->setBatchLineSpans(static_cast<SpanLayer>(layer), std::move(entries));
 }
 
+void editor_register_batch_text_styles(intptr_t editor_handle, const uint8_t* data, size_t size) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr || data == nullptr) return;
+
+  ByteCursor cursor(data, size);
+  uint32_t entry_count = 0;
+  if (!cursor.readU32(entry_count)) return;
+
+  Vector<std::pair<uint32_t, TextStyle>> entries;
+  entries.reserve(entry_count);
+  for (uint32_t i = 0; i < entry_count; ++i) {
+    uint32_t style_id = 0;
+    int32_t color = 0;
+    int32_t background_color = 0;
+    int32_t font_style = 0;
+    if (!cursor.readU32(style_id) || !cursor.readI32(color) || !cursor.readI32(background_color) || !cursor.readI32(font_style)) {
+      return;
+    }
+    entries.emplace_back(style_id, TextStyle{color, background_color, font_style});
+  }
+
+  editor_core->registerBatchTextStyles(std::move(entries));
+}
+
 void editor_clear_line_spans(intptr_t editor_handle, size_t line, uint8_t layer) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr) {
@@ -2155,4 +2180,3 @@ void init_unhandled_exception_handler() {
 #pragma endregion
 
 }
-
