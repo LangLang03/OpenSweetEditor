@@ -445,6 +445,9 @@ namespace SweetEditor {
 
 		private EditorCore editorCore;
 		private EditorRenderModel? renderModel;
+		private bool renderModelDirty = true;
+		private int cachedVisibleStartLine;
+		private int cachedVisibleEndLine = -1;
 		private DecorationProviderManager? decorationProviderManager;
 		private CompletionProviderManager? completionProviderManager;
 		private CompletionPopupController? completionPopupController;
@@ -876,21 +879,11 @@ namespace SweetEditor {
 		public void SetCompletionItemRenderer(ICompletionItemRenderer? renderer) => completionPopupController?.SetRenderer(renderer);
 
 		public (int start, int end) GetVisibleLineRange() {
-			var model = editorCore.BuildRenderModel();
-			if (model.VisualLines == null || model.VisualLines.Count == 0) {
-				return (0, -1);
-			}
-			int start = int.MaxValue;
-			int end = -1;
-			foreach (var line in model.VisualLines) {
-				if (line.LogicalLine < start) start = line.LogicalLine;
-				if (line.LogicalLine > end) end = line.LogicalLine;
-			}
-			if (start == int.MaxValue) start = 0;
-			return (start, end);
+			EnsureRenderModelUpToDate();
+			return (cachedVisibleStartLine, cachedVisibleEndLine);
 		}
 
-		public int GetTotalLineCount() => -1;
+		public int GetTotalLineCount() => editorCore.GetDocument()?.GetLineCount() ?? -1;
 
 		#endregion
 
@@ -1060,6 +1053,7 @@ namespace SweetEditor {
 			completionProviderManager = new CompletionProviderManager(this);
 			completionPopupController = new CompletionPopupController(this, currentTheme);
 			completionProviderManager.OnItemsUpdated += items => {
+				EnsureRenderModelUpToDate();
 				UpdateCompletionPopupCursorAnchor();
 				completionPopupController.UpdateItems(items);
 			};
@@ -1078,11 +1072,13 @@ namespace SweetEditor {
 			if (IsDesignMode() || editorCore == null) return;
 			renderer.RecreateTextGraphics(this);
 			editorCore.OnFontMetricsChanged();
+			lastMeasureDpi = DeviceDpi;
 			Flush();
 		}
 
 		protected override void OnPaint(PaintEventArgs e) {
 			base.OnPaint(e);
+			EnsureRenderModelUpToDate();
 			renderer.Render(e.Graphics, renderModel, currentTheme, ClientSize);
 			UpdateCompletionPopupCursorAnchor();
 		}
@@ -1563,31 +1559,38 @@ namespace SweetEditor {
 		/// </para>
 		/// </summary>
 		public void Flush() {
-			var perf = PerfStepRecorder.Start();
+			renderModelDirty = true;
+			Invalidate();
+		}
 
-			if (!IsDesignMode() && IsHandleCreated && editorCore != null) {
-				int dpi = DeviceDpi;
-				if (dpi != lastMeasureDpi) {
-					renderer.RecreateTextGraphics(this);
-					editorCore.OnFontMetricsChanged();
-					lastMeasureDpi = dpi;
-				}
-				if (renderer.GetTextGraphics() == null) {
-					renderer.RecreateTextGraphics(this);
-					editorCore.OnFontMetricsChanged();
-				}
-				perf.Mark(PerfStepRecorder.StepPrep);
+		private void EnsureRenderModelUpToDate() {
+			if (!renderModelDirty || IsDesignMode() || !IsHandleCreated || editorCore == null) {
+				return;
 			}
 
-			renderer.PerfMeasureStats.Reset();
+			var perf = PerfStepRecorder.Start();
+			int dpi = DeviceDpi;
+			bool fontMetricsDirty = false;
+			if (dpi != lastMeasureDpi) {
+				renderer.RecreateTextGraphics(this);
+				lastMeasureDpi = dpi;
+				fontMetricsDirty = true;
+			}
+			if (renderer.GetTextGraphics() == null) {
+				renderer.RecreateTextGraphics(this);
+				fontMetricsDirty = true;
+			}
+			if (fontMetricsDirty) {
+				editorCore.OnFontMetricsChanged();
+			}
+			perf.Mark(PerfStepRecorder.StepPrep);
 
+			renderer.PerfMeasureStats.Reset();
 			renderModel = editorCore.BuildRenderModel();
+			renderModelDirty = false;
+			UpdateVisibleLineRangeCache(renderModel);
 			perf.Mark(PerfStepRecorder.StepBuild);
 			perf.Mark(PerfStepRecorder.StepMetrics);
-			UpdateCompletionPopupCursorAnchor();
-			perf.Mark(PerfStepRecorder.StepAnchor);
-			Invalidate();
-			perf.Mark(PerfStepRecorder.StepInvalidate);
 			perf.Finish();
 			renderer.LogBuildPerfSummary(perf);
 			renderer.PerfOverlay.RecordBuild(perf, renderer.PerfMeasureStats.BuildSummary());
@@ -1600,6 +1603,25 @@ namespace SweetEditor {
 				model.Cursor.Position.X,
 				model.Cursor.Position.Y,
 				model.Cursor.Height);
+		}
+
+		private void UpdateVisibleLineRangeCache(EditorRenderModel? model) {
+			var visualLines = model?.VisualLines;
+			if (visualLines == null || visualLines.Count == 0) {
+				cachedVisibleStartLine = 0;
+				cachedVisibleEndLine = -1;
+				return;
+			}
+
+			int start = int.MaxValue;
+			int end = -1;
+			foreach (var line in visualLines) {
+				if (line.LogicalLine < start) start = line.LogicalLine;
+				if (line.LogicalLine > end) end = line.LogicalLine;
+			}
+
+			cachedVisibleStartLine = start == int.MaxValue ? 0 : start;
+			cachedVisibleEndLine = end;
 		}
 
 		/// <summary>Internal accessor for SyncPlatformScale, used by <see cref="EditorSettings"/>.</summary>

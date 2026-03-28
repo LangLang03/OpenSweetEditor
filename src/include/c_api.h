@@ -132,8 +132,8 @@ EDITOR_API void editor_set_gutter_sticky(intptr_t editor_handle, int sticky);
 EDITOR_API void editor_set_gutter_visible(intptr_t editor_handle, int visible);
 
 /// Set selection handle hit-test configuration using offset rects
-/// @param start_left/start_top/start_right/start_bottom  Start handle hit area offset from cursor bottom
-/// @param end_left/end_top/end_right/end_bottom  End handle hit area offset from cursor bottom
+/// @param start_left/start_top/start_right/start_bottom  Start handle hit area offset from cursor bottom anchor (handle tip)
+/// @param end_left/end_top/end_right/end_bottom  End handle hit area offset from cursor bottom anchor (handle tip)
 EDITOR_API void editor_set_handle_config(intptr_t editor_handle,
     float start_left, float start_top, float start_right, float start_bottom,
     float end_left, float end_top, float end_right, float end_bottom);
@@ -606,6 +606,9 @@ EDITOR_API void editor_scroll_to_line(intptr_t editor_handle, size_t line, uint8
 /// @param line Line number(0-based)
 /// @param column Column number (0-based)
 EDITOR_API void editor_goto_position(intptr_t editor_handle, size_t line, size_t column);
+
+/// Adjust scroll offset just enough to keep current cursor visible in viewport
+EDITOR_API void editor_ensure_cursor_visible(intptr_t editor_handle);
 
 /// Manually set scroll position (automatically clamped to valid range)
 /// @param scroll_x Horizontal scroll offset

@@ -44,10 +44,10 @@ namespace NS_SWEETEDITOR {
   /// Selection handle hit-test configuration.
   /// All geometry is owned by the platform drawing layer; C++ only needs hit areas.
   struct HandleConfig {
-    /// Hit area for the start handle, as an offset rect relative to cursor bottom-left
-    OffsetRect start_hit_offset {-15.0f, 0.0f, 45.0f, 40.0f};
-    /// Hit area for the end handle, as an offset rect relative to cursor bottom-left
-    OffsetRect end_hit_offset {-45.0f, 0.0f, 15.0f, 40.0f};
+    /// Hit area for the start handle, as an offset rect relative to the cursor bottom anchor (handle tip)
+    OffsetRect start_hit_offset {-32.1f, -8.0f, 8.0f, 32.1f};
+    /// Hit area for the end handle, as an offset rect relative to the cursor bottom anchor (handle tip)
+    OffsetRect end_hit_offset {-8.0f, -8.0f, 32.1f, 32.1f};
   };
 
   enum class ScrollbarMode : uint8_t {
@@ -506,6 +506,9 @@ namespace NS_SWEETEDITOR {
     /// @param column Column number (0-based)
     void gotoPosition(size_t line, size_t column);
 
+    /// Adjust scroll offset just enough to keep current cursor inside viewport
+    void ensureCursorVisible();
+
     /// Manually set editor scroll offset
     /// @param scroll_x Horizontal scroll offset
     /// @param scroll_y Vertical scroll offset
@@ -697,6 +700,18 @@ namespace NS_SWEETEDITOR {
     float m_scrollbar_drag_max_scroll_x_ {0};
     float m_scrollbar_drag_max_scroll_y_ {0};
 
+    /// Pending focal anchor captured during exact scale handling.
+    /// Applied in onFontMetricsChanged() after platform text metrics catch up.
+    struct PendingScaleAnchor {
+      bool active {false};
+      PointF focus_screen;
+      TextPosition anchor_position;
+      float offset_x {0};
+      float offset_y {0};
+    };
+    PendingScaleAnchor m_pending_scale_anchor_;
+    bool m_scale_gesture_active_ {false};
+
     /// Cached screen positions of selection handles (for hit test, updated each buildRenderModel frame)
     PointF m_cached_start_handle_pos_;
     PointF m_cached_end_handle_pos_;
@@ -755,8 +770,6 @@ namespace NS_SWEETEDITOR {
     /// Drag selection to screen coordinates
     /// @param is_mouse true for mouse drag (no y-offset), false for touch long-press drag (apply y-offset)
     void dragSelectTo(const PointF& screen_point, bool is_mouse = false);
-    /// Ensure cursor is visible after edit scroll
-    void ensureCursorVisible();
     /// Compute edge-scroll state from finger position (does NOT scroll; just updates m_edge_scroll_).
     /// Called from dragHandleTo / dragSelectTo to decide whether edge scrolling is needed.
     void updateEdgeScrollState(const PointF& screen_point, bool is_handle_drag, bool is_mouse);
@@ -815,6 +828,8 @@ namespace NS_SWEETEDITOR {
 
     /// Fill current editor state into GestureResult (remove duplicate assignments)
     void fillGestureResult(GestureResult& result) const;
+    /// Resolve focal point for scale gestures.
+    PointF resolveScaleFocus(const GestureEvent& event) const;
     /// Mark all logical lines as layout dirty
     void markAllLinesDirty(bool reset_heights = false);
     /// Reset composition state (clear composing flag and text)

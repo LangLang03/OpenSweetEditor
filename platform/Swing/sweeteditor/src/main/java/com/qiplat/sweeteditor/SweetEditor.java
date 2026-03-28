@@ -13,6 +13,7 @@ import com.qiplat.sweeteditor.decoration.DecorationProviderManager;
 import com.qiplat.sweeteditor.newline.NewLineAction;
 import com.qiplat.sweeteditor.newline.NewLineActionProvider;
 import com.qiplat.sweeteditor.newline.NewLineActionProviderManager;
+import com.qiplat.sweeteditor.perf.PerfStepRecorder;
 import com.qiplat.sweeteditor.event.*;
 
 import javax.swing.*;
@@ -48,6 +49,10 @@ public class SweetEditor extends JPanel {
     private EditorCore editorCore;
     private EditorTheme currentTheme;
     private EditorRenderModel renderModel;
+    private boolean renderModelDirty = true;
+    private boolean fontMetricsDirty = true;
+    private int cachedVisibleStartLine;
+    private int cachedVisibleEndLine = -1;
     private EditorRenderer renderer;
 
     private Timer cursorBlinkTimer;
@@ -85,7 +90,19 @@ public class SweetEditor extends JPanel {
         // Completion manager and popup controller
         completionProviderManager = new CompletionProviderManager(this);
         completionPopupController = new CompletionPopupController(this, theme);
-        completionProviderManager.setListener(completionPopupController);
+        completionProviderManager.setListener(new CompletionProviderManager.CompletionUpdateListener() {
+            @Override
+            public void onCompletionItemsUpdated(List<CompletionItem> items) {
+                ensureRenderModelUpToDate();
+                updateCompletionPopupCursorAnchor();
+                completionPopupController.onCompletionItemsUpdated(items);
+            }
+
+            @Override
+            public void onCompletionDismissed() {
+                completionPopupController.onCompletionDismissed();
+            }
+        });
         completionPopupController.setConfirmListener(this::applyCompletionItem);
 
         settings = new EditorSettings(this);
@@ -122,6 +139,9 @@ public class SweetEditor extends JPanel {
 
     public void loadDocument(Document document) {
         editorCore.loadDocument(document);
+        renderModel = null;
+        cachedVisibleStartLine = 0;
+        cachedVisibleEndLine = -1;
         decorationProviderManager.onDocumentLoaded();
         eventBus.publish(new DocumentLoadedEvent());
         flush();
@@ -148,23 +168,24 @@ public class SweetEditor extends JPanel {
         flush();
     }
 
+    public void setPerfOverlayEnabled(boolean enabled) {
+        renderer.setPerfOverlayEnabled(enabled);
+        repaint();
+    }
+
+    public boolean isPerfOverlayEnabled() {
+        return renderer.isPerfOverlayEnabled();
+    }
+
 
 
     public EditorCore getEditorCore() { return editorCore; }
 
     public int[] getVisibleLineRange() {
-        EditorRenderModel model = editorCore.buildRenderModel();
-        if (model == null || model.lines == null || model.lines.isEmpty()) {
-            return new int[]{0, -1};
+        if ((renderModel == null || cachedVisibleEndLine < 0) && renderModelDirty) {
+            ensureRenderModelUpToDate();
         }
-        int start = Integer.MAX_VALUE;
-        int end = -1;
-        for (VisualLine line : model.lines) {
-            if (line.logicalLine < start) start = line.logicalLine;
-            if (line.logicalLine > end) end = line.logicalLine;
-        }
-        if (start == Integer.MAX_VALUE) start = 0;
-        return new int[]{start, end};
+        return new int[]{cachedVisibleStartLine, cachedVisibleEndLine};
     }
 
     public int getTotalLineCount() {
@@ -448,14 +469,11 @@ public class SweetEditor extends JPanel {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
+        renderer.prepareGraphicsForRender(g2);
+        ensureRenderModelUpToDate();
 
         renderer.render(g2, renderModel, getWidth(), getHeight(), cursorVisible);
-
-        if (renderModel != null && completionPopupController != null
-                && renderModel.cursor != null && renderModel.cursor.position != null) {
-            completionPopupController.updateCursorPosition(
-                    renderModel.cursor.position.x, renderModel.cursor.position.y, renderModel.cursor.height);
-        }
+        updateCompletionPopupCursorAnchor();
     }
 
 
@@ -500,88 +518,98 @@ public class SweetEditor extends JPanel {
         addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if (editorCore.isComposing() && e.getKeyCode() != KeyEvent.VK_ESCAPE) return;
+                long inputPerfStart = startInputPerf();
+                try {
+                    if (editorCore.isComposing() && e.getKeyCode() != KeyEvent.VK_ESCAPE) return;
 
-                // Completion panel keyboard interception
-                if (completionPopupController != null && completionPopupController.isShowing()) {
-                    if (completionPopupController.handleSwingKeyCode(e.getKeyCode())) {
-                        e.consume();
-                        return;
-                    }
-                }
-
-                // Ctrl+Space / Meta+Space manually trigger completion
-                if ((e.isControlDown() || e.isMetaDown()) && e.getKeyCode() == KeyEvent.VK_SPACE) {
-                    triggerCompletion();
-                    e.consume();
-                    return;
-                }
-
-                int mods = 0;
-                if (e.isShiftDown()) mods |= MOD_SHIFT;
-                if (e.isControlDown()) mods |= MOD_CTRL;
-                if (e.isAltDown()) mods |= MOD_ALT;
-                if (e.isMetaDown()) mods |= MOD_META;
-
-                int keyCode = mapKeyCode(e.getKeyCode());
-                boolean isCtrlShortcut = (e.isControlDown() || e.isMetaDown()) && isCtrlKey(e.getKeyCode());
-
-                // Prioritize letting NewLineActionProvider handle Enter (Provider decides indentation),
-                // if no Provider or returns null then fallback to Core layer default behavior
-                if (keyCode == 13 && newLineActionProviderManager != null) {
-                    NewLineAction action = newLineActionProviderManager.provideNewLineAction();
-                    if (action != null) {
-                        TextEditResult editResult = editorCore.insertText(action.text);
-                        e.consume();
-                        dispatchTextChanged(TextChangeAction.KEY, editResult);
-                        resetCursorBlink();
-                        flush();
-                        return;
-                    }
-                }
-
-                if (keyCode != 0 || isCtrlShortcut) {
-                    if (keyCode == 0 && isCtrlShortcut) keyCode = e.getKeyCode();
-                    KeyEventResult result = editorCore.handleKeyEvent(keyCode, null, mods);
-                    if (result != null && result.handled) {
-                        e.consume();
-                        dispatchKeyEventResult(result);
-                        // When content changes, if completion panel is visible and not in linked editing, retrigger to refresh candidates
-                        if (result.contentChanged && !editorCore.isInLinkedEditing()
-                                && completionPopupController != null
-                                && completionPopupController.isShowing() && completionProviderManager != null) {
-                            completionProviderManager.triggerCompletion(
-                                    CompletionContext.TriggerKind.RETRIGGER, null);
+                    // Completion panel keyboard interception
+                    if (completionPopupController != null && completionPopupController.isShowing()) {
+                        if (completionPopupController.handleSwingKeyCode(e.getKeyCode())) {
+                            e.consume();
+                            return;
                         }
-                        resetCursorBlink();
-                        flush();
                     }
+
+                    // Ctrl+Space / Meta+Space manually trigger completion
+                    if ((e.isControlDown() || e.isMetaDown()) && e.getKeyCode() == KeyEvent.VK_SPACE) {
+                        triggerCompletion();
+                        e.consume();
+                        return;
+                    }
+
+                    int mods = 0;
+                    if (e.isShiftDown()) mods |= MOD_SHIFT;
+                    if (e.isControlDown()) mods |= MOD_CTRL;
+                    if (e.isAltDown()) mods |= MOD_ALT;
+                    if (e.isMetaDown()) mods |= MOD_META;
+
+                    int keyCode = mapKeyCode(e.getKeyCode());
+                    boolean isCtrlShortcut = (e.isControlDown() || e.isMetaDown()) && isCtrlKey(e.getKeyCode());
+
+                    // Prioritize letting NewLineActionProvider handle Enter (Provider decides indentation),
+                    // if no Provider or returns null then fallback to Core layer default behavior
+                    if (keyCode == 13 && newLineActionProviderManager != null) {
+                        NewLineAction action = newLineActionProviderManager.provideNewLineAction();
+                        if (action != null) {
+                            TextEditResult editResult = editorCore.insertText(action.text);
+                            e.consume();
+                            dispatchTextChanged(TextChangeAction.KEY, editResult);
+                            resetCursorBlink();
+                            flush();
+                            return;
+                        }
+                    }
+
+                    if (keyCode != 0 || isCtrlShortcut) {
+                        if (keyCode == 0 && isCtrlShortcut) keyCode = e.getKeyCode();
+                        KeyEventResult result = editorCore.handleKeyEvent(keyCode, null, mods);
+                        if (result != null && result.handled) {
+                            e.consume();
+                            dispatchKeyEventResult(result);
+                            // When content changes, if completion panel is visible and not in linked editing, retrigger to refresh candidates
+                            if (result.contentChanged && !editorCore.isInLinkedEditing()
+                                    && completionPopupController != null
+                                    && completionPopupController.isShowing() && completionProviderManager != null) {
+                                completionProviderManager.triggerCompletion(
+                                        CompletionContext.TriggerKind.RETRIGGER, null);
+                            }
+                            resetCursorBlink();
+                            flush();
+                        }
+                    }
+                } finally {
+                    finishInputPerf("keyPressed", inputPerfStart);
                 }
             }
 
             @Override
             public void keyTyped(KeyEvent e) {
-                if (editorCore.isComposing()) return;
-                char ch = e.getKeyChar();
-                if (!Character.isISOControl(ch) && ch != KeyEvent.CHAR_UNDEFINED) {
-                    TextEditResult result = editorCore.insertText(String.valueOf(ch));
-                    e.consume();
-                    dispatchTextChanged(TextChangeAction.KEY, result);
-                    // Suppress completion trigger during linked editing to avoid conflicts between completion popup and Enter/Tab keys
-                    if (!editorCore.isInLinkedEditing()) {
-                        String charStr = String.valueOf(ch);
-                        if (completionProviderManager != null) {
-                            if (completionProviderManager.isTriggerCharacter(charStr)) {
-                                completionProviderManager.triggerCompletion(CompletionContext.TriggerKind.CHARACTER, charStr);
-                            } else if (completionPopupController != null && completionPopupController.isShowing()) {
-                                completionProviderManager.triggerCompletion(CompletionContext.TriggerKind.RETRIGGER, null);
-                            } else if (Character.isLetterOrDigit(ch) || ch == '_') {
-                                completionProviderManager.triggerCompletion(CompletionContext.TriggerKind.INVOKED, null);
+                long inputPerfStart = startInputPerf();
+                try {
+                    if (editorCore.isComposing()) return;
+                    char ch = e.getKeyChar();
+                    if (!Character.isISOControl(ch) && ch != KeyEvent.CHAR_UNDEFINED) {
+                        TextEditResult result = editorCore.insertText(String.valueOf(ch));
+                        e.consume();
+                        dispatchTextChanged(TextChangeAction.KEY, result);
+                        // Suppress completion trigger during linked editing to avoid conflicts between completion popup and Enter/Tab keys
+                        if (!editorCore.isInLinkedEditing()) {
+                            String charStr = String.valueOf(ch);
+                            if (completionProviderManager != null) {
+                                if (completionProviderManager.isTriggerCharacter(charStr)) {
+                                    completionProviderManager.triggerCompletion(CompletionContext.TriggerKind.CHARACTER, charStr);
+                                } else if (completionPopupController != null && completionPopupController.isShowing()) {
+                                    completionProviderManager.triggerCompletion(CompletionContext.TriggerKind.RETRIGGER, null);
+                                } else if (Character.isLetterOrDigit(ch) || ch == '_') {
+                                    completionProviderManager.triggerCompletion(CompletionContext.TriggerKind.INVOKED, null);
+                                }
                             }
                         }
+                        resetCursorBlink();
+                        flush();
                     }
-                    resetCursorBlink();
-                    flush();
+                } finally {
+                    finishInputPerf("keyTyped", inputPerfStart);
                 }
             }
         });
@@ -589,46 +617,51 @@ public class SweetEditor extends JPanel {
         addInputMethodListener(new java.awt.event.InputMethodListener() {
             @Override
             public void inputMethodTextChanged(java.awt.event.InputMethodEvent event) {
-                AttributedCharacterIterator aci = event.getText();
-                if (aci == null) return;
+                long inputPerfStart = startInputPerf();
+                try {
+                    AttributedCharacterIterator aci = event.getText();
+                    if (aci == null) return;
 
-                int committedCount = event.getCommittedCharacterCount();
-                StringBuilder committed = new StringBuilder();
-                StringBuilder composed = new StringBuilder();
+                    int committedCount = event.getCommittedCharacterCount();
+                    StringBuilder committed = new StringBuilder();
+                    StringBuilder composed = new StringBuilder();
 
-                char c = aci.first();
-                for (int i = 0; i < committedCount && c != AttributedCharacterIterator.DONE; i++, c = aci.next()) {
-                    committed.append(c);
-                }
-                while (c != AttributedCharacterIterator.DONE) {
-                    composed.append(c);
-                    c = aci.next();
-                }
-
-                if (committed.length() > 0) {
-                    TextEditResult editResult;
-                    if (editorCore.isComposing()) {
-                        editResult = editorCore.compositionEnd(committed.toString());
-                        dispatchTextChanged(TextChangeAction.COMPOSITION, editResult);
-                    } else {
-                        editResult = editorCore.insertText(committed.toString());
-                        dispatchTextChanged(TextChangeAction.INSERT, editResult);
+                    char c = aci.first();
+                    for (int i = 0; i < committedCount && c != AttributedCharacterIterator.DONE; i++, c = aci.next()) {
+                        committed.append(c);
                     }
-                    resetCursorBlink();
-                    flush();
-                }
-                if (composed.length() > 0) {
-                    if (!editorCore.isComposing()) {
-                        editorCore.compositionStart();
+                    while (c != AttributedCharacterIterator.DONE) {
+                        composed.append(c);
+                        c = aci.next();
                     }
-                    editorCore.compositionUpdate(composed.toString());
-                    flush();
-                } else if (editorCore.isComposing() && committed.length() == 0) {
-                    editorCore.compositionCancel();
-                    flush();
-                }
 
-                event.consume();
+                    if (committed.length() > 0) {
+                        TextEditResult editResult;
+                        if (editorCore.isComposing()) {
+                            editResult = editorCore.compositionEnd(committed.toString());
+                            dispatchTextChanged(TextChangeAction.COMPOSITION, editResult);
+                        } else {
+                            editResult = editorCore.insertText(committed.toString());
+                            dispatchTextChanged(TextChangeAction.INSERT, editResult);
+                        }
+                        resetCursorBlink();
+                        flush();
+                    }
+                    if (composed.length() > 0) {
+                        if (!editorCore.isComposing()) {
+                            editorCore.compositionStart();
+                        }
+                        editorCore.compositionUpdate(composed.toString());
+                        flush();
+                    } else if (editorCore.isComposing() && committed.length() == 0) {
+                        editorCore.compositionCancel();
+                        flush();
+                    }
+
+                    event.consume();
+                } finally {
+                    finishInputPerf("ime", inputPerfStart);
+                }
             }
 
             @Override
@@ -651,6 +684,7 @@ public class SweetEditor extends JPanel {
         return new InputMethodRequests() {
             @Override
             public Rectangle getTextLocation(java.awt.font.TextHitInfo offset) {
+                ensureRenderModelUpToDate();
                 if (renderModel != null && renderModel.cursor != null) {
                     java.awt.Point p = getLocationOnScreen();
                     return new Rectangle(
@@ -671,17 +705,22 @@ public class SweetEditor extends JPanel {
     }
 
     private void handleGesture(int type, float x, float y, int modifiers, float wheelDeltaX, float wheelDeltaY, float directScale) {
-        float[] points = {x, y};
-        GestureResult result = editorCore.handleGestureEvent(type, points, modifiers, wheelDeltaX, wheelDeltaY, directScale);
-        if (result != null && result.type == GestureType.SCALE) {
-            // C++ core already applied scale during gesture handling; only sync platform fonts/measurer.
-            syncPlatformScale(result.viewScale);
-        }
-        resetCursorBlink();
-        flush();
-        if (result != null) {
-            fireGestureEvents(result, new Point((int) x, (int) y));
-            updateAnimationTimer(result.needsAnimation);
+        long inputPerfStart = startInputPerf();
+        try {
+            float[] points = {x, y};
+            GestureResult result = editorCore.handleGestureEvent(type, points, modifiers, wheelDeltaX, wheelDeltaY, directScale);
+            if (result != null && result.type == GestureType.SCALE) {
+                // C++ core already applied scale during gesture handling; only sync platform fonts/measurer.
+                syncPlatformScale(result.viewScale);
+            }
+            resetCursorBlink();
+            flush();
+            if (result != null) {
+                fireGestureEvents(result, new Point((int) x, (int) y));
+                updateAnimationTimer(result.needsAnimation);
+            }
+        } finally {
+            finishInputPerf(getGesturePerfTag(type), inputPerfStart);
         }
     }
 
@@ -913,6 +952,8 @@ public class SweetEditor extends JPanel {
     void syncPlatformScale(float scale) {
         renderer.syncPlatformScale(scale);
         setFont(renderer.getRegularFont());
+        fontMetricsDirty = true;
+        renderModelDirty = true;
     }
 
     /**
@@ -923,9 +964,78 @@ public class SweetEditor extends JPanel {
      * updates to make them take effect.
      */
     public void flush() {
-        editorCore.onFontMetricsChanged();
-        renderModel = editorCore.buildRenderModel();
+        renderModelDirty = true;
         repaint();
+    }
+
+    private void ensureRenderModelUpToDate() {
+        if (!renderModelDirty) {
+            return;
+        }
+        PerfStepRecorder buildPerf = renderer.isPerfOverlayEnabled() ? PerfStepRecorder.start() : null;
+        if (fontMetricsDirty) {
+            editorCore.onFontMetricsChanged();
+            fontMetricsDirty = false;
+        }
+        if (buildPerf != null) {
+            buildPerf.mark(PerfStepRecorder.STEP_PREP);
+            renderer.getMeasurePerfStats().reset();
+        }
+        renderModel = editorCore.buildRenderModel();
+        renderModelDirty = false;
+        updateVisibleLineRangeCache(renderModel);
+        if (buildPerf != null) {
+            buildPerf.mark(PerfStepRecorder.STEP_BUILD);
+            buildPerf.finish();
+            renderer.getPerfOverlay().recordBuild(buildPerf, renderer.getMeasurePerfStats().buildSummary());
+        }
+    }
+
+    private void updateCompletionPopupCursorAnchor() {
+        if (renderModel != null && completionPopupController != null
+                && renderModel.cursor != null && renderModel.cursor.position != null) {
+            completionPopupController.updateCursorPosition(
+                    renderModel.cursor.position.x, renderModel.cursor.position.y, renderModel.cursor.height);
+        }
+    }
+
+    private void updateVisibleLineRangeCache(EditorRenderModel model) {
+        if (model == null || model.lines == null || model.lines.isEmpty()) {
+            cachedVisibleStartLine = 0;
+            cachedVisibleEndLine = -1;
+            return;
+        }
+        int start = Integer.MAX_VALUE;
+        int end = -1;
+        for (VisualLine line : model.lines) {
+            if (line.logicalLine < start) start = line.logicalLine;
+            if (line.logicalLine > end) end = line.logicalLine;
+        }
+        cachedVisibleStartLine = start == Integer.MAX_VALUE ? 0 : start;
+        cachedVisibleEndLine = end;
+    }
+
+    private long startInputPerf() {
+        return renderer.isPerfOverlayEnabled() ? System.nanoTime() : 0L;
+    }
+
+    private void finishInputPerf(String tag, long startNanos) {
+        if (startNanos == 0L) {
+            return;
+        }
+        float elapsedMs = (System.nanoTime() - startNanos) / 1_000_000f;
+        renderer.getPerfOverlay().recordInput(tag, elapsedMs);
+    }
+
+    private static String getGesturePerfTag(int type) {
+        return switch (type) {
+            case MOUSE_DOWN -> "mouseDown";
+            case MOUSE_MOVE -> "mouseMove";
+            case MOUSE_UP -> "mouseUp";
+            case MOUSE_WHEEL -> "mouseWheel";
+            case MOUSE_RIGHT_DOWN -> "mouseRightDown";
+            default -> "gesture";
+        };
     }
 
 }

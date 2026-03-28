@@ -17,6 +17,13 @@ export class SelectionMenuItem {
   }
 }
 
+export interface SelectionMenuState {
+  visible: boolean;
+  items: SelectionMenuItem[];
+  x: number;
+  y: number;
+}
+
 /**
  * Provider interface for building selection menu items.
  * Implement this to customize the selection context menu.

@@ -129,11 +129,18 @@ export class EditorTheme {
   linkedEditingInactiveColor: number = 0x667AA2F7;
   bracketHighlightBorderColor: number = 0xCC9ECE6A;
   bracketHighlightBgColor: number = 0x2A9ECE6A;
+  inlineSuggestionBarBgColor: number = 0xF2303030;
+  inlineSuggestionBarAcceptColor: number = 0xFF4FC1FF;
+  inlineSuggestionBarDismissColor: number = 0xFFCCCCCC;
   completionBgColor: number = 0xF0252830;
   completionBorderColor: number = 0x40607090;
   completionSelectedBgColor: number = 0x3D5580BB;
   completionLabelColor: number = 0xFFD8DEE9;
   completionDetailColor: number = 0xFF7A8494;
+  selectionMenuBgColor: number = 0xF0252830;
+  selectionMenuTextColor: number = 0xFFD7DEE9;
+  selectionMenuBorderColor: number = 0x40607090;
+  selectionMenuDividerColor: number = 0x1FD8DEE9;
   textStyles: Map<number, TextStyle> = new Map();
 
   defineTextStyle(styleId: number, style: TextStyle): EditorTheme {
@@ -171,11 +178,18 @@ export class EditorTheme {
     theme.linkedEditingInactiveColor = 0x667AA2F7;
     theme.bracketHighlightBorderColor = 0xCC9ECE6A;
     theme.bracketHighlightBgColor = 0x2A9ECE6A;
+    theme.inlineSuggestionBarBgColor = 0xF2303030;
+    theme.inlineSuggestionBarAcceptColor = 0xFF4FC1FF;
+    theme.inlineSuggestionBarDismissColor = 0xFFCCCCCC;
     theme.completionBgColor = 0xF0252830;
     theme.completionBorderColor = 0x40607090;
     theme.completionSelectedBgColor = 0x3D5580BB;
     theme.completionLabelColor = 0xFFD8DEE9;
     theme.completionDetailColor = 0xFF7A8494;
+    theme.selectionMenuBgColor = theme.completionBgColor;
+    theme.selectionMenuTextColor = 0xFFD7DEE9;
+    theme.selectionMenuBorderColor = theme.completionBorderColor;
+    theme.selectionMenuDividerColor = 0x1FD8DEE9;
     theme.textStyles = new Map<number, TextStyle>([
       [EditorTheme.STYLE_KEYWORD, { color: 0xFF7AA2F7, backgroundColor: 0, fontStyle: 1 } as TextStyle],
       [EditorTheme.STYLE_STRING, { color: 0xFF9ECE6A, backgroundColor: 0, fontStyle: 0 } as TextStyle],
@@ -223,11 +237,18 @@ export class EditorTheme {
     theme.linkedEditingInactiveColor = 0x662563EB;
     theme.bracketHighlightBorderColor = 0xCC0F766E;
     theme.bracketHighlightBgColor = 0x260F766E;
+    theme.inlineSuggestionBarBgColor = 0xF2F0F0F0;
+    theme.inlineSuggestionBarAcceptColor = 0xFF1A73E8;
+    theme.inlineSuggestionBarDismissColor = 0xFF555555;
     theme.completionBgColor = 0xF0FAFBFD;
     theme.completionBorderColor = 0x30A0A8B8;
     theme.completionSelectedBgColor = 0x3D3B82F6;
     theme.completionLabelColor = 0xFF1F2937;
     theme.completionDetailColor = 0xFF8A94A6;
+    theme.selectionMenuBgColor = theme.completionBgColor;
+    theme.selectionMenuTextColor = 0xFF1F2937;
+    theme.selectionMenuBorderColor = theme.completionBorderColor;
+    theme.selectionMenuDividerColor = 0x1F1F2937;
     theme.textStyles = new Map<number, TextStyle>([
       [EditorTheme.STYLE_KEYWORD, { color: 0xFF3559D6, backgroundColor: 0, fontStyle: 1 } as TextStyle],
       [EditorTheme.STYLE_STRING, { color: 0xFF0F7B6C, backgroundColor: 0, fontStyle: 0 } as TextStyle],

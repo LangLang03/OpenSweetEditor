@@ -38,6 +38,12 @@ namespace SweetEditor {
 
 		private readonly MeasurePerfStats perfMeasureStats = new MeasurePerfStats();
 		private readonly PerfOverlay perfOverlay = new PerfOverlay();
+		private readonly FontMetricsInfo[] textFontMetrics = new FontMetricsInfo[4];
+		private readonly FontMetricsInfo[] inlayFontMetrics = new FontMetricsInfo[4];
+		private bool fontMetricsCacheValid;
+		private float fontMetricsDpiY;
+
+		private readonly record struct FontMetricsInfo(float Ascent, float Descent, float LineHeight);
 
 		public EditorRenderer(EditorTheme theme) {
 			currentTheme = theme;
@@ -83,6 +89,8 @@ namespace SweetEditor {
 
 		public void SetTextGraphics(Graphics? g) {
 			textGraphics = g;
+			InvalidateFontMetricsCache();
+			EnsureFontMetricsCache(g);
 		}
 
 		public Graphics? GetTextGraphics() => textGraphics;
@@ -91,6 +99,8 @@ namespace SweetEditor {
 			textGraphics?.Dispose();
 			textGraphics = control.CreateGraphics();
 			textGraphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+			InvalidateFontMetricsCache();
+			EnsureFontMetricsCache(textGraphics);
 		}
 
 		public void SyncPlatformScale(float scale) {
@@ -115,31 +125,94 @@ namespace SweetEditor {
 			inlayHintBoldFont = new Font(BaseInlayHintFontFamily, inlaySize, FontStyle.Bold);
 			inlayHintItalicFont = new Font(BaseInlayHintFontFamily, inlaySize, FontStyle.Italic);
 			inlayHintBoldItalicFont = new Font(BaseInlayHintFontFamily, inlaySize, FontStyle.Bold | FontStyle.Italic);
+			InvalidateFontMetricsCache();
+			EnsureFontMetricsCache(textGraphics);
+		}
+
+		private static int GetFontVariantIndex(int fontStyle) {
+			bool isBold = (fontStyle & EditorControl.FONT_STYLE_BOLD) != 0;
+			bool isItalic = (fontStyle & EditorControl.FONT_STYLE_ITALIC) != 0;
+			return (isBold ? 1 : 0) | (isItalic ? 2 : 0);
+		}
+
+		private Font GetTextFontByVariant(int variant) {
+			return variant switch {
+				1 => boldFont,
+				2 => italicFont,
+				3 => boldItalicFont,
+				_ => regularFont,
+			};
+		}
+
+		private Font GetInlayFontByVariant(int variant) {
+			return variant switch {
+				1 => inlayHintBoldFont,
+				2 => inlayHintItalicFont,
+				3 => inlayHintBoldItalicFont,
+				_ => inlayHintFont,
+			};
 		}
 
 		private Font GetFontByStyle(int fontStyle) {
-			bool isBold = (fontStyle & EditorControl.FONT_STYLE_BOLD) != 0;
-			bool isItalic = (fontStyle & EditorControl.FONT_STYLE_ITALIC) != 0;
-			if (isBold && isItalic) return boldItalicFont;
-			if (isBold) return boldFont;
-			if (isItalic) return italicFont;
-			return regularFont;
+			return GetTextFontByVariant(GetFontVariantIndex(fontStyle));
 		}
 
 		private Font GetInlayHintFontByStyle(int fontStyle) {
-			bool isBold = (fontStyle & EditorControl.FONT_STYLE_BOLD) != 0;
-			bool isItalic = (fontStyle & EditorControl.FONT_STYLE_ITALIC) != 0;
-			if (isBold && isItalic) return inlayHintBoldItalicFont;
-			if (isBold) return inlayHintBoldFont;
-			if (isItalic) return inlayHintItalicFont;
-			return inlayHintFont;
+			return GetInlayFontByVariant(GetFontVariantIndex(fontStyle));
 		}
 
-		private static float GetFontAscent(Graphics g, Font font) {
+		private static FontMetricsInfo BuildFontMetrics(Font font, float dpiY) {
 			int designAscent = font.FontFamily.GetCellAscent(font.Style);
+			int designDescent = font.FontFamily.GetCellDescent(font.Style);
 			int designEmHeight = font.FontFamily.GetEmHeight(font.Style);
-			float pixelAscent = designAscent * font.SizeInPoints * g.DpiY / (designEmHeight * 72f);
-			return pixelAscent;
+			float scale = font.SizeInPoints * dpiY / (designEmHeight * 72f);
+			float pixelAscent = designAscent * scale;
+			float pixelDescent = designDescent * scale;
+			return new FontMetricsInfo(pixelAscent, pixelDescent, font.GetHeight(dpiY));
+		}
+
+		private void InvalidateFontMetricsCache() {
+			fontMetricsCacheValid = false;
+			fontMetricsDpiY = 0f;
+		}
+
+		private void EnsureFontMetricsCache(Graphics? g = null) {
+			Graphics? metricsGraphics = g ?? textGraphics;
+			if (metricsGraphics == null) {
+				return;
+			}
+
+			float dpiY = metricsGraphics.DpiY;
+			if (fontMetricsCacheValid && Math.Abs(fontMetricsDpiY - dpiY) < 0.01f) {
+				return;
+			}
+
+			for (int i = 0; i < textFontMetrics.Length; i++) {
+				textFontMetrics[i] = BuildFontMetrics(GetTextFontByVariant(i), dpiY);
+				inlayFontMetrics[i] = BuildFontMetrics(GetInlayFontByVariant(i), dpiY);
+			}
+			fontMetricsDpiY = dpiY;
+			fontMetricsCacheValid = true;
+		}
+
+		private FontMetricsInfo GetTextFontMetrics(int fontStyle, Graphics? g = null) {
+			EnsureFontMetricsCache(g);
+			int variant = GetFontVariantIndex(fontStyle);
+			if (fontMetricsCacheValid) {
+				return textFontMetrics[variant];
+			}
+			float dpiY = g?.DpiY ?? textGraphics?.DpiY ?? 96f;
+			return BuildFontMetrics(GetTextFontByVariant(variant), dpiY);
+		}
+
+		private FontMetricsInfo GetInlayFontMetrics(int fontStyle, Graphics? g = null) {
+			EnsureFontMetricsCache(g);
+			int variant = GetFontVariantIndex(fontStyle);
+			if (fontMetricsCacheValid) {
+				return inlayFontMetrics[variant];
+			}
+			float dpiY = g?.DpiY ?? textGraphics?.DpiY ?? 96f;
+			return BuildFontMetrics(GetInlayFontByVariant(variant), dpiY);
 		}
 
 		private SolidBrush GetOrCreateBrush(int argb) {
@@ -148,6 +221,10 @@ namespace SweetEditor {
 				brushCache[argb] = b;
 			}
 			return b;
+		}
+
+		private SolidBrush GetOrCreateBrush(Color color) {
+			return GetOrCreateBrush(color.ToArgb());
 		}
 
 		#region TextMeasurer Callbacks
@@ -176,20 +253,15 @@ namespace SweetEditor {
 		private float OnMeasureIconWidth(int iconId) {
 			long startTicks = PerfScope.StartTicks();
 			float width = textGraphics != null
-				? regularFont.GetHeight(textGraphics)
+				? GetTextFontMetrics(0, textGraphics).LineHeight
 				: regularFont.GetHeight();
 			perfMeasureStats.RecordIcon(PerfScope.ElapsedTicks(startTicks), iconId);
 			return width;
 		}
 
 		private void OnGetFontMetrics(IntPtr arrPtr, UIntPtr length) {
-			int designAscent = regularFont.FontFamily.GetCellAscent(regularFont.Style);
-			int designDescent = regularFont.FontFamily.GetCellDescent(regularFont.Style);
-			int designEmHeight = regularFont.FontFamily.GetEmHeight(regularFont.Style);
-			float emSizeInPoints = regularFont.SizeInPoints;
-			float pixelAscent = designAscent * emSizeInPoints * textGraphics!.DpiY / (designEmHeight * 72f);
-			float pixelDescent = designDescent * emSizeInPoints * textGraphics!.DpiY / (designEmHeight * 72f);
-			float[] metrics = [-pixelAscent, pixelDescent];
+			FontMetricsInfo metricsInfo = GetTextFontMetrics(0, textGraphics);
+			float[] metrics = [-metricsInfo.Ascent, metricsInfo.Descent];
 			Marshal.Copy(metrics, 0, arrPtr, metrics.Length);
 		}
 
@@ -201,6 +273,7 @@ namespace SweetEditor {
 			var perf = PerfStepRecorder.Start();
 			g.Clear(theme.BackgroundColor);
 			perf.Mark(PerfStepRecorder.StepClear);
+			EnsureFontMetricsCache(g);
 
 			if (!model.HasValue) {
 				perf.Finish();
@@ -260,7 +333,7 @@ namespace SweetEditor {
 
 		private void DrawGutterOverlay(Graphics g, EditorRenderModel model, int clientHeight) {
 			if (model.SplitX <= 0) return;
-			using var brush = new SolidBrush(currentTheme.BackgroundColor);
+			SolidBrush brush = GetOrCreateBrush(currentTheme.BackgroundColor);
 			g.FillRectangle(brush, 0, 0, model.SplitX, clientHeight);
 			DrawCurrentLineDecoration(g, model, 0f, model.SplitX);
 			if (model.SplitLineVisible) {
@@ -328,13 +401,12 @@ namespace SweetEditor {
 			bool hasHorizontal = horizontal.Visible && horizontal.Track.Width > 0 && horizontal.Track.Height > 0;
 			if (!hasVertical && !hasHorizontal) return;
 
-			using var trackBrush = new SolidBrush(currentTheme.ScrollbarTrackColor);
+			SolidBrush trackBrush = GetOrCreateBrush(currentTheme.ScrollbarTrackColor);
 			RectangleF verticalTrackRect = RectangleF.Empty;
 			RectangleF horizontalTrackRect = RectangleF.Empty;
 
 			if (hasVertical) {
-				var vThumbColor = vertical.ThumbActive ? currentTheme.ScrollbarThumbActiveColor : currentTheme.ScrollbarThumbColor;
-				using var vThumbBrush = new SolidBrush(vThumbColor);
+				SolidBrush vThumbBrush = GetOrCreateBrush(vertical.ThumbActive ? currentTheme.ScrollbarThumbActiveColor : currentTheme.ScrollbarThumbColor);
 				verticalTrackRect = new RectangleF(
 					vertical.Track.Origin.X, vertical.Track.Origin.Y,
 					vertical.Track.Width, vertical.Track.Height);
@@ -346,8 +418,7 @@ namespace SweetEditor {
 			}
 
 			if (hasHorizontal) {
-				var hThumbColor = horizontal.ThumbActive ? currentTheme.ScrollbarThumbActiveColor : currentTheme.ScrollbarThumbColor;
-				using var hThumbBrush = new SolidBrush(hThumbColor);
+				SolidBrush hThumbBrush = GetOrCreateBrush(horizontal.ThumbActive ? currentTheme.ScrollbarThumbActiveColor : currentTheme.ScrollbarThumbColor);
 				horizontalTrackRect = new RectangleF(
 					horizontal.Track.Origin.X, horizontal.Track.Origin.Y,
 					horizontal.Track.Width, horizontal.Track.Height);
@@ -372,7 +443,8 @@ namespace SweetEditor {
 			bool hasFoldMarker, FoldMarkerRenderItem foldMarker,
 			bool isCurrentLine, Color activeLineColor) {
 			PointF position = visualLine.LineNumberPosition;
-			float topY = position.Y - GetFontAscent(g, regularFont);
+			FontMetricsInfo metrics = GetTextFontMetrics(0, g);
+			float topY = position.Y - metrics.Ascent;
 			bool overlayMode = model.MaxGutterIcons == 0;
 			bool hasIcons = editorIconProvider != null && iconEnd > iconStart;
 			int newLineNumber = visualLine.LogicalLine + 1;
@@ -380,7 +452,7 @@ namespace SweetEditor {
 				DrawOverlayGutterIcon(g, gutterIcons![iconStart]);
 				currentDrawingLineNumber = newLineNumber;
 			} else if (newLineNumber != currentDrawingLineNumber) {
-				var rect = new Rectangle((int)position.X, (int)topY, 120, (int)Math.Ceiling(regularFont.GetHeight(g)));
+				var rect = new Rectangle((int)position.X, (int)topY, 120, (int)Math.Ceiling(metrics.LineHeight));
 				TextRenderer.DrawText(
 					g,
 					newLineNumber.ToString(),
@@ -462,38 +534,34 @@ namespace SweetEditor {
 			Font font = (visualRun.Type == VisualRunType.INLAY_HINT)
 				? GetInlayHintFontByStyle(visualRun.Style.FontStyle)
 				: GetFontByStyle(visualRun.Style.FontStyle);
+			FontMetricsInfo metrics = visualRun.Type == VisualRunType.INLAY_HINT
+				? GetInlayFontMetrics(visualRun.Style.FontStyle, g)
+				: GetTextFontMetrics(visualRun.Style.FontStyle, g);
 			Color color = (visualRun.Style.Color != 0)
 				? Color.FromArgb(visualRun.Style.Color)
 				: currentTheme.TextColor;
 
-			float ascent = GetFontAscent(g, font);
-			float topY = visualRun.Y - ascent;
-			int lineHeight = (int)Math.Ceiling(font.GetHeight(g));
-
-			Size measuredSize = TextRenderer.MeasureText(g, drawTextContent, font, new Size(int.MaxValue, int.MaxValue), TextMeasureDrawFlags);
-			int drawWidth = Math.Max((int)Math.Ceiling(visualRun.Width), measuredSize.Width);
-			if (drawWidth < 1) drawWidth = 1;
+			float topY = visualRun.Y - metrics.Ascent;
+			int lineHeight = (int)Math.Ceiling(metrics.LineHeight);
+			int drawWidth = Math.Max(1, (int)Math.Ceiling(visualRun.Width));
 
 			if (visualRun.Type == VisualRunType.FOLD_PLACEHOLDER) {
 				float mgn = visualRun.Margin;
-				float fontHeight = font.GetHeight(g);
+				float fontHeight = metrics.LineHeight;
 				float bgLeft = visualRun.X + mgn;
 				float bgTop = topY;
 				float bgWidth = visualRun.Width - mgn * 2;
 				float bgHeight = fontHeight;
 				float radius = fontHeight * 0.2f;
-				using (var bgBrush = new SolidBrush(currentTheme.FoldPlaceholderBgColor)) {
-					DrawRoundedRect(g, bgBrush, bgLeft, bgTop, bgWidth, bgHeight, radius);
-				}
+				DrawRoundedRect(g, GetOrCreateBrush(currentTheme.FoldPlaceholderBgColor), bgLeft, bgTop, bgWidth, bgHeight, radius);
 				float textX = visualRun.X + mgn + visualRun.Padding;
 				int foldW = Math.Max(1, (int)Math.Ceiling(visualRun.Width - mgn * 2 - visualRun.Padding * 2));
-				foldW = Math.Max(foldW, measuredSize.Width);
 				var foldRect = new Rectangle((int)textX, (int)topY, foldW, lineHeight);
 				Color foldColor = currentTheme.FoldPlaceholderTextColor;
 				TextRenderer.DrawText(g, drawTextContent, font, foldRect, foldColor, TextMeasureDrawFlags);
 			} else if (visualRun.Type == VisualRunType.INLAY_HINT) {
 				float mgn = visualRun.Margin;
-				float fontHeight = font.GetHeight(g);
+				float fontHeight = metrics.LineHeight;
 				float bgLeft = visualRun.X + mgn;
 				float bgTop = topY;
 				float bgWidth = visualRun.Width - mgn * 2;
@@ -503,14 +571,10 @@ namespace SweetEditor {
 					float blockSize = fontHeight;
 					float colorLeft = visualRun.X + mgn;
 					float colorTop = topY;
-					using (var colorBrush = new SolidBrush(Color.FromArgb(visualRun.ColorValue))) {
-						g.FillRectangle(colorBrush, colorLeft, colorTop, blockSize, blockSize);
-					}
+					g.FillRectangle(GetOrCreateBrush(visualRun.ColorValue), colorLeft, colorTop, blockSize, blockSize);
 				} else {
 					float radius = fontHeight * 0.2f;
-					using (var bgBrush = new SolidBrush(currentTheme.InlayHintBgColor)) {
-						DrawRoundedRect(g, bgBrush, bgLeft, bgTop, bgWidth, bgHeight, radius);
-					}
+					DrawRoundedRect(g, GetOrCreateBrush(currentTheme.InlayHintBgColor), bgLeft, bgTop, bgWidth, bgHeight, radius);
 					if (visualRun.IconId > 0 && editorIconProvider != null) {
 						float iconSize = Math.Min(bgWidth, bgHeight);
 						float iconLeft = bgLeft + (bgWidth - iconSize) * 0.5f;
@@ -525,15 +589,13 @@ namespace SweetEditor {
 					} else if (hasText) {
 						float textX = visualRun.X + mgn + visualRun.Padding;
 						int inlayW = Math.Max(1, (int)Math.Ceiling(visualRun.Width - mgn * 2 - visualRun.Padding * 2));
-						inlayW = Math.Max(inlayW, measuredSize.Width);
 						var inlayRect = new Rectangle((int)textX, (int)topY, inlayW, lineHeight);
 						TextRenderer.DrawText(g, drawTextContent, font, inlayRect, color, TextMeasureDrawFlags);
 					}
 				}
 			} else {
 				if (visualRun.Style.BackgroundColor != 0) {
-					using var bgBrush = new SolidBrush(Color.FromArgb(visualRun.Style.BackgroundColor));
-					g.FillRectangle(bgBrush, visualRun.X, topY, drawWidth, lineHeight);
+					g.FillRectangle(GetOrCreateBrush(visualRun.Style.BackgroundColor), visualRun.X, topY, drawWidth, lineHeight);
 				}
 				var rect = new Rectangle((int)visualRun.X, (int)topY, drawWidth, lineHeight);
 				Color drawColor = visualRun.Type == VisualRunType.PHANTOM_TEXT
@@ -543,7 +605,7 @@ namespace SweetEditor {
 			}
 
 			if ((visualRun.Style.FontStyle & EditorControl.FONT_STYLE_STRIKETHROUGH) != 0) {
-				float strikeY = topY + ascent * 0.5f;
+				float strikeY = topY + metrics.Ascent * 0.5f;
 				using var pen = new Pen(color, 1f);
 				g.DrawLine(pen, visualRun.X, strikeY, visualRun.X + visualRun.Width, strikeY);
 			}
@@ -574,7 +636,7 @@ namespace SweetEditor {
 				g.DrawRectangle(pen, left, model.CurrentLine.Y, width, lineH);
 				return;
 			}
-			using var brush = new SolidBrush(currentTheme.CurrentLineColor);
+			SolidBrush brush = GetOrCreateBrush(currentTheme.CurrentLineColor);
 			g.FillRectangle(brush, left, model.CurrentLine.Y, width, lineH);
 		}
 
@@ -598,7 +660,7 @@ namespace SweetEditor {
 
 		private void DrawSelectionRects(Graphics g, EditorRenderModel model) {
 			if (model.SelectionRects == null || model.SelectionRects.Count == 0) return;
-			using var brush = new SolidBrush(currentTheme.SelectionColor);
+			SolidBrush brush = GetOrCreateBrush(currentTheme.SelectionColor);
 			foreach (var rect in model.SelectionRects) {
 				g.FillRectangle(brush, rect.Origin.X, rect.Origin.Y, rect.Width, rect.Height);
 			}
@@ -606,7 +668,7 @@ namespace SweetEditor {
 
 		private void DrawCursor(Graphics g, EditorRenderModel model) {
 			if (!model.Cursor.Visible) return;
-			using var brush = new SolidBrush(currentTheme.CursorColor);
+			SolidBrush brush = GetOrCreateBrush(currentTheme.CursorColor);
 			g.FillRectangle(brush, model.Cursor.Position.X, model.Cursor.Position.Y, 2f, model.Cursor.Height);
 		}
 

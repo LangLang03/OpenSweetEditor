@@ -1,5 +1,11 @@
 import { EditorIconProvider, EditorTheme } from './EditorTypes';
 import {
+  HandleConfig,
+  ScrollbarConfig,
+  ScrollbarMode,
+  ScrollbarTrackTapMode
+} from './core/EditorCore';
+import {
   BracketHighlightRect,
   CompositionDecoration,
   Cursor,
@@ -41,6 +47,8 @@ interface FontMetricsSnapshot {
 export class EditorRenderer {
   private theme: EditorTheme;
   private density: number;
+  private readonly handleConfig: HandleConfig;
+  private scrollbarConfig: ScrollbarConfig | null = null;
   private textSize: number = DEFAULT_TEXT_SIZE;
   private scale: number = 1.0;
   private fontFamily: string = 'monospace';
@@ -71,6 +79,7 @@ export class EditorRenderer {
   constructor(theme: EditorTheme, density: number) {
     this.theme = theme;
     this.density = density;
+    this.handleConfig = this.computeHandleHitConfig();
   }
 
   getTheme(): EditorTheme {
@@ -122,6 +131,18 @@ export class EditorRenderer {
 
   getDensity(): number {
     return this.density;
+  }
+
+  getHandleConfig(): HandleConfig {
+    return this.handleConfig;
+  }
+
+  setScrollbarConfig(config: ScrollbarConfig | null): void {
+    this.scrollbarConfig = config;
+  }
+
+  getScrollbarConfig(): ScrollbarConfig | null {
+    return this.scrollbarConfig;
   }
 
   attachCanvasContext(ctx: CanvasRenderingContext2D): void {
@@ -644,23 +665,29 @@ export class EditorRenderer {
         }
       }
 
+      ctx.save();
       ctx.strokeStyle = colorToString(color);
-      ctx.lineWidth = 3.0;
+      const strokeWidth = Math.max(1.25, Math.min(2.25, diag.height * 0.09));
+      const halfWave = Math.max(6.0, Math.min(10.0, diag.height * 0.42));
+      const amplitude = Math.max(1.5, Math.min(3.0, diag.height * 0.12));
+      const dashOn = Math.max(2.5, Math.min(5.0, diag.height * 0.22));
+      const dashOff = Math.max(1.5, Math.min(4.0, diag.height * 0.14));
+      ctx.lineWidth = strokeWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
       const startX = diag.origin.x;
       const endX = startX + diag.width;
       const baseY = diag.origin.y + diag.height - 1.0;
 
       if (diag.severity === 3) {
-        ctx.setLineDash([3, 2]);
+        ctx.setLineDash([dashOn, dashOff]);
         ctx.beginPath();
         ctx.moveTo(startX, baseY);
         ctx.lineTo(endX, baseY);
         ctx.stroke();
         ctx.setLineDash([]);
       } else {
-        const halfWave = 7.0;
-        const amplitude = 3.5;
         ctx.beginPath();
         ctx.moveTo(startX, baseY);
         let x = startX;
@@ -675,6 +702,7 @@ export class EditorRenderer {
         }
         ctx.stroke();
       }
+      ctx.restore();
     }
   }
 
@@ -774,7 +802,7 @@ export class EditorRenderer {
       ctx.fillRect(verticalTrackX, horizontalTrackY, verticalTrackWidth, horizontalTrackHeight);
     }
 
-    return true;
+    return this.scrollbarConfig !== null && this.scrollbarConfig.mode === ScrollbarMode.TRANSIENT;
   }
 
   private getActiveLogicalLine(model: EditorRenderModel): number {
@@ -847,6 +875,47 @@ export class EditorRenderer {
     return metrics.ascent + metrics.descent;
   }
 
+  private computeHandleHitConfig(): HandleConfig {
+    const angle = Math.PI / 4;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const radius = HANDLE_DROP_RADIUS;
+    const centerDistance = HANDLE_CENTER_DIST;
+    const points: Array<[number, number]> = [
+      [0, 0],
+      [-radius, centerDistance],
+      [radius, centerDistance],
+      [0, centerDistance + radius],
+      [0, centerDistance - radius * 0.8]
+    ];
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    for (const point of points) {
+      const rx = point[0] * cos - point[1] * sin;
+      const ry = point[0] * sin + point[1] * cos;
+      minX = Math.min(minX, rx);
+      minY = Math.min(minY, ry);
+      maxX = Math.max(maxX, rx);
+      maxY = Math.max(maxY, ry);
+    }
+
+    const pad = 8.0;
+    const config = new HandleConfig();
+    config.startLeft = minX - pad;
+    config.startTop = minY - pad;
+    config.startRight = maxX + pad;
+    config.startBottom = maxY + pad;
+    config.endLeft = -maxX - pad;
+    config.endTop = minY - pad;
+    config.endRight = -minX + pad;
+    config.endBottom = maxY + pad;
+    return config;
+  }
+
   private getFontKey(fontStyle: number, size: number, family: string): string {
     return `${fontStyle}|${size}|${family}`;
   }
@@ -879,18 +948,22 @@ export class EditorRenderer {
     if (cached) {
       this.setCanvasFont(ctx, fontStyle, size, family);
       return cached;
+      }
+  
+      this.setCanvasFont(ctx, fontStyle, size, family);
+      const metrics = ctx.measureText('M');
+      const ascent = metrics.fontBoundingBoxAscent || metrics.emHeightAscent
+        || metrics.actualBoundingBoxAscent || size * 0.8;
+      const descent = metrics.fontBoundingBoxDescent || metrics.emHeightDescent
+        || metrics.actualBoundingBoxDescent || size * 0.2;
+      const snapshot: FontMetricsSnapshot = {
+        ascent,
+        descent
+      };
+      this.fontMetricsCache.set(key, snapshot);
+      return snapshot;
     }
-
-    this.setCanvasFont(ctx, fontStyle, size, family);
-    const metrics = ctx.measureText('M');
-    const snapshot: FontMetricsSnapshot = {
-      ascent: metrics.actualBoundingBoxAscent || size * 0.8,
-      descent: metrics.actualBoundingBoxDescent || size * 0.2
-    };
-    this.fontMetricsCache.set(key, snapshot);
-    return snapshot;
   }
-}
 
 function colorToString(argb: number): string {
   const a = ((argb >>> 24) & 0xFF) / 255;

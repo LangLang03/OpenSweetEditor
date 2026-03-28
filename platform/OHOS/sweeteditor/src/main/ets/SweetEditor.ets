@@ -7,6 +7,9 @@ import {
   GestureResult,
   GestureType,
   HitTargetType,
+  ScrollbarConfig,
+  ScrollbarMode,
+  ScrollbarTrackTapMode,
   KeyEventResult,
   Modifier,
   TextChange,
@@ -50,7 +53,7 @@ import {
   TextChangedEvent
 } from './event/EditorEvent';
 import { CompletionProviderManager } from './completion/CompletionProviderManager';
-import { CompletionPopupController } from './completion/CompletionPopupController';
+import { CompletionPopupController, PopupPosition } from './completion/CompletionPopupController';
 import {
   CompletionItem,
   CompletionItemViewBuilder,
@@ -65,7 +68,7 @@ import { DecorationProvider } from './decoration/DecorationTypes';
 import { NewLineActionProvider } from './newline/NewLineTypes';
 import { NewLineActionProviderManager } from './newline/NewLineActionProviderManager';
 import { SelectionMenuController } from './selection/SelectionMenuController';
-import { SelectionMenuItemProvider } from './selection/SelectionMenuTypes';
+import { SelectionMenuItem, SelectionMenuItemProvider, SelectionMenuState } from './selection/SelectionMenuTypes';
 import pasteboard from '@ohos.pasteboard';
 import display from '@ohos.display';
 import hilog from '@ohos.hilog';
@@ -79,6 +82,26 @@ const ANIMATION_FRAME_INTERVAL_MS = 16;
 const TRANSIENT_SCROLLBAR_REFRESH_MIN_MS = 16;
 const DEFAULT_CONTENT_START_PADDING_DP = 3.0;
 const EDITOR_FOCUS_ID = 'sweeteditor-canvas';
+const SELECTION_MENU_ITEM_HEIGHT = 26;
+const SELECTION_MENU_ITEM_MIN_WIDTH = 40;
+const SELECTION_MENU_HORIZONTAL_PADDING = 8;
+const SELECTION_MENU_SIDE_MARGIN = 8;
+const SELECTION_MENU_TOP_MARGIN = 8;
+const COMPLETION_POPUP_SIDE_MARGIN = 8;
+const COMPLETION_POPUP_TOP_MARGIN = 8;
+const COMPLETION_ITEM_HEIGHT = 32;
+const COMPLETION_KIND_BADGE_SIZE = 18;
+const COMPLETION_KIND_BADGE_RADIUS = 4;
+const COMPLETION_KIND_BADGE_GAP = 8;
+const INLINE_SUGGESTION_BAR_HEIGHT = 28;
+const INLINE_SUGGESTION_BAR_RADIUS = 6;
+const INLINE_SUGGESTION_BAR_HORIZONTAL_PADDING = 4;
+const INLINE_SUGGESTION_BAR_BUTTON_HORIZONTAL_PADDING = 10;
+const INLINE_SUGGESTION_BAR_DIVIDER_WIDTH = 1;
+const INLINE_SUGGESTION_BAR_DIVIDER_VERTICAL_MARGIN = 6;
+const INLINE_SUGGESTION_BAR_GAP = 2;
+const INLINE_SUGGESTION_BAR_SIDE_MARGIN = 8;
+const INLINE_SUGGESTION_BAR_ESTIMATED_WIDTH = 132;
 
 interface PreviewCapableInputController {
   on(type: 'setPreviewText', callback: (text: string, range: inputMethod.Range) => void): void;
@@ -88,6 +111,280 @@ interface PreviewCapableInputController {
   off(type: 'setPreviewText', callback?: (text: string, range: inputMethod.Range) => void): void;
 
   off(type: 'finishTextPreview', callback?: () => void): void;
+}
+
+interface SweetEditorExternalApi {
+  loadDocument(document: Document): void;
+
+  getDocument(): Document | null;
+
+  getSettings(): EditorSettings | null;
+
+  applyTheme(theme: EditorTheme): void;
+
+  getTheme(): EditorTheme;
+
+  setLanguageConfiguration(config: LanguageConfiguration | null): void;
+
+  setMetadata(metadata: EditorMetadata | null): void;
+
+  setEditorIconProvider(provider: EditorIconProvider | null): void;
+
+  addDecorationProvider(provider: DecorationProvider): void;
+
+  addCompletionProvider(provider: CompletionProvider): void;
+
+  triggerCompletion(): void;
+
+  showInlineSuggestion(suggestion: InlineSuggestion): void;
+
+  dismissInlineSuggestion(): void;
+
+  isInlineSuggestionShowing(): boolean;
+
+  setInlineSuggestionListener(listener: InlineSuggestionListener | null): void;
+
+  requestDecorationRefresh(): void;
+
+  subscribe<T extends EditorEvent>(eventName: string, listener: EditorEventListener<T>): void;
+
+  unsubscribe<T extends EditorEvent>(eventName: string, listener: EditorEventListener<T>): void;
+
+  undo(): TextEditResult;
+
+  redo(): TextEditResult;
+
+  canUndo(): boolean;
+
+  canRedo(): boolean;
+}
+
+export class SweetEditorController {
+  private api: SweetEditorExternalApi | null = null;
+  private pendingActions: Array<(api: SweetEditorExternalApi) => void> = [];
+  private readyListeners: Array<() => void> = [];
+
+  bind(api: SweetEditorExternalApi): void {
+    this.api = api;
+    const actions = [...this.pendingActions];
+    this.pendingActions = [];
+    for (const action of actions) {
+      action(api);
+    }
+    const listeners = [...this.readyListeners];
+    this.readyListeners = [];
+    for (const listener of listeners) {
+      listener();
+    }
+  }
+
+  unbind(api: SweetEditorExternalApi): void {
+    if (this.api === api) {
+      this.api = null;
+    }
+  }
+
+  whenReady(listener: () => void): void {
+    if (this.api) {
+      listener();
+      return;
+    }
+    this.readyListeners.push(listener);
+  }
+
+  loadDocument(document: Document): void {
+    this.run((api) => api.loadDocument(document));
+  }
+
+  getDocument(): Document | null {
+    return this.api ? this.api.getDocument() : null;
+  }
+
+  getSettings(): EditorSettings | null {
+    return this.api ? this.api.getSettings() : null;
+  }
+
+  applyTheme(theme: EditorTheme): void {
+    this.run((api) => api.applyTheme(theme));
+  }
+
+  getTheme(): EditorTheme | null {
+    return this.api ? this.api.getTheme() : null;
+  }
+
+  setLanguageConfiguration(config: LanguageConfiguration | null): void {
+    this.run((api) => api.setLanguageConfiguration(config));
+  }
+
+  setMetadata(metadata: EditorMetadata | null): void {
+    this.run((api) => api.setMetadata(metadata));
+  }
+
+  setEditorIconProvider(provider: EditorIconProvider | null): void {
+    this.run((api) => api.setEditorIconProvider(provider));
+  }
+
+  addDecorationProvider(provider: DecorationProvider): void {
+    this.run((api) => api.addDecorationProvider(provider));
+  }
+
+  addCompletionProvider(provider: CompletionProvider): void {
+    this.run((api) => api.addCompletionProvider(provider));
+  }
+
+  triggerCompletion(): void {
+    this.run((api) => api.triggerCompletion());
+  }
+
+  showInlineSuggestion(suggestion: InlineSuggestion): void {
+    this.run((api) => api.showInlineSuggestion(suggestion));
+  }
+
+  dismissInlineSuggestion(): void {
+    this.run((api) => api.dismissInlineSuggestion());
+  }
+
+  isInlineSuggestionShowing(): boolean {
+    return this.api ? this.api.isInlineSuggestionShowing() : false;
+  }
+
+  setInlineSuggestionListener(listener: InlineSuggestionListener | null): void {
+    this.run((api) => api.setInlineSuggestionListener(listener));
+  }
+
+  requestDecorationRefresh(): void {
+    this.run((api) => api.requestDecorationRefresh());
+  }
+
+  subscribe<T extends EditorEvent>(eventName: string, listener: EditorEventListener<T>): void {
+    this.run((api) => api.subscribe(eventName, listener));
+  }
+
+  unsubscribe<T extends EditorEvent>(eventName: string, listener: EditorEventListener<T>): void {
+    if (this.api) {
+      this.api.unsubscribe(eventName, listener);
+    }
+  }
+
+  undo(): TextEditResult | null {
+    return this.api ? this.api.undo() : null;
+  }
+
+  redo(): TextEditResult | null {
+    return this.api ? this.api.redo() : null;
+  }
+
+  canUndo(): boolean {
+    return this.api ? this.api.canUndo() : false;
+  }
+
+  canRedo(): boolean {
+    return this.api ? this.api.canRedo() : false;
+  }
+
+  private run(action: (api: SweetEditorExternalApi) => void): void {
+    if (this.api) {
+      action(this.api);
+      return;
+    }
+    this.pendingActions.push(action);
+  }
+}
+
+class BoundSweetEditorExternalApi implements SweetEditorExternalApi {
+  private readonly editor: SweetEditor;
+
+  constructor(editor: SweetEditor) {
+    this.editor = editor;
+  }
+
+  loadDocument(document: Document): void {
+    this.editor.loadDocument(document);
+  }
+
+  getDocument(): Document | null {
+    return this.editor.getDocument();
+  }
+
+  getSettings(): EditorSettings | null {
+    return this.editor.getSettings();
+  }
+
+  applyTheme(theme: EditorTheme): void {
+    this.editor.applyTheme(theme);
+  }
+
+  getTheme(): EditorTheme {
+    return this.editor.getTheme();
+  }
+
+  setLanguageConfiguration(config: LanguageConfiguration | null): void {
+    this.editor.setLanguageConfiguration(config);
+  }
+
+  setMetadata(metadata: EditorMetadata | null): void {
+    this.editor.setMetadata(metadata);
+  }
+
+  setEditorIconProvider(provider: EditorIconProvider | null): void {
+    this.editor.setEditorIconProvider(provider);
+  }
+
+  addDecorationProvider(provider: DecorationProvider): void {
+    this.editor.addDecorationProvider(provider);
+  }
+
+  addCompletionProvider(provider: CompletionProvider): void {
+    this.editor.addCompletionProvider(provider);
+  }
+
+  triggerCompletion(): void {
+    this.editor.triggerCompletion();
+  }
+
+  showInlineSuggestion(suggestion: InlineSuggestion): void {
+    this.editor.showInlineSuggestion(suggestion);
+  }
+
+  dismissInlineSuggestion(): void {
+    this.editor.dismissInlineSuggestion();
+  }
+
+  isInlineSuggestionShowing(): boolean {
+    return this.editor.isInlineSuggestionShowing();
+  }
+
+  setInlineSuggestionListener(listener: InlineSuggestionListener | null): void {
+    this.editor.setInlineSuggestionListener(listener);
+  }
+
+  requestDecorationRefresh(): void {
+    this.editor.requestDecorationRefresh();
+  }
+
+  subscribe<T extends EditorEvent>(eventName: string, listener: EditorEventListener<T>): void {
+    this.editor.subscribe(eventName, listener);
+  }
+
+  unsubscribe<T extends EditorEvent>(eventName: string, listener: EditorEventListener<T>): void {
+    this.editor.unsubscribe(eventName, listener);
+  }
+
+  undo(): TextEditResult {
+    return this.editor.undo();
+  }
+
+  redo(): TextEditResult {
+    return this.editor.redo();
+  }
+
+  canUndo(): boolean {
+    return this.editor.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.editor.canRedo();
+  }
 }
 
 /**
@@ -100,6 +397,7 @@ interface PreviewCapableInputController {
  */
 @Component
 export struct SweetEditor {
+  controller: SweetEditorController | null = null;
   private editorCore: EditorCore | null = null;
   private renderer: EditorRenderer | null = null;
   private settings: EditorSettings | null = null;
@@ -136,6 +434,7 @@ export struct SweetEditor {
   private imeWindowId: number = -1;
   private editorGlobalX: number = 0;
   private editorGlobalY: number = 0;
+  private controllerApi: SweetEditorExternalApi | null = null;
   private readonly onImeInsertText = (text: string): void => {
     if (this.editorCore && this.editorCore.isComposing()) {
       this.commitComposition(text);
@@ -177,6 +476,19 @@ export struct SweetEditor {
   };
   @State private canvasWidth: number = 0;
   @State private canvasHeight: number = 0;
+  @State private completionPopupVisible: boolean = false;
+  @State private completionPopupItems: CompletionItem[] = [];
+  @State private completionPopupSelectedIndex: number = 0;
+  @State private completionPopupLeft: number = 0;
+  @State private completionPopupTop: number = 0;
+  @State private completionPopupWidth: number = 300;
+  @State private inlineSuggestionBarVisible: boolean = false;
+  @State private inlineSuggestionBarLeft: number = 0;
+  @State private inlineSuggestionBarTop: number = 0;
+  @State private selectionMenuVisible: boolean = false;
+  @State private selectionMenuItems: SelectionMenuItem[] = [];
+  @State private selectionMenuLeft: number = 0;
+  @State private selectionMenuTop: number = 0;
 
   aboutToAppear(): void {
     try {
@@ -200,61 +512,401 @@ export struct SweetEditor {
     if (this.completionPopupController) {
       this.completionPopupController.dismiss();
     }
+    if (this.controller && this.controllerApi) {
+      this.controller.unbind(this.controllerApi);
+    }
   }
 
   build() {
-    Canvas(this.canvasContext = new CanvasRenderingContext2D(this.canvasSettings))
-      .id(EDITOR_FOCUS_ID)
-      .key(EDITOR_FOCUS_ID)
-      .tabIndex(0)
-      .focusOnTouch(true)
-      .width('100%')
-      .height('100%')
-      .onReady(() => {
-        this.initEditor();
-      })
-      .onAreaChange((_oldValue: Area, newValue: Area) => {
-        const w = newValue.width as number;
-        const h = newValue.height as number;
-        this.editorGlobalX = this.lengthToNumber(newValue.globalPosition.x);
-        this.editorGlobalY = this.lengthToNumber(newValue.globalPosition.y);
-        if (w > 0 && h > 0 && (w !== this.viewWidth || h !== this.viewHeight)) {
-          this.viewWidth = w;
-          this.viewHeight = h;
-          this.canvasWidth = w;
-          this.canvasHeight = h;
-          if (this.editorCore) {
-            this.editorCore.setViewport(w, h);
-            this.flush();
-          }
-        } else if (this.imeAttached) {
-          this.scheduleImeSync();
-        }
-      })
-      .onTouch((event: TouchEvent) => {
-        this.handleTouchEvent(event);
-      })
-      .onKeyEvent((event: KeyEvent) => {
-        if (event.type === KeyType.Down) {
-          this.handleKeyEvent(event, true);
-        }
-      })
-      .onFocus(() => {
-        this.editorFocused = true;
-        if (this.pendingShowKeyboard) {
-          setTimeout(() => {
-            if (this.pendingShowKeyboard) {
-              this.ensureInputMethodAttached(true);
+    Stack({ alignContent: Alignment.TopStart }) {
+      Canvas(this.canvasContext = new CanvasRenderingContext2D(this.canvasSettings))
+        .id(EDITOR_FOCUS_ID)
+        .key(EDITOR_FOCUS_ID)
+        .tabIndex(0)
+        .focusOnTouch(true)
+        .width('100%')
+        .height('100%')
+        .onReady(() => {
+          this.initEditor();
+        })
+        .onAreaChange((_oldValue: Area, newValue: Area) => {
+          const w = newValue.width as number;
+          const h = newValue.height as number;
+          this.editorGlobalX = this.lengthToNumber(newValue.globalPosition.x);
+          this.editorGlobalY = this.lengthToNumber(newValue.globalPosition.y);
+          if (w > 0 && h > 0 && (w !== this.viewWidth || h !== this.viewHeight)) {
+            this.viewWidth = w;
+            this.viewHeight = h;
+            this.canvasWidth = w;
+            this.canvasHeight = h;
+            if (this.editorCore) {
+              this.editorCore.setViewport(w, h);
+              this.flush();
             }
-          }, 0);
+          } else if (this.imeAttached) {
+            this.scheduleImeSync();
+          }
+        })
+        .onTouch((event: TouchEvent) => {
+          this.handleTouchEvent(event);
+        })
+        .onKeyEvent((event: KeyEvent) => {
+          if (event.type === KeyType.Down) {
+            this.handleKeyEvent(event, true);
+          }
+        })
+        .onFocus(() => {
+          this.editorFocused = true;
+          if (this.pendingShowKeyboard) {
+            setTimeout(() => {
+              if (this.pendingShowKeyboard) {
+                this.ensureInputMethodAttached(true);
+              }
+            }, 0);
+          }
+        })
+        .onBlur(() => {
+          this.editorFocused = false;
+          this.pendingShowKeyboard = false;
+          this.hideInputMethod();
+        })
+        .focusable(true)
+
+      if (this.selectionMenuVisible && this.selectionMenuItems.length > 0) {
+        this.buildSelectionMenuOverlay()
+      }
+
+      if (this.inlineSuggestionBarVisible) {
+        this.buildInlineSuggestionBarOverlay()
+      }
+
+      if (this.completionPopupVisible && this.completionPopupItems.length > 0) {
+        this.buildCompletionPopupOverlay()
+      }
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  private buildSelectionMenuOverlay(): void {
+    Row() {
+      ForEach(this.selectionMenuItems, (item: SelectionMenuItem, index: number) => {
+        this.buildSelectionMenuItem(item)
+        if (index < this.selectionMenuItems.length - 1) {
+          Blank()
+            .width(1)
+            .height(14)
+            .backgroundColor(colorToHex(this.theme.selectionMenuDividerColor))
+        }
+      }, (item: SelectionMenuItem) => `${item.id}-${item.label}`)
+    }
+    .padding(4)
+    .backgroundColor(colorToHex(this.theme.selectionMenuBgColor))
+    .borderRadius(6)
+    .border({
+      width: 1,
+      color: colorToHex(this.theme.selectionMenuBorderColor)
+    })
+    .position({
+      x: this.selectionMenuLeft,
+      y: this.selectionMenuTop
+    })
+    .zIndex(10)
+  }
+
+  @Builder
+  private buildSelectionMenuItem(item: SelectionMenuItem): void {
+    Text(item.label)
+      .fontSize(11)
+      .fontWeight('400')
+      .fontColor(colorToHex(this.theme.selectionMenuTextColor))
+      .textAlign(TextAlign.Center)
+      .padding({ left: SELECTION_MENU_HORIZONTAL_PADDING, right: SELECTION_MENU_HORIZONTAL_PADDING })
+      .width(this.getSelectionMenuItemWidth(item))
+      .height(SELECTION_MENU_ITEM_HEIGHT)
+      .opacity(item.enabled ? 1.0 : 0.45)
+      .onClick(() => {
+        if (!item.enabled || !this.selectionMenuController) {
+          return;
+        }
+        this.selectionMenuController.onMenuItemClicked(item);
+      })
+  }
+
+  @Builder
+  private buildInlineSuggestionBarOverlay(): void {
+    Row() {
+      this.buildInlineSuggestionBarButton('Accept', true)
+
+      Blank()
+        .width(INLINE_SUGGESTION_BAR_DIVIDER_WIDTH)
+        .height(INLINE_SUGGESTION_BAR_HEIGHT - INLINE_SUGGESTION_BAR_DIVIDER_VERTICAL_MARGIN * 2)
+        .backgroundColor(this.getInlineSuggestionOverlayColor())
+        .margin({ top: INLINE_SUGGESTION_BAR_DIVIDER_VERTICAL_MARGIN, bottom: INLINE_SUGGESTION_BAR_DIVIDER_VERTICAL_MARGIN })
+
+      this.buildInlineSuggestionBarButton('Dismiss', false)
+    }
+    .height(INLINE_SUGGESTION_BAR_HEIGHT)
+    .padding({ left: INLINE_SUGGESTION_BAR_HORIZONTAL_PADDING, right: INLINE_SUGGESTION_BAR_HORIZONTAL_PADDING })
+    .backgroundColor(colorToHex(this.theme.inlineSuggestionBarBgColor))
+    .borderRadius(INLINE_SUGGESTION_BAR_RADIUS)
+    .shadow({
+      radius: 8,
+      color: '#22000000',
+      offsetX: 0,
+      offsetY: 2
+    })
+    .position({
+      x: this.inlineSuggestionBarLeft,
+      y: this.inlineSuggestionBarTop
+    })
+    .zIndex(8)
+  }
+
+  @Builder
+  private buildInlineSuggestionBarButton(label: string, isAccept: boolean): void {
+    Text(label)
+      .fontSize(11)
+      .fontWeight(isAccept ? '700' : '400')
+      .fontColor(isAccept
+        ? colorToHex(this.theme.inlineSuggestionBarAcceptColor)
+        : colorToHex(this.theme.inlineSuggestionBarDismissColor))
+      .height('100%')
+      .textAlign(TextAlign.Center)
+      .padding({ left: INLINE_SUGGESTION_BAR_BUTTON_HORIZONTAL_PADDING, right: INLINE_SUGGESTION_BAR_BUTTON_HORIZONTAL_PADDING })
+      .onClick(() => {
+        if (!this.inlineSuggestionController) {
+          return;
+        }
+        if (isAccept) {
+          this.inlineSuggestionController.onAcceptClicked();
+        } else {
+          this.inlineSuggestionController.onDismissClicked();
         }
       })
-      .onBlur(() => {
-        this.editorFocused = false;
-        this.pendingShowKeyboard = false;
-        this.hideInputMethod();
-      })
-      .focusable(true)
+  }
+
+  @Builder
+  private buildCompletionPopupOverlay(): void {
+    Column() {
+      ForEach(this.completionPopupItems, (item: CompletionItem, index: number) => {
+        this.buildCompletionPopupItem(item, index)
+      }, (item: CompletionItem, index: number) => `${item.label}-${index}`)
+    }
+    .padding({ left: 4, right: 4, top: 6, bottom: 6 })
+    .width(this.completionPopupWidth)
+    .backgroundColor(colorToHex(this.theme.completionBgColor))
+    .borderRadius(12)
+    .border({
+      width: 1,
+      color: colorToHex(this.theme.completionBorderColor)
+    })
+    .shadow({
+      radius: 16,
+      color: '#32000000',
+      offsetX: 0,
+      offsetY: 4
+    })
+    .position({
+      x: this.completionPopupLeft,
+      y: this.completionPopupTop
+    })
+    .zIndex(9)
+  }
+
+  @Builder
+  private buildCompletionPopupItem(item: CompletionItem, index: number): void {
+    Row() {
+      Text(this.getCompletionKindBadgeText(item.kind))
+        .width(COMPLETION_KIND_BADGE_SIZE)
+        .height(COMPLETION_KIND_BADGE_SIZE)
+        .textAlign(TextAlign.Center)
+        .fontSize(10)
+        .fontWeight('700')
+        .fontColor('#FFFFFFFF')
+        .backgroundColor(this.getCompletionKindBadgeColor(item.kind))
+        .borderRadius(COMPLETION_KIND_BADGE_RADIUS)
+        .margin({ right: COMPLETION_KIND_BADGE_GAP })
+
+      Text(item.label)
+        .layoutWeight(1)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .fontSize(13)
+        .fontWeight('400')
+        .fontColor(colorToHex(this.theme.completionLabelColor))
+
+      if (item.detail !== null && item.detail.length > 0) {
+        Text(item.detail)
+          .margin({ left: 8 })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .fontSize(11)
+          .fontColor(colorToHex(this.theme.completionDetailColor))
+      }
+    }
+    .width('100%')
+    .height(COMPLETION_ITEM_HEIGHT)
+    .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+    .backgroundColor(index === this.completionPopupSelectedIndex
+      ? colorToHex(this.theme.completionSelectedBgColor)
+      : '#00000000')
+    .borderRadius(6)
+    .onClick(() => {
+      if (!this.completionPopupController) {
+        return;
+      }
+      this.completionPopupController.confirmItem(index);
+    })
+  }
+
+  private applyCompletionPopupState(items: CompletionItem[], selectedIndex: number, position: PopupPosition): void {
+    if (items.length === 0) {
+      this.dismissCompletionPopupState();
+      return;
+    }
+
+    const popupWidth = Math.min(position.popupWidth, Math.max(220, this.viewWidth - COMPLETION_POPUP_SIDE_MARGIN * 2));
+    const popupHeight = Math.min(position.popupHeight, Math.max(COMPLETION_ITEM_HEIGHT, items.length * COMPLETION_ITEM_HEIGHT));
+    const belowTop = this.clampNumber(position.belowY, COMPLETION_POPUP_TOP_MARGIN,
+      Math.max(COMPLETION_POPUP_TOP_MARGIN, this.viewHeight - popupHeight - COMPLETION_POPUP_TOP_MARGIN));
+    const aboveTop = this.clampNumber(position.aboveY, COMPLETION_POPUP_TOP_MARGIN,
+      Math.max(COMPLETION_POPUP_TOP_MARGIN, this.viewHeight - popupHeight - COMPLETION_POPUP_TOP_MARGIN));
+    const preferBelow = position.belowY + popupHeight <= this.viewHeight - COMPLETION_POPUP_TOP_MARGIN ||
+      position.aboveY < COMPLETION_POPUP_TOP_MARGIN;
+
+    this.completionPopupWidth = popupWidth;
+    this.completionPopupLeft = this.clampNumber(position.x, COMPLETION_POPUP_SIDE_MARGIN,
+      Math.max(COMPLETION_POPUP_SIDE_MARGIN, this.viewWidth - popupWidth - COMPLETION_POPUP_SIDE_MARGIN));
+    this.completionPopupTop = preferBelow ? belowTop : aboveTop;
+    this.completionPopupItems = [...items];
+    this.completionPopupSelectedIndex = Math.max(0, Math.min(items.length - 1, selectedIndex));
+    this.completionPopupVisible = true;
+  }
+
+  private dismissCompletionPopupState(): void {
+    this.completionPopupVisible = false;
+    this.completionPopupItems = [];
+    this.completionPopupSelectedIndex = 0;
+  }
+
+  private applyInlineSuggestionBarState(x: number, y: number, cursorHeight: number): void {
+    const maxLeft = Math.max(INLINE_SUGGESTION_BAR_SIDE_MARGIN,
+      this.viewWidth - INLINE_SUGGESTION_BAR_ESTIMATED_WIDTH - INLINE_SUGGESTION_BAR_SIDE_MARGIN);
+    const aboveTop = y - INLINE_SUGGESTION_BAR_HEIGHT - INLINE_SUGGESTION_BAR_GAP;
+    const belowTop = y + cursorHeight + INLINE_SUGGESTION_BAR_GAP;
+    let top = aboveTop;
+    if (top < INLINE_SUGGESTION_BAR_SIDE_MARGIN) {
+      top = belowTop;
+    }
+    this.inlineSuggestionBarLeft = this.clampNumber(x, INLINE_SUGGESTION_BAR_SIDE_MARGIN, maxLeft);
+    this.inlineSuggestionBarTop = this.clampNumber(
+      top,
+      INLINE_SUGGESTION_BAR_SIDE_MARGIN,
+      Math.max(INLINE_SUGGESTION_BAR_SIDE_MARGIN,
+        this.viewHeight - INLINE_SUGGESTION_BAR_HEIGHT - INLINE_SUGGESTION_BAR_SIDE_MARGIN)
+    );
+    this.inlineSuggestionBarVisible = true;
+  }
+
+  private dismissInlineSuggestionBarState(): void {
+    this.inlineSuggestionBarVisible = false;
+  }
+
+  private getInlineSuggestionOverlayColor(): string {
+    const bgColor = this.theme.inlineSuggestionBarBgColor;
+    const r = (bgColor >>> 16) & 0xFF;
+    const g = (bgColor >>> 8) & 0xFF;
+    const b = bgColor & 0xFF;
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    return luminance > 128 ? 'rgba(0, 0, 0, 0.133)' : 'rgba(255, 255, 255, 0.133)';
+  }
+
+  private getCompletionKindBadgeText(kind: number): string {
+    switch (kind) {
+      case CompletionItem.KIND_KEYWORD:
+        return 'K';
+      case CompletionItem.KIND_FUNCTION:
+        return 'F';
+      case CompletionItem.KIND_VARIABLE:
+        return 'V';
+      case CompletionItem.KIND_CLASS:
+        return 'C';
+      case CompletionItem.KIND_INTERFACE:
+        return 'I';
+      case CompletionItem.KIND_MODULE:
+        return 'M';
+      case CompletionItem.KIND_PROPERTY:
+        return 'P';
+      case CompletionItem.KIND_SNIPPET:
+        return 'S';
+      default:
+        return 'T';
+    }
+  }
+
+  private getCompletionKindBadgeColor(kind: number): string {
+    switch (kind) {
+      case CompletionItem.KIND_KEYWORD:
+        return '#FFC678DD';
+      case CompletionItem.KIND_FUNCTION:
+        return '#FF61AFEF';
+      case CompletionItem.KIND_VARIABLE:
+        return '#FFE5C07B';
+      case CompletionItem.KIND_CLASS:
+        return '#FFE06C75';
+      case CompletionItem.KIND_INTERFACE:
+        return '#FF56B6C2';
+      case CompletionItem.KIND_MODULE:
+        return '#FFD19A66';
+      case CompletionItem.KIND_PROPERTY:
+        return '#FF98C379';
+      case CompletionItem.KIND_SNIPPET:
+        return '#FFBE5046';
+      default:
+        return '#FF7A8494';
+    }
+  }
+
+  private applySelectionMenuState(state: SelectionMenuState): void {
+    if (!state.visible || state.items.length === 0) {
+      this.selectionMenuVisible = false;
+      this.selectionMenuItems = [];
+      return;
+    }
+
+    const menuWidth = this.getSelectionMenuPanelWidth(state.items);
+    const menuHeight = SELECTION_MENU_ITEM_HEIGHT + 8;
+    const maxLeft = Math.max(SELECTION_MENU_SIDE_MARGIN, this.viewWidth - menuWidth - SELECTION_MENU_SIDE_MARGIN);
+    const maxTop = Math.max(SELECTION_MENU_TOP_MARGIN, this.viewHeight - menuHeight - SELECTION_MENU_TOP_MARGIN);
+
+    this.selectionMenuLeft = this.clampNumber(
+      state.x - menuWidth * 0.5,
+      SELECTION_MENU_SIDE_MARGIN,
+      maxLeft
+    );
+    this.selectionMenuTop = this.clampNumber(state.y, SELECTION_MENU_TOP_MARGIN, maxTop);
+    this.selectionMenuItems = [...state.items];
+    this.selectionMenuVisible = true;
+  }
+
+  private getSelectionMenuPanelWidth(items: SelectionMenuItem[]): number {
+    let width = 8;
+    for (let i = 0; i < items.length; i++) {
+      width += this.getSelectionMenuItemWidth(items[i]);
+      if (i < items.length - 1) {
+        width += 1;
+      }
+    }
+    return width;
+  }
+
+  private getSelectionMenuItemWidth(item: SelectionMenuItem): number {
+    return Math.max(
+      SELECTION_MENU_ITEM_MIN_WIDTH,
+      item.label.length * 9 + SELECTION_MENU_HORIZONTAL_PADDING * 2
+    );
   }
 
   private initEditor(): void {
@@ -273,7 +925,20 @@ export struct SweetEditor {
     const ctx = this.canvasContext!;
     this.renderer.attachCanvasContext(ctx);
 
+    const scrollbarConfig = new ScrollbarConfig();
+    scrollbarConfig.thickness = 8.0;
+    scrollbarConfig.minThumb = 40.0;
+    scrollbarConfig.thumbHitPadding = 20.0;
+    scrollbarConfig.mode = ScrollbarMode.TRANSIENT;
+    scrollbarConfig.thumbDraggable = true;
+    scrollbarConfig.trackTapMode = ScrollbarTrackTapMode.DISABLED;
+    scrollbarConfig.fadeDelayMs = 700;
+    scrollbarConfig.fadeDurationMs = 300;
+    this.renderer.setScrollbarConfig(scrollbarConfig);
+
     this.editorCore = new EditorCore(this.renderer.getMeasurer(), options);
+    this.editorCore.setHandleConfig(this.renderer.getHandleConfig());
+    this.editorCore.setScrollbarConfig(scrollbarConfig);
     this.registerImeCallbacks();
 
     this.settings = new EditorSettings(this);
@@ -283,9 +948,20 @@ export struct SweetEditor {
     this.editorCore.registerBatchTextStyles(this.theme.textStyles);
 
     this.initSubsystems();
+    this.bindController();
 
     this.startCursorBlink();
     this.flush();
+  }
+
+  private bindController(): void {
+    if (!this.controller) {
+      return;
+    }
+    if (!this.controllerApi) {
+      this.controllerApi = new BoundSweetEditorExternalApi(this);
+    }
+    this.controller.bind(this.controllerApi);
   }
 
   private initSubsystems(): void {
@@ -302,12 +978,35 @@ export struct SweetEditor {
     this.completionProviderManager.setListener(this.completionPopupController);
     this.completionPopupController.setConfirmHandler(
       (item: CompletionItem): void => this.applyCompletionItemInternal(item));
+    this.completionPopupController.setOnShowCallback(
+      (items: CompletionItem[], selectedIndex: number, position: PopupPosition): void => {
+        this.applyCompletionPopupState(items, selectedIndex, position);
+      });
+    this.completionPopupController.setOnUpdateCallback(
+      (items: CompletionItem[], selectedIndex: number, position: PopupPosition): void => {
+        this.applyCompletionPopupState(items, selectedIndex, position);
+      });
+    this.completionPopupController.setOnDismissCallback((): void => {
+      this.dismissCompletionPopupState();
+    });
 
     // InlineSuggestionController
     this.inlineSuggestionController = new InlineSuggestionController(this, this.eventBus);
+    this.inlineSuggestionController.setOnShowCallback((x: number, y: number, height: number): void => {
+      this.applyInlineSuggestionBarState(x, y, height);
+    });
+    this.inlineSuggestionController.setOnUpdatePositionCallback((x: number, y: number, height: number): void => {
+      this.applyInlineSuggestionBarState(x, y, height);
+    });
+    this.inlineSuggestionController.setOnDismissCallback((): void => {
+      this.dismissInlineSuggestionBarState();
+    });
 
     // SelectionMenuController
     this.selectionMenuController = new SelectionMenuController(this, this.eventBus);
+    this.selectionMenuController.setStateListener((state: SelectionMenuState): void => {
+      this.applySelectionMenuState(state);
+    });
 
     // NewLineActionProviderManager
     this.newLineActionProviderManager = new NewLineActionProviderManager();
@@ -1491,6 +2190,10 @@ export struct SweetEditor {
         break;
       case GestureType.TAP:
         this.eventBus.publish(new CursorChangedEvent(result.cursorPosition));
+        if (this.completionPopupController && this.completionPopupController.isShowing() &&
+          this.completionProviderManager) {
+          this.completionProviderManager.dismiss();
+        }
         if (result.hitTarget && result.hitTarget.type !== HitTargetType.NONE) {
           this.fireHitTargetEvent(result, screenPoint);
         }
@@ -1500,6 +2203,10 @@ export struct SweetEditor {
         this.eventBus.publish(new ScrollChangedEvent(result.viewScrollX, result.viewScrollY));
         if (this.decorationProviderManager) {
           this.decorationProviderManager.onScrollChanged();
+        }
+        if (this.completionPopupController && this.completionPopupController.isShowing() &&
+          this.completionProviderManager) {
+          this.completionProviderManager.dismiss();
         }
         break;
       case GestureType.SCALE:
@@ -1556,31 +2263,74 @@ export struct SweetEditor {
       this.selectionMenuController.onTextChanged();
     }
 
-    // Trigger character completion
-    if (this.completionProviderManager && textChanges.length > 0) {
-      const lastChange = textChanges[textChanges.length - 1];
-      if (lastChange.newText && lastChange.newText.length === 1) {
-        const ch = lastChange.newText;
-        if (this.completionProviderManager.isTriggerCharacter(ch)) {
-          this.completionProviderManager.triggerCompletion(CompletionTriggerKind.CHARACTER, ch);
-        }
-      }
-    }
+    this.maybeTriggerCompletionFromChanges(textChanges);
   }
 
   private dispatchKeyEventResult(result: KeyEventResult): void {
     if (result.contentChanged) {
+      const textChanges: TextChange[] = [];
+      if (this.selectionMenuController) {
+        this.selectionMenuController.onTextChanged();
+      }
       if (result.editResult && result.editResult.changes.length > 0) {
         for (const change of result.editResult.changes) {
           this.eventBus.publish(new TextChangedEvent(TextChangeAction.KEY, change.range, change.newText));
+          textChanges.push({ range: change.range, newText: change.newText });
+        }
+        if (this.decorationProviderManager) {
+          this.decorationProviderManager.onTextChanged(textChanges);
         }
       } else {
         this.eventBus.publish(new TextChangedEvent(TextChangeAction.KEY, null, null));
       }
+      this.maybeTriggerCompletionFromChanges(textChanges);
     }
     if (result.cursorChanged && this.editorCore) {
       this.eventBus.publish(new CursorChangedEvent(this.editorCore.getCursorPosition()));
     }
+  }
+
+  private maybeTriggerCompletionFromChanges(textChanges: TextChange[]): void {
+    if (!this.completionProviderManager || !this.editorCore || this.editorCore.isInLinkedEditing()) {
+      return;
+    }
+
+    const popupShowing = this.completionPopupController !== null && this.completionPopupController.isShowing();
+
+    if (textChanges.length === 0) {
+      if (popupShowing) {
+        this.completionProviderManager.dismiss();
+      }
+      return;
+    }
+
+    const primaryChange = textChanges[0];
+    const newText = primaryChange.newText;
+    if (newText && newText.length === 1) {
+      if (this.completionProviderManager.isTriggerCharacter(newText)) {
+        this.completionProviderManager.triggerCompletion(CompletionTriggerKind.CHARACTER, newText);
+      } else if (popupShowing) {
+        this.completionProviderManager.dismiss();
+      } else if (this.isCompletionInvokeCharacter(newText)) {
+        this.completionProviderManager.triggerCompletion(CompletionTriggerKind.INVOKED, null);
+      }
+      return;
+    }
+
+    if (popupShowing) {
+      this.completionProviderManager.dismiss();
+    }
+  }
+
+  private isCompletionInvokeCharacter(ch: string): boolean {
+    if (ch.length !== 1) {
+      return false;
+    }
+    const code = ch.charCodeAt(0);
+    return ch === '_' ||
+      (code >= 48 && code <= 57) ||
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122);
   }
 
   // ==================== Rendering ====================
@@ -1690,6 +2440,11 @@ export struct SweetEditor {
   }
 
   private scheduleTransientScrollbarRefresh(delayMs: number): void {
+    const config = this.renderer ? this.renderer.getScrollbarConfig() : null;
+    if (config === null || config.mode !== ScrollbarMode.TRANSIENT) {
+      this.clearTransientScrollbarTimer();
+      return;
+    }
     this.clearTransientScrollbarTimer();
     this.transientScrollbarTimerId = setTimeout(() => {
       this.flush();
@@ -2055,6 +2810,13 @@ export struct SweetEditor {
     return 0;
   }
 
+  private clampNumber(value: number, min: number, max: number): number {
+    if (max < min) {
+      return min;
+    }
+    return Math.min(Math.max(value, min), max);
+  }
+
   private tryHandleNewLineAction(): boolean {
     if (!this.editorCore || !this.newLineActionProviderManager) {
       return false;
@@ -2091,8 +2853,9 @@ export struct SweetEditor {
 }
 
 function colorToHex(argb: number): string {
+  const a = ((argb >>> 24) & 0xFF) / 255;
   const r = (argb >>> 16) & 0xFF;
   const g = (argb >>> 8) & 0xFF;
   const b = argb & 0xFF;
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  return `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
 }
