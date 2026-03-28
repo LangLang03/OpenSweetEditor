@@ -34,7 +34,7 @@ typedef struct {
     void  (__stdcall* get_font_metrics)(float* arr, size_t length);
 } text_measurer_t;
 
-#pragma region Document API
+#pragma region [Core Lifecycle, View & Events]
 
 /// Create a Document and return its handle
 /// @param text UTF16 text content
@@ -62,10 +62,6 @@ EDITOR_API size_t get_document_line_count(intptr_t document_handle);
 /// @return UTF16 text content of the specified line
 EDITOR_API const U16Char* get_document_line_text(intptr_t document_handle, size_t line);
 
-#pragma endregion
-
-#pragma region Construction/Initialization/Lifecycle
-
 /// Create EditorCore and return its handle
 /// @param measurer Text measurement callback set
 /// @param options_data EditorOptions binary payload（LE byte order）:
@@ -85,10 +81,6 @@ EDITOR_API void free_editor(intptr_t editor_handle);
 
 /// Load Document
 EDITOR_API void set_editor_document(intptr_t editor_handle, intptr_t document_handle);
-
-#pragma endregion
-
-#pragma region Viewport/Font/Appearance Configuration
 
 /// Set editor viewport
 /// @param width Editor view width
@@ -139,9 +131,26 @@ EDITOR_API void editor_set_gutter_sticky(intptr_t editor_handle, int sticky);
 /// @param visible 0=hide entire gutter, non-zero=show gutter
 EDITOR_API void editor_set_gutter_visible(intptr_t editor_handle, int visible);
 
-#pragma endregion
+/// Set selection handle hit-test configuration using offset rects
+/// @param start_left/start_top/start_right/start_bottom  Start handle hit area offset from cursor bottom
+/// @param end_left/end_top/end_right/end_bottom  End handle hit area offset from cursor bottom
+EDITOR_API void editor_set_handle_config(intptr_t editor_handle,
+    float start_left, float start_top, float start_right, float start_bottom,
+    float end_left, float end_top, float end_right, float end_bottom);
 
-#pragma region Rendering
+/// Set scrollbar full configuration (geometry + behavior)
+/// @param thickness Scrollbar thickness in pixels
+/// @param min_thumb Minimum scrollbar thumb length in pixels
+/// @param thumb_hit_padding Extra thumb hit-test padding in pixels
+/// @param mode 0=ALWAYS, 1=TRANSIENT, 2=NEVER
+/// @param thumb_draggable 1=thumb drag enabled, 0=disabled
+/// @param track_tap_mode 0=JUMP, 1=DISABLED
+/// @param fade_delay_ms Delay before hide in TRANSIENT mode
+/// @param fade_duration_ms Fade duration in TRANSIENT mode (used for both fade-in and fade-out)
+EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
+    float thickness, float min_thumb, float thumb_hit_padding,
+    int mode, int thumb_draggable, int track_tap_mode,
+    int fade_delay_ms, int fade_duration_ms);
 
 /// Build render model for one editor frame
 /// @param out_size Output: payload byte length (bytes, excluding extra '\0' terminator)
@@ -287,10 +296,6 @@ EDITOR_API const uint8_t* build_editor_render_model(intptr_t editor_handle, size
 ///         Call free_binary_data after use; returns NULL on failure
 EDITOR_API const uint8_t* get_layout_metrics(intptr_t editor_handle, size_t* out_size);
 
-#pragma endregion
-
-#pragma region Gesture/Keyboard Event Handling
-
 /// GestureResult binary return layout (payload uses native byte order; all supported platforms are currently LE):
 /// 1. i32 gesture_type
 /// 2. Only when gesture_type is TAP / DOUBLE_TAP / LONG_PRESS / DRAG_SELECT / CONTEXT_MENU, append:
@@ -385,7 +390,7 @@ EDITOR_API const uint8_t* handle_editor_key_event(intptr_t editor_handle, uint16
 
 #pragma endregion
 
-#pragma region Text Editing
+#pragma region [Editing, Cursor/IME & Interaction]
 
 /// TextEditResult binary return layout (payload uses native byte order; all supported platforms are currently LE):
 /// 1. i32 changed
@@ -434,10 +439,6 @@ EDITOR_API const uint8_t* editor_backspace(intptr_t editor_handle, size_t* out_s
 /// @return TextEditResult binary payload, returns NULL if there is no change
 EDITOR_API const uint8_t* editor_delete_forward(intptr_t editor_handle, size_t* out_size);
 
-#pragma endregion
-
-#pragma region Line Operations
-
 /// Move current line (or lines covered by selection) up by one line
 /// @return TextEditResult binary payload, returns NULL if there is no change
 EDITOR_API const uint8_t* editor_move_line_up(intptr_t editor_handle, size_t* out_size);
@@ -466,10 +467,6 @@ EDITOR_API const uint8_t* editor_insert_line_above(intptr_t editor_handle, size_
 /// @return TextEditResult binary payload, returns NULL if there is no change
 EDITOR_API const uint8_t* editor_insert_line_below(intptr_t editor_handle, size_t* out_size);
 
-#pragma endregion
-
-#pragma region Undo/Redo
-
 /// Undo last edit operation
 /// @return TextEditResult binary payload, returns NULL when nothing can be undone
 EDITOR_API const uint8_t* editor_undo(intptr_t editor_handle, size_t* out_size);
@@ -485,10 +482,6 @@ EDITOR_API int editor_can_undo(intptr_t editor_handle);
 /// Whether redo is available
 /// @return 1=yes, 0=no
 EDITOR_API int editor_can_redo(intptr_t editor_handle);
-
-#pragma endregion
-
-#pragma region Cursor/Selection Management
 
 /// Set cursor position
 /// @param line Line number(0-based)
@@ -533,10 +526,6 @@ EDITOR_API void editor_get_word_range_at_cursor(intptr_t editor_handle, size_t* 
 /// @return Word text (UTF8); returns empty string when cursor is not on a word
 EDITOR_API const char* editor_get_word_at_cursor(intptr_t editor_handle);
 
-#pragma endregion
-
-#pragma region Cursor Movement
-
 /// Move cursor left
 /// @param extend_selection Whether to extend selection (Shift behavior)
 EDITOR_API void editor_move_cursor_left(intptr_t editor_handle, int extend_selection);
@@ -560,10 +549,6 @@ EDITOR_API void editor_move_cursor_to_line_start(intptr_t editor_handle, int ext
 /// Move cursor to line end
 /// @param extend_selection Whether to extend selection
 EDITOR_API void editor_move_cursor_to_line_end(intptr_t editor_handle, int extend_selection);
-
-#pragma endregion
-
-#pragma region IME Composition Input
 
 /// Notify editor that IME composition starts
 EDITOR_API void editor_composition_start(intptr_t editor_handle);
@@ -592,10 +577,6 @@ EDITOR_API void editor_set_composition_enabled(intptr_t editor_handle, int enabl
 /// @return 1=enabled, 0=disabled
 EDITOR_API int editor_is_composition_enabled(intptr_t editor_handle);
 
-#pragma endregion
-
-#pragma region Read-Only Mode
-
 /// Set read-only mode
 /// @param read_only 1=read-only, 0=editable
 EDITOR_API void editor_set_read_only(intptr_t editor_handle, int read_only);
@@ -603,10 +584,6 @@ EDITOR_API void editor_set_read_only(intptr_t editor_handle, int read_only);
 /// Get whether read-only mode is active
 /// @return 1=read-only, 0=editable
 EDITOR_API int editor_is_read_only(intptr_t editor_handle);
-
-#pragma endregion
-
-#pragma region Auto Indent
 
 /// Set auto indent mode
 /// @param mode 0=NONE(no auto indent),1=KEEP_INDENT(keep previous line indent)
@@ -618,57 +595,7 @@ EDITOR_API int editor_get_auto_indent_mode(intptr_t editor_handle);
 
 #pragma endregion
 
-#pragma region Handle Config
-
-/// Set selection handle hit-test configuration using offset rects
-/// @param start_left/start_top/start_right/start_bottom  Start handle hit area offset from cursor bottom
-/// @param end_left/end_top/end_right/end_bottom  End handle hit area offset from cursor bottom
-EDITOR_API void editor_set_handle_config(intptr_t editor_handle,
-    float start_left, float start_top, float start_right, float start_bottom,
-    float end_left, float end_top, float end_right, float end_bottom);
-
-#pragma endregion
-
-#pragma region Scrollbar Config
-
-/// Set scrollbar full configuration (geometry + behavior)
-/// @param thickness Scrollbar thickness in pixels
-/// @param min_thumb Minimum scrollbar thumb length in pixels
-/// @param thumb_hit_padding Extra thumb hit-test padding in pixels
-/// @param mode 0=ALWAYS, 1=TRANSIENT, 2=NEVER
-/// @param thumb_draggable 1=thumb drag enabled, 0=disabled
-/// @param track_tap_mode 0=JUMP, 1=DISABLED
-/// @param fade_delay_ms Delay before hide in TRANSIENT mode
-/// @param fade_duration_ms Fade duration in TRANSIENT mode (used for both fade-in and fade-out)
-EDITOR_API void editor_set_scrollbar_config(intptr_t editor_handle,
-    float thickness, float min_thumb, float thumb_hit_padding,
-    int mode, int thumb_draggable, int track_tap_mode,
-    int fade_delay_ms, int fade_duration_ms);
-
-#pragma endregion
-
-#pragma region Position Coordinate Query
-
-/// Get screen coordinate rect for any text position (for floating panel positioning)
-/// @param line Line number(0-based)
-/// @param column Column number (0-based)
-/// @param out_x Output: x coordinate in viewport
-/// @param out_y Output: y coordinate in viewport (line top)
-/// @param out_height Output: line height
-EDITOR_API void editor_get_position_rect(intptr_t editor_handle,
-    size_t line, size_t column,
-    float* out_x, float* out_y, float* out_height);
-
-/// Get screen coordinate rect at current cursor position (shortcut)
-/// @param out_x Output: x coordinate in viewport
-/// @param out_y Output: y coordinate in viewport (line top)
-/// @param out_height Output: line height
-EDITOR_API void editor_get_cursor_rect(intptr_t editor_handle,
-    float* out_x, float* out_y, float* out_height);
-
-#pragma endregion
-
-#pragma region Scrolling/Navigation
+#pragma region [Navigation, Styles & Decorations]
 
 /// Scroll to specified line
 /// @param line Line number(0-based)
@@ -704,9 +631,22 @@ EDITOR_API void editor_set_scroll(intptr_t editor_handle, float scroll_x, float 
 /// @return ScrollMetrics binary payload; Returns default payload for invalid handle
 EDITOR_API const uint8_t* editor_get_scroll_metrics(intptr_t editor_handle, size_t* out_size);
 
-#pragma endregion
+/// Get screen coordinate rect for any text position (for floating panel positioning)
+/// @param line Line number(0-based)
+/// @param column Column number (0-based)
+/// @param out_x Output: x coordinate in viewport
+/// @param out_y Output: y coordinate in viewport (line top)
+/// @param out_height Output: line height
+EDITOR_API void editor_get_position_rect(intptr_t editor_handle,
+    size_t line, size_t column,
+    float* out_x, float* out_y, float* out_height);
 
-#pragma region Style Registration + Highlight Spans
+/// Get screen coordinate rect at current cursor position (shortcut)
+/// @param out_x Output: x coordinate in viewport
+/// @param out_y Output: y coordinate in viewport (line top)
+/// @param out_height Output: line height
+EDITOR_API void editor_get_cursor_rect(intptr_t editor_handle,
+    float* out_x, float* out_y, float* out_height);
 
 /// Register text style (color + background color + font style)
 /// @param style_id Style ID
@@ -745,10 +685,6 @@ EDITOR_API void editor_clear_line_spans(intptr_t editor_handle, size_t line, uin
 /// @param layer Highlight layer (0=SYNTAX, 1=SEMANTIC)
 EDITOR_API void editor_clear_highlights_layer(intptr_t editor_handle, uint8_t layer);
 
-#pragma endregion
-
-#pragma region InlayHint / PhantomText
-
 /// Set inlay hints for specified line (compact binary, replace whole line)
 /// @param data payload(LE):
 ///             u32 line, u32 hint_count, then repeat for hint_count groups:
@@ -781,10 +717,6 @@ EDITOR_API void editor_set_line_phantom_texts(intptr_t editor_handle, const uint
 /// @param size payload byte length
 EDITOR_API void editor_set_batch_line_phantom_texts(intptr_t editor_handle, const uint8_t* data, size_t size);
 
-#pragma endregion
-
-#pragma region Gutter Icons
-
 /// Set gutter icons for specified line (compact binary, replace whole line)
 /// @param data payload(LE):
 ///             u32 line, u32 icon_count, then repeat for icon_count groups
@@ -806,10 +738,6 @@ EDITOR_API void editor_set_max_gutter_icons(intptr_t editor_handle, uint32_t cou
 /// Clear all gutter icons
 EDITOR_API void editor_clear_gutter_icons(intptr_t editor_handle);
 
-#pragma endregion
-
-#pragma region Diagnostic Decorations
-
 /// Set diagnostic decoration ranges for specified line (compact binary)
 /// @param data payload(LE):
 ///             u32 line, u32 diag_count, then repeat for diag_count groups
@@ -826,10 +754,6 @@ EDITOR_API void editor_set_batch_line_diagnostics(intptr_t editor_handle, const 
 
 /// Clear all diagnostic decorations
 EDITOR_API void editor_clear_diagnostics(intptr_t editor_handle);
-
-#pragma endregion
-
-#pragma region Guide(code structure lines)
 
 /// Set indent guide list (compact binary, global replace)
 /// @param data payload(LE):
@@ -863,10 +787,6 @@ EDITOR_API void editor_set_separator_guides(intptr_t editor_handle, const uint8_
 /// Clear all code structure lines (indent guides, bracket guides, control-flow arrows, separators)
 EDITOR_API void editor_clear_guides(intptr_t editor_handle);
 
-#pragma endregion
-
-#pragma region Bracket Pair Highlight
-
 /// Set bracket pair list (override default (){}[])
 /// @param open_chars Open bracket char array (UTF-32)
 /// @param close_chars Close bracket char array (UTF-32)
@@ -882,10 +802,6 @@ EDITOR_API void editor_set_matched_brackets(intptr_t editor_handle, size_t open_
 
 /// Clear externally set bracket match result (fall back to built-in char scan)
 EDITOR_API void editor_clear_matched_brackets(intptr_t editor_handle);
-
-#pragma endregion
-
-#pragma region Code Folding
 
 /// Set foldable region list (compact binary)
 /// @param data payload(LE):
@@ -920,10 +836,6 @@ EDITOR_API void editor_unfold_all(intptr_t editor_handle);
 /// @return 1=visible, 0=hidden
 EDITOR_API int editor_is_line_visible(intptr_t editor_handle, size_t line);
 
-#pragma endregion
-
-#pragma region Clear Operations
-
 /// Clear all highlight spans
 EDITOR_API void editor_clear_highlights(intptr_t editor_handle);
 
@@ -938,7 +850,7 @@ EDITOR_API void editor_clear_all_decorations(intptr_t editor_handle);
 
 #pragma endregion
 
-#pragma region Linked Editing (LinkedEditing)
+#pragma region [Linked Editing & Utilities]
 
 /// Insert VSCode snippet template and enter linked editing mode (convenience API)
 /// @param snippet_template VSCode snippet template (UTF8)
@@ -969,10 +881,6 @@ EDITOR_API int editor_linked_editing_prev(intptr_t editor_handle);
 /// Cancel linked editing mode
 EDITOR_API void editor_cancel_linked_editing(intptr_t editor_handle);
 
-#pragma endregion
-
-#pragma region Utilities/Memory Management
-
 /// Free string memory allocated on C++ side
 /// @param string_ptr String pointer
 EDITOR_API void free_u16_string(intptr_t string_ptr);
@@ -983,12 +891,12 @@ EDITOR_API void free_u16_string(intptr_t string_ptr);
 /// @param data_ptr Start address of binary payload
 EDITOR_API void free_binary_data(intptr_t data_ptr);
 
+#pragma endregion
+
 #ifdef _WIN32
 /// Set crash log output for DLL calls, Windows only
 EDITOR_API void init_unhandled_exception_handler();
 #endif
-
-#pragma endregion
 
 }
 

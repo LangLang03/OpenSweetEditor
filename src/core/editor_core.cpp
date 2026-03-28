@@ -36,7 +36,8 @@ namespace NS_SWEETEDITOR {
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
   }
 
-#pragma region [Class: EditorOptions]
+#pragma region [Setup & View State]
+
   TouchConfig EditorOptions::simpleAsTouchConfig() const {
     return TouchConfig {touch_slop, double_tap_timeout, long_press_ms, fling_friction, fling_min_velocity, fling_max_velocity};
   }
@@ -64,9 +65,6 @@ namespace NS_SWEETEDITOR {
         + ", gutter_visible = " + (gutter_visible ? "true" : "false")
         + "}";
   }
-#pragma endregion
-
-#pragma region [Class: EditorCore]
   EditorCore::EditorCore(const Ptr<TextMeasurer>& measurer, const EditorOptions& options): m_measurer_(measurer), m_options_(options) {
     m_decorations_ = makePtr<DecorationManager>();
     m_gesture_handler_ = makeUPtr<GestureHandler>(options.simpleAsTouchConfig());
@@ -127,7 +125,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     normalizeScrollState();
     LOGD("EditorCore::loadDocument()");
   }
-#pragma region [Appearance-Font]
   void EditorCore::setViewport(const Viewport& viewport) {
     PERF_TIMER("setViewport");
     bool width_changed = (m_viewport_.width != viewport.width);
@@ -277,9 +274,11 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     if (m_settings_.current_line_render_mode == mode) return;
     m_settings_.current_line_render_mode = mode;
   }
+
 #pragma endregion
 
-#pragma region [Rendering]
+#pragma region [Rendering & Input]
+
   Ptr<TextStyleRegistry> EditorCore::getTextStyleRegistry() const {
     return m_decorations_->getTextStyleRegistry();
   }
@@ -453,9 +452,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   LayoutMetrics& EditorCore::getLayoutMetrics() const {
     return m_text_layout_->getLayoutMetrics();
   }
-#pragma endregion
-
-#pragma region [Gesture-KeyEvent]
   void EditorCore::fillGestureResult(GestureResult& result) const {
     result.cursor_position = m_cursor_position_;
     result.has_selection = m_has_selection_;
@@ -1030,9 +1026,11 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     LOGD("EditorCore::handleKeyEvent, key_code = %d, handled = %d", (int)event.key_code, result.handled);
     return result;
   }
+
 #pragma endregion
 
-#pragma region [Editing]
+#pragma region [Editing & Cursor/IME]
+
   TextEditResult EditorCore::insertText(const U8String& text) {
     if (m_document_ == nullptr || text.empty() || m_settings_.read_only) return {};
 
@@ -1230,9 +1228,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     m_cursor_position_ = range.start;
     clearSelection();
   }
-#pragma endregion
-
-#pragma region [Line-Operation]
   TextEditResult EditorCore::moveLineUp() {
     if (m_document_ == nullptr || m_settings_.read_only) return {};
     if (m_composition_.is_composing) compositionCancel();
@@ -1437,9 +1432,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     // applyEdit has already moved cursor to the start of the new line
     return result;
   }
-#pragma endregion
-
-#pragma region [Undo-Redo]
   TextEditResult EditorCore::undo() {
     if (m_document_ == nullptr || m_settings_.read_only) return {};
 
@@ -1633,9 +1625,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   bool EditorCore::canRedo() const {
     return m_undo_manager_->canRedo();
   }
-#pragma endregion
-
-#pragma region [Cursor-Selection]
   void EditorCore::setCursorPosition(const TextPosition& position) {
     m_cursor_position_ = position;
     if (m_document_ != nullptr) {
@@ -1940,9 +1929,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     uint32_t cols = m_document_->getLineColumns(m_cursor_position_.line);
     moveCursorTo({m_cursor_position_.line, cols}, extend_selection);
   }
-#pragma endregion
-
-#pragma region [IME-Composition]
   void EditorCore::compositionStart() {
     if (m_document_ == nullptr || m_settings_.read_only) return;
 
@@ -2087,9 +2073,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   bool EditorCore::isCompositionEnabled() const {
     return m_settings_.enable_composition;
   }
-#pragma endregion
-
-#pragma region [ReadOnly]
   void EditorCore::setReadOnly(bool read_only) {
     if (read_only && m_composition_.is_composing) {
       compositionCancel();
@@ -2101,9 +2084,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   bool EditorCore::isReadOnly() const {
     return m_settings_.read_only;
   }
-#pragma endregion
-
-#pragma region [AutoIndent]
   void EditorCore::setAutoIndentMode(AutoIndentMode mode) {
     m_settings_.auto_indent_mode = mode;
     LOGD("EditorCore::setAutoIndentMode, mode = %d", (int)mode);
@@ -2112,25 +2092,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
   AutoIndentMode EditorCore::getAutoIndentMode() const {
     return m_settings_.auto_indent_mode;
   }
-#pragma endregion
-
-#pragma region [Cursor-ScreenRect]
-  CursorRect EditorCore::getPositionScreenRect(const TextPosition& position) {
-    CursorRect rect;
-    if (m_text_layout_ == nullptr) return rect;
-    PointF coord = m_text_layout_->getPositionScreenCoord(position);
-    rect.x = coord.x;
-    rect.y = coord.y;
-    rect.height = m_text_layout_->getLineHeight();
-    return rect;
-  }
-
-  CursorRect EditorCore::getCursorScreenRect() {
-    return getPositionScreenRect(m_cursor_position_);
-  }
-#pragma endregion
-
-#pragma region [LinkedEditing]
   TextEditResult EditorCore::insertSnippet(const U8String& snippet_template) {
     if (m_document_ == nullptr || snippet_template.empty() || m_settings_.read_only) return {};
 
@@ -2314,9 +2275,11 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     }
     ensureCursorVisible();
   }
+
 #pragma endregion
 
-#pragma region [Scroll-Goto]
+#pragma region [Navigation & Decorations]
+
   void EditorCore::scrollToLine(size_t line, ScrollBehavior behavior) {
     if (m_document_ == nullptr) return;
 
@@ -2369,9 +2332,21 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     normalizeScrollState();
     LOGD("EditorCore::setScroll, m_view_state_ = %s", m_view_state_.dump().c_str());
   }
-#pragma endregion
 
-#pragma region [Decorations]
+  CursorRect EditorCore::getPositionScreenRect(const TextPosition& position) {
+    CursorRect rect;
+    if (m_text_layout_ == nullptr) return rect;
+    PointF coord = m_text_layout_->getPositionScreenCoord(position);
+    rect.x = coord.x;
+    rect.y = coord.y;
+    rect.height = m_text_layout_->getLineHeight();
+    return rect;
+  }
+
+  CursorRect EditorCore::getCursorScreenRect() {
+    return getPositionScreenRect(m_cursor_position_);
+  }
+
   void EditorCore::registerTextStyle(uint32_t style_id, TextStyle&& style) {
     m_decorations_->getTextStyleRegistry()->registerTextStyle(style_id, std::move(style));
     markAllLinesDirty();
@@ -2919,7 +2894,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     m_external_bracket_open_ = {};
     m_external_bracket_close_ = {};
   }
-#pragma endregion
 
   void EditorCore::placeCursorAt(const PointF& screen_point) {
     TextPosition pos = m_text_layout_->hitTest(screen_point);
@@ -3302,8 +3276,6 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     m_composition_text_in_document_ = false;
   }
 
-#pragma region [Bracket-Highlight]
-
   void EditorCore::buildBracketHighlightRects(EditorRenderModel& model, float line_height) {
     if (m_document_ == nullptr || m_bracket_pairs_.empty()) return;
 
@@ -3415,5 +3387,7 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
     addRect(open_pos);
     addRect(close_pos);
   }
+
 #pragma endregion
+
 }

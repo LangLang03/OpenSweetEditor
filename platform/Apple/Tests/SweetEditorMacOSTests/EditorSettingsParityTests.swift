@@ -1,4 +1,5 @@
 import XCTest
+#if os(macOS)
 @testable import SweetEditorMacOS
 @testable import SweetEditorCoreInternal
 
@@ -111,3 +112,4 @@ final class EditorSettingsParityTests: XCTestCase {
         XCTAssertEqual(config.insertSpaces, true)
     }
 }
+#endif

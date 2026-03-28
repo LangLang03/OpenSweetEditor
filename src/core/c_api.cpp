@@ -479,7 +479,7 @@ private:
 
 extern "C" {
 
-#pragma region Document API
+#pragma region [Core Lifecycle, View & Events]
 
 intptr_t create_document_from_utf16(const U16Char* text) {
   Ptr<Document> document = makePtr<LineArrayDocument>(text);
@@ -524,10 +524,6 @@ const U16Char* get_document_line_text(intptr_t document_handle, size_t line) {
   return StrUtil::allocU16Chars(u16_text);
 }
 
-#pragma endregion
-
-#pragma region Construction/Initialization/Lifecycle
-
 intptr_t create_editor(text_measurer_t measurer, const uint8_t* options_data, size_t options_size) {
   Ptr<CTextMeasurer> c_measurer = makePtr<CTextMeasurer>(measurer);
   EditorOptions options;
@@ -570,10 +566,6 @@ void set_editor_document(intptr_t editor_handle, intptr_t document_handle) {
   }
   editor_core->loadDocument(document);
 }
-
-#pragma endregion
-
-#pragma region Viewport/Font/Appearance Settings
 
 void set_editor_viewport(intptr_t editor_handle, int16_t width, int16_t height) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -671,9 +663,48 @@ void editor_set_gutter_visible(intptr_t editor_handle, int visible) {
   editor_core->setGutterVisible(visible != 0);
 }
 
-#pragma endregion
+void editor_set_handle_config(intptr_t editor_handle,
+    float start_left, float start_top, float start_right, float start_bottom,
+    float end_left, float end_top, float end_right, float end_bottom) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr) {
+    return;
+  }
+  HandleConfig config;
+  config.start_hit_offset = {start_left, start_top, start_right, start_bottom};
+  config.end_hit_offset = {end_left, end_top, end_right, end_bottom};
+  editor_core->setHandleConfig(config);
+}
 
-#pragma region Rendering
+void editor_set_scrollbar_config(intptr_t editor_handle,
+    float thickness, float min_thumb, float thumb_hit_padding,
+    int mode, int thumb_draggable, int track_tap_mode,
+    int fade_delay_ms, int fade_duration_ms) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr) {
+    return;
+  }
+  ScrollbarConfig config;
+  config.thickness = thickness;
+  config.min_thumb = min_thumb;
+  config.thumb_hit_padding = std::max(0.0f, thumb_hit_padding);
+
+  if (mode <= static_cast<int>(ScrollbarMode::ALWAYS)) {
+    config.mode = ScrollbarMode::ALWAYS;
+  } else if (mode >= static_cast<int>(ScrollbarMode::NEVER)) {
+    config.mode = ScrollbarMode::NEVER;
+  } else {
+    config.mode = static_cast<ScrollbarMode>(mode);
+  }
+
+  config.thumb_draggable = (thumb_draggable != 0);
+  config.track_tap_mode = (track_tap_mode == static_cast<int>(ScrollbarTrackTapMode::DISABLED))
+      ? ScrollbarTrackTapMode::DISABLED
+      : ScrollbarTrackTapMode::JUMP;
+  config.fade_delay_ms = static_cast<uint16_t>(std::max(0, std::min(65535, fade_delay_ms)));
+  config.fade_duration_ms = static_cast<uint16_t>(std::max(0, std::min(65535, fade_duration_ms)));
+  editor_core->setScrollbarConfig(config);
+}
 
 const uint8_t* build_editor_render_model(intptr_t editor_handle, size_t* out_size) {
   PERF_TIMER("c_api::build_editor_render_model");
@@ -702,10 +733,6 @@ const uint8_t* get_layout_metrics(intptr_t editor_handle, size_t* out_size) {
   }
   return layoutMetricsToBinary(editor_core->getLayoutMetrics(), out_size);
 }
-
-#pragma endregion
-
-#pragma region Gesture/Keyboard Event Handling
 
 const uint8_t* handle_editor_gesture_event(intptr_t editor_handle, uint8_t type, uint8_t pointer_count,
     float* points, size_t* out_size) {
@@ -790,7 +817,7 @@ const uint8_t* handle_editor_key_event(intptr_t editor_handle, uint16_t key_code
 
 #pragma endregion
 
-#pragma region Text Editing
+#pragma region [Editing, Cursor/IME & Interaction]
 
 const uint8_t* editor_insert_text(intptr_t editor_handle, const char* text, size_t* out_size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -858,10 +885,6 @@ const uint8_t* editor_delete_forward(intptr_t editor_handle, size_t* out_size) {
   TextEditResult result = editor_core->deleteForward();
   return textEditResultToBinary(result, out_size);
 }
-
-#pragma endregion
-
-#pragma region Line Operations
 
 const uint8_t* editor_move_line_up(intptr_t editor_handle, size_t* out_size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -947,10 +970,6 @@ const uint8_t* editor_insert_line_below(intptr_t editor_handle, size_t* out_size
   return textEditResultToBinary(result, out_size);
 }
 
-#pragma endregion
-
-#pragma region Undo/Redo
-
 const uint8_t* editor_undo(intptr_t editor_handle, size_t* out_size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr) {
@@ -986,10 +1005,6 @@ int editor_can_redo(intptr_t editor_handle) {
   if (editor_core == nullptr) return 0;
   return editor_core->canRedo() ? 1 : 0;
 }
-
-#pragma endregion
-
-#pragma region Cursor/Selection Management
 
 void editor_set_cursor_position(intptr_t editor_handle, size_t line, size_t column) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1064,10 +1079,6 @@ const char* editor_get_word_at_cursor(intptr_t editor_handle) {
   return result;
 }
 
-#pragma endregion
-
-#pragma region Cursor Movement
-
 void editor_move_cursor_left(intptr_t editor_handle, int extend_selection) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr) return;
@@ -1103,10 +1114,6 @@ void editor_move_cursor_to_line_end(intptr_t editor_handle, int extend_selection
   if (editor_core == nullptr) return;
   editor_core->moveCursorToLineEnd(extend_selection != 0);
 }
-
-#pragma endregion
-
-#pragma region IME Composition Input
 
 void editor_composition_start(intptr_t editor_handle) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1168,10 +1175,6 @@ int editor_is_composition_enabled(intptr_t editor_handle) {
   return editor_core->isCompositionEnabled() ? 1 : 0;
 }
 
-#pragma endregion
-
-#pragma region Read-Only Mode
-
 void editor_set_read_only(intptr_t editor_handle, int read_only) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr) {
@@ -1187,10 +1190,6 @@ int editor_is_read_only(intptr_t editor_handle) {
   }
   return editor_core->isReadOnly() ? 1 : 0;
 }
-
-#pragma endregion
-
-#pragma region Auto Indent
 
 void editor_set_auto_indent_mode(intptr_t editor_handle, int mode) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1210,83 +1209,7 @@ int editor_get_auto_indent_mode(intptr_t editor_handle) {
 
 #pragma endregion
 
-#pragma region Handle Config
-
-void editor_set_handle_config(intptr_t editor_handle,
-    float start_left, float start_top, float start_right, float start_bottom,
-    float end_left, float end_top, float end_right, float end_bottom) {
-  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
-  if (editor_core == nullptr) {
-    return;
-  }
-  HandleConfig config;
-  config.start_hit_offset = {start_left, start_top, start_right, start_bottom};
-  config.end_hit_offset = {end_left, end_top, end_right, end_bottom};
-  editor_core->setHandleConfig(config);
-}
-
-#pragma endregion
-
-#pragma region Scrollbar Config
-
-void editor_set_scrollbar_config(intptr_t editor_handle,
-    float thickness, float min_thumb, float thumb_hit_padding,
-    int mode, int thumb_draggable, int track_tap_mode,
-    int fade_delay_ms, int fade_duration_ms) {
-  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
-  if (editor_core == nullptr) {
-    return;
-  }
-  ScrollbarConfig config;
-  config.thickness = thickness;
-  config.min_thumb = min_thumb;
-  config.thumb_hit_padding = std::max(0.0f, thumb_hit_padding);
-
-  if (mode <= static_cast<int>(ScrollbarMode::ALWAYS)) {
-    config.mode = ScrollbarMode::ALWAYS;
-  } else if (mode >= static_cast<int>(ScrollbarMode::NEVER)) {
-    config.mode = ScrollbarMode::NEVER;
-  } else {
-    config.mode = static_cast<ScrollbarMode>(mode);
-  }
-
-  config.thumb_draggable = (thumb_draggable != 0);
-  config.track_tap_mode = (track_tap_mode == static_cast<int>(ScrollbarTrackTapMode::DISABLED))
-      ? ScrollbarTrackTapMode::DISABLED
-      : ScrollbarTrackTapMode::JUMP;
-  config.fade_delay_ms = static_cast<uint16_t>(std::max(0, std::min(65535, fade_delay_ms)));
-  config.fade_duration_ms = static_cast<uint16_t>(std::max(0, std::min(65535, fade_duration_ms)));
-  editor_core->setScrollbarConfig(config);
-}
-
-#pragma endregion
-
-#pragma region Position Coordinate Query
-
-void editor_get_position_rect(intptr_t editor_handle,
-    size_t line, size_t column,
-    float* out_x, float* out_y, float* out_height) {
-  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
-  if (editor_core == nullptr) return;
-  CursorRect rect = editor_core->getPositionScreenRect({line, column});
-  if (out_x) *out_x = rect.x;
-  if (out_y) *out_y = rect.y;
-  if (out_height) *out_height = rect.height;
-}
-
-void editor_get_cursor_rect(intptr_t editor_handle,
-    float* out_x, float* out_y, float* out_height) {
-  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
-  if (editor_core == nullptr) return;
-  CursorRect rect = editor_core->getCursorScreenRect();
-  if (out_x) *out_x = rect.x;
-  if (out_y) *out_y = rect.y;
-  if (out_height) *out_height = rect.height;
-}
-
-#pragma endregion
-
-#pragma region Scrolling/Navigation
+#pragma region [Navigation, Styles & Decorations]
 
 void editor_scroll_to_line(intptr_t editor_handle, size_t line, uint8_t behavior) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1322,9 +1245,26 @@ const uint8_t* editor_get_scroll_metrics(intptr_t editor_handle, size_t* out_siz
   return scrollMetricsToBinary(metrics, out_size);
 }
 
-#pragma endregion
+void editor_get_position_rect(intptr_t editor_handle,
+    size_t line, size_t column,
+    float* out_x, float* out_y, float* out_height) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr) return;
+  CursorRect rect = editor_core->getPositionScreenRect({line, column});
+  if (out_x) *out_x = rect.x;
+  if (out_y) *out_y = rect.y;
+  if (out_height) *out_height = rect.height;
+}
 
-#pragma region Style Registration + Highlight Spans
+void editor_get_cursor_rect(intptr_t editor_handle,
+    float* out_x, float* out_y, float* out_height) {
+  Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
+  if (editor_core == nullptr) return;
+  CursorRect rect = editor_core->getCursorScreenRect();
+  if (out_x) *out_x = rect.x;
+  if (out_y) *out_y = rect.y;
+  if (out_height) *out_height = rect.height;
+}
 
 void editor_register_text_style(intptr_t editor_handle, uint32_t style_id, int32_t color, int32_t background_color, int32_t font_style) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1434,10 +1374,6 @@ void editor_clear_highlights_layer(intptr_t editor_handle, uint8_t layer) {
   if (editor_core == nullptr) return;
   editor_core->clearHighlights(static_cast<SpanLayer>(layer));
 }
-
-#pragma endregion
-
-#pragma region InlayHint / PhantomText
 
 void editor_set_line_inlay_hints(intptr_t editor_handle, const uint8_t* data, size_t size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1593,10 +1529,6 @@ void editor_set_batch_line_phantom_texts(intptr_t editor_handle, const uint8_t* 
   editor_core->setBatchLinePhantomTexts(std::move(entries));
 }
 
-#pragma endregion
-
-#pragma region Gutter Icons
-
 void editor_set_line_gutter_icons(intptr_t editor_handle, const uint8_t* data, size_t size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr || data == nullptr) return;
@@ -1660,10 +1592,6 @@ void editor_set_max_gutter_icons(intptr_t editor_handle, uint32_t count) {
   }
   editor_core->setMaxGutterIcons(count);
 }
-
-#pragma endregion
-
-#pragma region Diagnostic Decorations
 
 void editor_set_line_diagnostics(intptr_t editor_handle, const uint8_t* data, size_t size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1743,10 +1671,6 @@ void editor_clear_diagnostics(intptr_t editor_handle) {
   if (editor_core == nullptr) return;
   editor_core->clearDiagnostics();
 }
-
-#pragma endregion
-
-#pragma region Guide (Code Structure Lines)
 
 void editor_set_indent_guides(intptr_t editor_handle, const uint8_t* data, size_t size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1863,10 +1787,6 @@ void editor_set_separator_guides(intptr_t editor_handle, const uint8_t* data, si
   editor_core->setSeparatorGuides(std::move(guides));
 }
 
-#pragma endregion
-
-#pragma region Bracket Pair Highlight
-
 void editor_set_bracket_pairs(intptr_t editor_handle, const uint32_t* open_chars, const uint32_t* close_chars, size_t count) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr || open_chars == nullptr || close_chars == nullptr) return;
@@ -1889,10 +1809,6 @@ void editor_clear_matched_brackets(intptr_t editor_handle) {
   if (editor_core == nullptr) return;
   editor_core->clearMatchedBrackets();
 }
-
-#pragma endregion
-
-#pragma region Code Folding
 
 void editor_set_fold_regions(intptr_t editor_handle, const uint8_t* data, size_t size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -1958,10 +1874,6 @@ int editor_is_line_visible(intptr_t editor_handle, size_t line) {
   return editor_core->isLineVisible(line) ? 1 : 0;
 }
 
-#pragma endregion
-
-#pragma region Clear Operations
-
 void editor_clear_highlights(intptr_t editor_handle) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
   if (editor_core == nullptr) return;
@@ -2000,7 +1912,7 @@ void editor_clear_all_decorations(intptr_t editor_handle) {
 
 #pragma endregion
 
-#pragma region Linked Editing (LinkedEditing)
+#pragma region [Linked Editing & Utilities]
 
 const uint8_t* editor_insert_snippet(intptr_t editor_handle, const char* snippet_template, size_t* out_size) {
   Ptr<EditorCore> editor_core = getCPtrHolderValue<EditorCore>(editor_handle);
@@ -2136,10 +2048,6 @@ void editor_cancel_linked_editing(intptr_t editor_handle) {
   editor_core->cancelLinkedEditing();
 }
 
-#pragma endregion
-
-#pragma region Utilities/Memory Management
-
 void free_u16_string(intptr_t string_ptr) {
   const U16Char* ptr = reinterpret_cast<const U16Char*>(string_ptr);
   delete[] ptr;
@@ -2149,6 +2057,8 @@ void free_binary_data(intptr_t data_ptr) {
   const uint8_t* ptr = reinterpret_cast<const uint8_t*>(data_ptr);
   delete[] ptr;
 }
+
+#pragma endregion
 
 #ifdef _WIN32
 LONG WINAPI MyUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionInfo) {
@@ -2176,7 +2086,5 @@ void init_unhandled_exception_handler() {
   SetUnhandledExceptionFilter(MyUnhandledExceptionFilter);
 }
 #endif
-
-#pragma endregion
 
 }

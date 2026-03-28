@@ -1,4 +1,5 @@
 import XCTest
+#if os(macOS)
 import AppKit
 @testable import SweetEditorMacOS
 @testable import SweetEditorCoreInternal
@@ -761,3 +762,4 @@ private final class CountingDecorationProvider: DecorationProvider {
         onProvide?(context)
     }
 }
+#endif

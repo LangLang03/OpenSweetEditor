@@ -20,15 +20,19 @@ DerivedData/
 *.perspectivev3
 !default.perspectivev3
 
+binaries/SweetNativeCore.xcframework/
+
+/.derived/
+
 # PM
 Pods/
 .build/
-.swiftpm/
-.swift-module-cache/
 .localhome/
-binaries/SweetNativeCore.xcframework/
+.swift-module-cache/
+.swiftpm/
+
 
 
 # Playgrounds
 timeline.xctimeline
-playground.xcworkspace
+*.playground/playground.xcworkspace/

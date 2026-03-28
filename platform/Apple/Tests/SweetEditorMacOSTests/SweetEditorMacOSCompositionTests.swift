@@ -1,4 +1,5 @@
 import XCTest
+#if os(macOS)
 import AppKit
 @testable import SweetEditorMacOS
 @testable import SweetEditorCoreInternal
@@ -21,3 +22,4 @@ final class SweetEditorMacOSCompositionTests: XCTestCase {
         return mirror.children.first?.value
     }
 }
+#endif
