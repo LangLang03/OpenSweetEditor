@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 using SweetEditor;
 using SweetLine;
 using EditorTextPosition = SweetEditor.TextPosition;
@@ -43,6 +44,8 @@ namespace Demo {
 
 			demoCompletionProvider = new DemoCompletionProvider();
 			editorControl1.AddCompletionProvider(demoCompletionProvider);
+
+			editorControl1.Settings.SetCurrentLineRenderMode(CurrentLineRenderMode.BORDER);
 
 			SetupFileSpinner();
 		}
@@ -303,6 +306,7 @@ namespace Demo {
 
 			private static HighlightEngine? highlightEngine;
 
+			private readonly SemaphoreSlim analysisSemaphore = new(1, 1);
 			private readonly object stateLock = new();
 			private DocumentAnalyzer? documentAnalyzer;
 			private DocumentHighlight? cacheHighlight;
@@ -355,13 +359,33 @@ namespace Demo {
 			}
 
 			public void ProvideDecorations(DecorationContext context, IDecorationReceiver receiver) {
-				var diagnostics = new Dictionary<int, List<DecorationResult.DiagnosticItem>>();
+				_ = ProduceDecorationsAsync(context, receiver);
+			}
 
-				DecorationResult sweetLineResult = BuildSweetLineDecorationResult(context, diagnostics);
-				receiver.Accept(sweetLineResult);
+			private async Task ProduceDecorationsAsync(DecorationContext context, IDecorationReceiver receiver) {
+				bool hasTextChanges = context.TextChanges.Count > 0;
+				Dictionary<int, List<DecorationResult.DiagnosticItem>> diagnostics = new();
+				DecorationResult? sweetLineResult = null;
 
-				Task.Run(async () => {
-					await Task.Delay(500);
+				try {
+					await analysisSemaphore.WaitAsync().ConfigureAwait(false);
+					try {
+						if (receiver.IsCancelled && !hasTextChanges) {
+							return;
+						}
+
+						sweetLineResult = BuildSweetLineDecorationResult(context, diagnostics);
+					} finally {
+						analysisSemaphore.Release();
+					}
+
+					if (receiver.IsCancelled || sweetLineResult == null) {
+						return;
+					}
+
+					receiver.Accept(sweetLineResult);
+
+					await Task.Delay(500).ConfigureAwait(false);
 					if (receiver.IsCancelled) {
 						return;
 					}
@@ -370,7 +394,8 @@ namespace Demo {
 						Diagnostics = diagnostics,
 						DiagnosticsMode = DecorationApplyMode.REPLACE_ALL
 					});
-				});
+				} catch {
+				}
 			}
 
 			private DecorationResult BuildSweetLineDecorationResult(

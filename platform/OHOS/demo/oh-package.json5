@@ -1,0 +1,14 @@
+{
+  "name": "demo",
+  "version": "1.0.0",
+  "description": "Please describe the basic information.",
+  "main": "",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "@qiplat/sweeteditor": "file:../sweeteditor",
+    "@qiplat/sweetline": "1.0.0"
+  },
+  "devDependencies": {},
+  "dynamicDependencies": {}
+}

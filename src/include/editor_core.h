@@ -44,10 +44,10 @@ namespace NS_SWEETEDITOR {
   /// Selection handle hit-test configuration.
   /// All geometry is owned by the platform drawing layer; C++ only needs hit areas.
   struct HandleConfig {
-    /// Hit area for the start handle, as an offset rect relative to cursor bottom-left
-    OffsetRect start_hit_offset {-15.0f, 0.0f, 45.0f, 40.0f};
-    /// Hit area for the end handle, as an offset rect relative to cursor bottom-left
-    OffsetRect end_hit_offset {-45.0f, 0.0f, 15.0f, 40.0f};
+    /// Hit area for the start handle, as an offset rect relative to the cursor bottom anchor (handle tip)
+    OffsetRect start_hit_offset {-32.1f, -8.0f, 8.0f, 32.1f};
+    /// Hit area for the end handle, as an offset rect relative to the cursor bottom anchor (handle tip)
+    OffsetRect end_hit_offset {-8.0f, -8.0f, 32.1f, 32.1f};
   };
 
   enum class ScrollbarMode : uint8_t {
@@ -186,6 +186,8 @@ namespace NS_SWEETEDITOR {
   public:
     explicit EditorCore(const Ptr<TextMeasurer>& measurer, const EditorOptions& options);
 
+#pragma region [Setup & View State]
+
     /// Set selection handle configuration at runtime
     /// @param config Handle appearance and touch parameters
     void setHandleConfig(const HandleConfig& config);
@@ -197,8 +199,6 @@ namespace NS_SWEETEDITOR {
     /// Load text content
     /// @param document Document instance
     void loadDocument(const Ptr<Document>& document);
-
-#pragma region [Appearance-Font]
     /// Set editor viewport size
     /// @param viewport Viewport area
     void setViewport(const Viewport& viewport);
@@ -246,9 +246,11 @@ namespace NS_SWEETEDITOR {
     /// Set whether gutter area is visible
     /// @param visible true=show gutter (line numbers, icons, fold arrows), false=hide entire gutter
     void setGutterVisible(bool visible);
+
 #pragma endregion
 
-#pragma region [Rendering]
+#pragma region [Rendering & Input]
+
     /// Get editor text-style registry
     /// @return Text-style registry
     Ptr<TextStyleRegistry> getTextStyleRegistry() const;
@@ -265,9 +267,7 @@ namespace NS_SWEETEDITOR {
 
     /// Get editor layout metrics
     LayoutMetrics& getLayoutMetrics() const;
-#pragma endregion
 
-#pragma region [Gesture-KeyEvent]
     /// Handle gesture event
     /// @param event Gesture data
     /// @return Gesture handling result (includes editor state)
@@ -298,9 +298,11 @@ namespace NS_SWEETEDITOR {
     /// @param event Keyboard event data
     /// @return Keyboard event handling result
     KeyEventResult handleKeyEvent(const KeyEvent& event);
+
 #pragma endregion
 
-#pragma region [Editing]
+#pragma region [Editing & Cursor/IME]
+
     /// Insert text at cursor position (replace selection if any)
     /// @param text UTF8 text
     /// @return Exact change info
@@ -324,9 +326,6 @@ namespace NS_SWEETEDITOR {
     /// Delete selection; if no selection, delete one char after cursor (Delete behavior)
     /// @return Exact change info
     TextEditResult deleteForward();
-#pragma endregion
-
-#pragma region [Line-Operation]
     /// Move current line (or lines covered by selection) up by one line
     /// @return Exact change info
     TextEditResult moveLineUp();
@@ -354,9 +353,6 @@ namespace NS_SWEETEDITOR {
     /// Insert empty line below current line
     /// @return Exact change info
     TextEditResult insertLineBelow();
-#pragma endregion
-
-#pragma region [Undo-Redo]
     /// Undo last edit operation
     /// @return Exact change info (changed=false means nothing to undo)
     TextEditResult undo();
@@ -370,9 +366,6 @@ namespace NS_SWEETEDITOR {
 
     /// Whether redo is available
     bool canRedo() const;
-#pragma endregion
-
-#pragma region [Cursor-Selection]
     /// Set cursor position
     /// @param position Text position
     void setCursorPosition(const TextPosition& position);
@@ -430,9 +423,6 @@ namespace NS_SWEETEDITOR {
     /// Move cursor to line end
     /// @param extend_selection Whether to extend selection
     void moveCursorToLineEnd(bool extend_selection = false);
-#pragma endregion
-
-#pragma region [IME-Composition]
     /// Notify editor that IME composition starts
     /// Called by platform side when compositionstart / composingText starts
     void compositionStart();
@@ -462,38 +452,19 @@ namespace NS_SWEETEDITOR {
 
     /// Get whether IME composition is enabled
     bool isCompositionEnabled() const;
-#pragma endregion
-
-#pragma region [ReadOnly]
     /// Set read-only mode
     /// @param read_only true=read-only (block all edit actions), false=editable
     void setReadOnly(bool read_only);
 
     /// Get whether read-only mode is active
     bool isReadOnly() const;
-#pragma endregion
-
-#pragma region [AutoIndent]
     /// Set auto indent mode
     /// @param mode Auto indent mode
     void setAutoIndentMode(AutoIndentMode mode);
 
     /// Get current auto indent mode
     AutoIndentMode getAutoIndentMode() const;
-#pragma endregion
 
-#pragma region [Cursor-ScreenRect]
-    /// Get screen-space rectangle for any text position (for floating panel placement)
-    /// @param position Text position (line, column)
-    /// @return Position coordinates and line height inside editor view
-    CursorRect getPositionScreenRect(const TextPosition& position);
-
-    /// Get screen-space rectangle of current cursor position (shortcut)
-    /// @return Current cursor coordinates and line height inside editor view
-    CursorRect getCursorScreenRect();
-#pragma endregion
-
-#pragma region [LinkedEditing]
     /// Insert VSCode snippet template and enter linked editing mode (helper method)
     /// @param snippet_template VSCode snippet syntax template
     /// @return Exact change info (changes from inserting template text)
@@ -520,9 +491,11 @@ namespace NS_SWEETEDITOR {
 
     /// Finish linked editing mode and place cursor at $0 position (called after Enter/Tab flow)
     void finishLinkedEditing();
+
 #pragma endregion
 
-#pragma region [Scroll-Goto]
+#pragma region [Navigation & Decorations]
+
     /// Scroll to target line
     /// @param line Line number
     /// @param behavior Scroll behavior
@@ -533,13 +506,23 @@ namespace NS_SWEETEDITOR {
     /// @param column Column number (0-based)
     void gotoPosition(size_t line, size_t column);
 
+    /// Adjust scroll offset just enough to keep current cursor inside viewport
+    void ensureCursorVisible();
+
     /// Manually set editor scroll offset
     /// @param scroll_x Horizontal scroll offset
     /// @param scroll_y Vertical scroll offset
     void setScroll(float scroll_x, float scroll_y);
-#pragma endregion
 
-#pragma region [Decorations]
+    /// Get screen-space rectangle for any text position (for floating panel placement)
+    /// @param position Text position (line, column)
+    /// @return Position coordinates and line height inside editor view
+    CursorRect getPositionScreenRect(const TextPosition& position);
+
+    /// Get screen-space rectangle of current cursor position (shortcut)
+    /// @return Current cursor coordinates and line height inside editor view
+    CursorRect getCursorScreenRect();
+
     /// Register a highlight style
     /// @param style_id Style ID
     /// @param style Text style definition
@@ -668,7 +651,9 @@ namespace NS_SWEETEDITOR {
 
     /// Clear external bracket match result (fall back to built-in char scan)
     void clearMatchedBrackets();
+
 #pragma endregion
+
   private:
     Ptr<TextMeasurer> m_measurer_;
     EditorOptions m_options_;
@@ -714,6 +699,18 @@ namespace NS_SWEETEDITOR {
     /// Max scroll range cached at drag start
     float m_scrollbar_drag_max_scroll_x_ {0};
     float m_scrollbar_drag_max_scroll_y_ {0};
+
+    /// Pending focal anchor captured during exact scale handling.
+    /// Applied in onFontMetricsChanged() after platform text metrics catch up.
+    struct PendingScaleAnchor {
+      bool active {false};
+      PointF focus_screen;
+      TextPosition anchor_position;
+      float offset_x {0};
+      float offset_y {0};
+    };
+    PendingScaleAnchor m_pending_scale_anchor_;
+    bool m_scale_gesture_active_ {false};
 
     /// Cached screen positions of selection handles (for hit test, updated each buildRenderModel frame)
     PointF m_cached_start_handle_pos_;
@@ -773,8 +770,6 @@ namespace NS_SWEETEDITOR {
     /// Drag selection to screen coordinates
     /// @param is_mouse true for mouse drag (no y-offset), false for touch long-press drag (apply y-offset)
     void dragSelectTo(const PointF& screen_point, bool is_mouse = false);
-    /// Ensure cursor is visible after edit scroll
-    void ensureCursorVisible();
     /// Compute edge-scroll state from finger position (does NOT scroll; just updates m_edge_scroll_).
     /// Called from dragHandleTo / dragSelectTo to decide whether edge scrolling is needed.
     void updateEdgeScrollState(const PointF& screen_point, bool is_handle_drag, bool is_mouse);
@@ -833,6 +828,8 @@ namespace NS_SWEETEDITOR {
 
     /// Fill current editor state into GestureResult (remove duplicate assignments)
     void fillGestureResult(GestureResult& result) const;
+    /// Resolve focal point for scale gestures.
+    PointF resolveScaleFocus(const GestureEvent& event) const;
     /// Mark all logical lines as layout dirty
     void markAllLinesDirty(bool reset_heights = false);
     /// Reset composition state (clear composing flag and text)

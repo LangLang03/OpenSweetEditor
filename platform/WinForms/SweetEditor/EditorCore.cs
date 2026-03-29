@@ -26,6 +26,14 @@ namespace SweetEditor {
 		}
 
 		/// <summary>
+		/// Gets the number of logical lines in the document.
+		/// </summary>
+		public int GetLineCount() {
+			if (nativeHandle == IntPtr.Zero) return 0;
+			return checked((int)NativeMethods.GetDocumentLineCount(nativeHandle));
+		}
+
+		/// <summary>
 		/// Gets the text content of the specified line.
 		/// </summary>
 		/// <param name="line">Line number (0-based)</param>
@@ -195,22 +203,22 @@ namespace SweetEditor {
 	/// Selection handle hit-test configuration.
 	/// </summary>
 	public class HandleConfig {
-		/// <summary>Start handle hit area offset from cursor bottom (left)</summary>
-		public float StartLeft { get; set; } = -10.0f;
-		/// <summary>Start handle hit area offset from cursor bottom (top)</summary>
-		public float StartTop { get; set; } = 0.0f;
-		/// <summary>Start handle hit area offset from cursor bottom (right)</summary>
-		public float StartRight { get; set; } = 50.0f;
-		/// <summary>Start handle hit area offset from cursor bottom (bottom)</summary>
-		public float StartBottom { get; set; } = 80.0f;
-		/// <summary>End handle hit area offset from cursor bottom (left)</summary>
-		public float EndLeft { get; set; } = -50.0f;
-		/// <summary>End handle hit area offset from cursor bottom (top)</summary>
-		public float EndTop { get; set; } = 0.0f;
-		/// <summary>End handle hit area offset from cursor bottom (right)</summary>
-		public float EndRight { get; set; } = 10.0f;
-		/// <summary>End handle hit area offset from cursor bottom (bottom)</summary>
-		public float EndBottom { get; set; } = 80.0f;
+		/// <summary>Start handle hit area offset from the cursor bottom anchor (left)</summary>
+		public float StartLeft { get; set; } = -32.1f;
+		/// <summary>Start handle hit area offset from the cursor bottom anchor (top)</summary>
+		public float StartTop { get; set; } = -8.0f;
+		/// <summary>Start handle hit area offset from the cursor bottom anchor (right)</summary>
+		public float StartRight { get; set; } = 8.0f;
+		/// <summary>Start handle hit area offset from the cursor bottom anchor (bottom)</summary>
+		public float StartBottom { get; set; } = 32.1f;
+		/// <summary>End handle hit area offset from the cursor bottom anchor (left)</summary>
+		public float EndLeft { get; set; } = -8.0f;
+		/// <summary>End handle hit area offset from the cursor bottom anchor (top)</summary>
+		public float EndTop { get; set; } = -8.0f;
+		/// <summary>End handle hit area offset from the cursor bottom anchor (right)</summary>
+		public float EndRight { get; set; } = 32.1f;
+		/// <summary>End handle hit area offset from the cursor bottom anchor (bottom)</summary>
+		public float EndBottom { get; set; } = 32.1f;
 	}
 
 	/// <summary>
@@ -1314,6 +1322,9 @@ namespace SweetEditor {
 		[DllImport(LibraryName, EntryPoint = "get_document_line_text", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern IntPtr GetDocumentLineText(IntPtr documentHandle, UIntPtr line);
 
+		[DllImport(LibraryName, EntryPoint = "get_document_line_count", CallingConvention = CallingConvention.Cdecl)]
+		internal static extern UIntPtr GetDocumentLineCount(IntPtr documentHandle);
+
 		[DllImport(LibraryName, EntryPoint = "init_unhandled_exception_handler", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern void InitUnhandledExceptionHandler();
 
@@ -1521,6 +1532,9 @@ namespace SweetEditor {
 
 		[DllImport(LibraryName, EntryPoint = "editor_goto_position", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern void GotoPosition(IntPtr handle, int line, int column);
+
+		[DllImport(LibraryName, EntryPoint = "editor_ensure_cursor_visible", CallingConvention = CallingConvention.Cdecl)]
+		internal static extern void EnsureCursorVisible(IntPtr handle);
 
 		[DllImport(LibraryName, EntryPoint = "editor_set_scroll", CallingConvention = CallingConvention.Cdecl)]
 		internal static extern void SetScroll(IntPtr handle, float scrollX, float scrollY);
@@ -2259,6 +2273,11 @@ namespace SweetEditor {
 		/// <param name="column">Target column (0-based).</param>
 		public void GotoPosition(int line, int column) {
 			NativeMethods.GotoPosition(nativeHandle, line, column);
+		}
+
+		/// <summary>Scrolls minimally to keep the current caret visible inside the viewport.</summary>
+		public void EnsureCursorVisible() {
+			NativeMethods.EnsureCursorVisible(nativeHandle);
 		}
 
 		/// <summary>Scrolls to the specified line.</summary>
