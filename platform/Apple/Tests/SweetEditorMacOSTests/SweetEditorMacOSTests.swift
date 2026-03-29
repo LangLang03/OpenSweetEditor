@@ -19,6 +19,16 @@ final class SweetEditorMacOSTests: XCTestCase {
         XCTAssertEqual(light.inlayHintTextAlpha, 0.55, accuracy: 0.001)
     }
 
+    func testSyntaxHighlighterDoesNotSplitKeycapEmojiIntoNumberSpan() {
+        let core = SweetEditorCore(fontSize: 14.0, fontName: "Menlo")
+        let highlighter = SyntaxHighlighter(editorCore: core)
+        let document = SweetDocument(text: "4️⃣")
+
+        let spans = highlighter.highlightLine(document: document, line: 0)
+
+        XCTAssertTrue(spans.isEmpty)
+    }
+
     func testPhantomTextAlphaDefaultsAreDimmed() {
         let dark = EditorTheme.dark()
         let light = EditorTheme.light()
