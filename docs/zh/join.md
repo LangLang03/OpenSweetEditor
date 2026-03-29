@@ -32,7 +32,7 @@
 │   ├── WinForms                     C# P/Invoke + C API
 │   ├── Apple                        Swift Package + 手工 C bridge
 │   ├── OHOS                         OHOS SDK + NAPI 直连
-│   └── Emscripten                   留目录
+│   └── Emscripten                   预留目录
 └── prebuilt                         预构建动态库
 ```
 
@@ -78,8 +78,12 @@
   - P/Invoke 封装与协议对接
 - `platform/WinForms/SweetEditor/EditorProtocol.cs`
   - binary payload 解码
-- `platform/WinForms/SweetEditor/EditorExtension.cs`
-  - Completion / Decoration provider 等扩展能力
+- `platform/WinForms/SweetEditor/EditorCompletion.cs`
+  - Completion Provider 与补全弹层协作
+- `platform/WinForms/SweetEditor/EditorDecoration.cs`
+  - Decoration Provider 与刷新调度
+- `platform/WinForms/SweetEditor/EditorNewLine.cs`
+  - NewLine Action Provider 扩展接入
 - `platform/WinForms/SweetEditor/Perf.cs`
   - 性能记录与 overlay 绘制
 

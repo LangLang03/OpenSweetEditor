@@ -271,8 +271,8 @@ public boolean isPerfOverlayEnabled()
 ### 样式 / 装饰 / 折叠 / 联动编辑
 
 ```java
-public void registerStyle(int styleId, int color, int backgroundColor, int fontStyle)
-public void registerStyle(int styleId, int color, int fontStyle)
+public void registerTextStyle(int styleId, int color, int backgroundColor, int fontStyle)
+public void registerTextStyle(int styleId, int color, int fontStyle)
 public void setLineSpans(int line, SpanLayer layer, List<? extends StyleSpan> spans)
 public void setBatchLineSpans(int layer, @Nullable SparseArray<? extends List<? extends StyleSpan>> spansByLine)
 

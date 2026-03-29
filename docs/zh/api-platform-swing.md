@@ -47,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.qiplat.sweeteditor-swing:0.0.2")
+    implementation("com.qiplat:sweeteditor-swing:0.0.1")
 }
 ```
 
@@ -57,11 +57,11 @@ Maven（pom.xml）可使用：
 <dependency>
     <groupId>com.qiplat</groupId>
     <artifactId>sweeteditor-swing</artifactId>
-    <version>0.0.2</version>
+    <version>0.0.1</version>
     <scope>compile</scope>
 </dependency>
 ```
-> 依赖版本以最新版为准，当前为0.0.2
+> 仓库内模块版本当前为 `0.0.1`；如果通过 Maven Central 接入，请替换为你实际要使用的发布版本。
 
 运行 JVM 需开启：
 
@@ -199,8 +199,9 @@ public <T extends EditorEvent> void unsubscribe(Class<T> eventType, EditorEventL
 ### 样式 / 装饰 / 折叠 / 联动编辑
 
 ```java
-public void registerStyle(int styleId, int color, int bgColor, int fontStyle)
-public void registerStyle(int styleId, int color, int fontStyle)
+public void registerTextStyle(int styleId, int color, int bgColor, int fontStyle)
+public void registerTextStyle(int styleId, int color, int fontStyle)
+public void registerBatchTextStyles(Map<Integer, ? extends TextStyle> textStyles)
 public void setLineSpans(int line, int layer, List<? extends StyleSpan> spans)
 public void setBatchLineSpans(int layer, Map<Integer, ? extends List<? extends StyleSpan>> spansByLine)
 

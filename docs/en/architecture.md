@@ -40,28 +40,31 @@ Core benefits:
 
 ## Overall Architecture
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                      Platform Layer (Input + Render)              │
-│                                                                    │
-│ Android        iOS/macOS         Swing/WinForms        Web/OHOS    │
-│ Canvas        CoreText/CG          Java2D / GDI+       (reserved)  │
-└───────────────┬───────────────────────────────┬────────────────────┘
-                │                               │
-                │ JNI direct to C++             │ C ABI / Binary Payload
-                ▼                               ▼
-      ┌─────────────────────┐         ┌──────────────────────────┐
-      │ Android Bridge      │         │ C API Bridge             │
-      │ (jni_entry+jeditor) │         │ extern "C" + intptr_t   │
-      └───────────┬─────────┘         └────────────┬─────────────┘
-                  └──────────────────────┬──────────┘
-                                         ▼
-      ┌──────────────────────────────────────────────────────────┐
-      │                    SweetEditor Core (C++17)             │
-      │                                                          │
-      │  Document · TextLayout · DecorationManager · EditorCore │
-      │  GestureHandler · UndoManager · LinkedEditing           │
-      └──────────────────────────────────────────────────────────┘
+```text
++-----------------------------------------------------------------------------------+
+|                          Platform Layer (Input + Render)                          |
+|                                                                                   |
+| Android        Apple         Swing / WinForms      OHOS            Web*           |
+| Canvas         CoreText/CG   Java2D / GDI+         ArkUI Canvas    Reserved       |
++----------------+-------------+----------------------+---------------+--------------+
+         |               |                 |                    |
+         | JNI direct    | manual C bridge | C API / payload    | NAPI direct
+         v               v                 v                    v
++----------------+ +----------------+ +------------------+ +-------------------+
+| JNI Bridge     | | Apple Bridge   | | C API Bridge     | | OHOS NAPI Bridge |
+| jni_entry      | | Swift + C      | | extern "C"       | | ArkTS + NAPI     |
++----------------+ +----------------+ +------------------+ +-------------------+
+          \               |                 |                    /
+           \              |                 |                   /
+            +-------------+-----------------+------------------+
+                                  |
+                                  v
+               +--------------------------------------------------+
+               |             SweetEditor Core (C++17)             |
+               | Document / TextLayout / DecorationManager /      |
+               | EditorCore / GestureHandler / UndoManager /      |
+               | LinkedEditing                                    |
+               +--------------------------------------------------+
 ```
 
 Current integration status (code state):
@@ -70,7 +73,7 @@ Current integration status (code state):
 - Swing / WinForms: integrated (C API)
 - Apple: integrated (Swift Package + manual bridge)
 - Web (Emscripten): directory exists, binding file is empty for now
-- OHOS: directory exists, currently placeholder only
+- OHOS: integrated (ArkTS component + NAPI direct bridge)
 
 ---
 
@@ -247,16 +250,16 @@ Extra notes:
 - `TextLayout::buildLineRuns()` converts needed decoration text to UTF-16 when generating `VisualRun`.
 - So decoration manager stores edit-semantic data, not platform-ready drawing objects.
 
-#### StyleRegistry
+#### TextStyleRegistry
 
 ```cpp
-class StyleRegistry {
-  void registerStyle(Style&& style);       // register: style_id → {color, font_style}
-  Style& getStyle(uint32_t style_id);      // query
+class TextStyleRegistry {
+  void registerTextStyle(uint32_t style_id, TextStyle&& style);  // register: style_id -> {color, background_color, font_style}
+  TextStyle& getTextStyle(uint32_t style_id);                    // query
 };
 ```
 
-Platform side registers style first (ID → color + font style), then applies ranges per line through `setLineSpans`. This decouples style definition from style usage and helps theme switching.
+Platform side registers style first (ID -> color + font style), then applies ranges per line through `setLineSpans`. This decouples style definition from style usage and helps theme switching.
 
 #### Auto adjust after edits
 
@@ -270,7 +273,7 @@ When text changes, all decoration line/column offsets must be updated. `adjustFo
 
 ### EditorCore - Editor Coordinator
 
-**Files**: `src/include/editor_core.h` · `src/core/editor_core.cpp`
+**Files**: `src/include/editor_core.h` / `src/core/editor_core.cpp`
 
 EditorCore is the top-level class. It composes all submodules and exposes full editor APIs.
 
@@ -293,14 +296,14 @@ class EditorCore {
 | Method group | Description |
 |--------|------|
 | `loadDocument()` | load document |
-| `handleGestureEvent()` | handle touch/mouse event → returns GestureResult |
-| `handleKeyEvent()` | handle key event → returns KeyEventResult |
+| `handleGestureEvent()` | handle touch/mouse event -> returns `GestureResult` |
+| `handleKeyEvent()` | handle key event -> returns `KeyEventResult` |
 | `insertText()` / `backspace()` / `deleteForward()` | atomic text operations |
 | `moveCursor*()` | cursor movement (up/down/left/right, line start/end) |
 | `setSelection()` / `selectAll()` | selection management |
 | `compositionStart/Update/End/Cancel()` | IME composition |
 | `undo()` / `redo()` | undo/redo |
-| `registerStyle()` / `setLineSpans()` / `setBatchLineSpans()` / `setLineInlayHints()` / `setLinePhantomTexts()` | decoration setting |
+| `registerTextStyle()` / `setLineSpans()` / `setBatchLineSpans()` / `setLineInlayHints()` / `setLinePhantomTexts()` | decoration setting |
 | `setFoldRegions()` / `foldAt()` / `unfoldAt()` | code folding |
 | `add*Guide()` | code structure guides |
 | `buildRenderModel()` | **core output**: build one frame render model |
@@ -533,7 +536,7 @@ String notes:
 | Windows | P/Invoke | `DllImport("sweeteditor.dll")` |
 | Swing | Java FFM | downcall to C API |
 | Web | Emscripten | directory exists, binding not finished |
-| OHOS | - | directory exists, not integrated |
+| OHOS | ArkTS NAPI (`libsweeteditor.so`) | ArkTS `native` calls into shared C++ and decodes binary payload in `EditorProtocol.ets` |
 
 Note: Android currently does not use `c_api.h` call chain. New public features must sync both JNI path and C API path.
 

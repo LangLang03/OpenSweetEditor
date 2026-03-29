@@ -272,8 +272,8 @@ Logging thresholds (current implementation):
 ### Styles / Decorations / Folding / Linked Editing
 
 ```java
-public void registerStyle(int styleId, int color, int backgroundColor, int fontStyle)
-public void registerStyle(int styleId, int color, int fontStyle)
+public void registerTextStyle(int styleId, int color, int backgroundColor, int fontStyle)
+public void registerTextStyle(int styleId, int color, int fontStyle)
 public void setLineSpans(int line, SpanLayer layer, List<? extends StyleSpan> spans)
 public void setBatchLineSpans(int layer, @Nullable SparseArray<? extends List<? extends StyleSpan>> spansByLine)
 

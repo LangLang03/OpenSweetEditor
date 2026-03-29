@@ -78,8 +78,12 @@ This document gives practical development entry points based on the current repo
   - P/Invoke wrapper and protocol bridge
 - `platform/WinForms/SweetEditor/EditorProtocol.cs`
   - binary payload decoding
-- `platform/WinForms/SweetEditor/EditorExtension.cs`
-  - extension features such as Completion / Decoration providers
+- `platform/WinForms/SweetEditor/EditorCompletion.cs`
+  - completion providers and popup coordination
+- `platform/WinForms/SweetEditor/EditorDecoration.cs`
+  - decoration providers and refresh scheduling
+- `platform/WinForms/SweetEditor/EditorNewLine.cs`
+  - newline action provider plumbing
 - `platform/WinForms/SweetEditor/Perf.cs`
   - performance logging and overlay drawing
 

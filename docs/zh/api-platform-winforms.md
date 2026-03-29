@@ -161,8 +161,9 @@ public void GotoPosition(int line, int column = 0)
 ### 样式 / 装饰 / 折叠 / 联动编辑
 
 ```csharp
-public void RegisterStyle(uint styleId, int color, int backgroundColor, int fontStyle)
-public void RegisterStyle(uint styleId, int color, int fontStyle)
+public void registerTextStyle(uint styleId, int color, int backgroundColor, int fontStyle)
+public void registerBatchTextStyles(IReadOnlyDictionary<uint, TextStyle> stylesById)
+public void registerTextStyle(uint styleId, int color, int fontStyle)
 public void SetLineSpans(int line, SpanLayer layer, IList<StyleSpan> spans)
 public void SetLineSpans(int line, IList<StyleSpan> spans)
 public void SetBatchLineSpans(SpanLayer layer, Dictionary<int, IList<StyleSpan>> spansByLine)
@@ -229,7 +230,7 @@ public (int start, int end) GetVisibleLineRange()
 public int GetTotalLineCount()
 ```
 
-`GetTotalLineCount()` 当前返回 `-1`（待完善）。
+`GetTotalLineCount()` 返回当前文档总行数；若尚未加载文档，则返回 `-1`。
 
 ## 桥接层补充
 

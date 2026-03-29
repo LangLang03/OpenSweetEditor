@@ -161,8 +161,9 @@ public void GotoPosition(int line, int column = 0)
 ### Styles / Decorations / Folding / Linked Editing
 
 ```csharp
-public void RegisterStyle(uint styleId, int color, int backgroundColor, int fontStyle)
-public void RegisterStyle(uint styleId, int color, int fontStyle)
+public void registerTextStyle(uint styleId, int color, int backgroundColor, int fontStyle)
+public void registerBatchTextStyles(IReadOnlyDictionary<uint, TextStyle> stylesById)
+public void registerTextStyle(uint styleId, int color, int fontStyle)
 public void SetLineSpans(int line, SpanLayer layer, IList<StyleSpan> spans)
 public void SetLineSpans(int line, IList<StyleSpan> spans)
 public void SetBatchLineSpans(SpanLayer layer, Dictionary<int, IList<StyleSpan>> spansByLine)
@@ -229,7 +230,7 @@ public (int start, int end) GetVisibleLineRange()
 public int GetTotalLineCount()
 ```
 
-`GetTotalLineCount()` currently returns `-1` (to be improved).
+`GetTotalLineCount()` returns the current document line count, or `-1` when no document is loaded.
 
 ## Bridge Layer Notes
 

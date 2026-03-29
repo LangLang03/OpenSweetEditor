@@ -182,7 +182,7 @@ On top of shared core, iOS adds wrappers for:
 
 SwiftUI entry: `SweetEditorSwiftUIViewiOS`.
 
-> Current status: SwiftUI wrapper is not fully ready and should be treated as unavailable for production integration at this time.
+> Current status: SwiftUI wrappers are present and still being refined. Validate focus, IME, popup, and provider flows in your target app before shipping.
 
 ## macOS (AppKit / SwiftUI)
 
@@ -195,7 +195,7 @@ macOS also wraps providers, language config, and metadata on top of shared core.
 
 SwiftUI entry: `SweetEditorSwiftUIMacOS`.
 
-> Current status: SwiftUI wrapper is not fully ready and should be treated as unavailable for production integration at this time.
+> Current status: SwiftUI wrappers are present and still being refined. Validate focus, IME, popup, and provider flows in your target app before shipping.
 
 ## `SweetDocument`
 

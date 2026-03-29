@@ -40,28 +40,31 @@ SweetEditor 的核心设计理念是 **"计算与渲染的彻底分离"**：
 
 ## 总体架构
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                      平台层 (Input + Render)                      │
-│                                                                    │
-│ Android        iOS/macOS         Swing/WinForms        Web/OHOS    │
-│ Canvas        CoreText/CG          Java2D / GDI+       (预留目录)   │
-└───────────────┬───────────────────────────────┬────────────────────┘
-                │                               │
-                │ JNI 直连 C++                  │ C ABI / Binary Payload
-                ▼                               ▼
-      ┌─────────────────────┐         ┌──────────────────────────┐
-      │ Android Bridge      │         │ C API Bridge             │
-      │ (jni_entry+jeditor) │         │ extern \"C\" + intptr_t   │
-      └───────────┬─────────┘         └────────────┬─────────────┘
-                  └──────────────────────┬──────────┘
-                                         ▼
-      ┌──────────────────────────────────────────────────────────┐
-      │                    SweetEditor Core (C++17)             │
-      │                                                          │
-      │  Document · TextLayout · DecorationManager · EditorCore │
-      │  GestureHandler · UndoManager · LinkedEditing           │
-      └──────────────────────────────────────────────────────────┘
+```text
++-----------------------------------------------------------------------------------+
+|                          平台层（Input + Render）                                 |
+|                                                                                   |
+| Android        Apple         Swing / WinForms      OHOS            Web*           |
+| Canvas         CoreText/CG   Java2D / GDI+         ArkUI Canvas    预留目录       |
++----------------+-------------+----------------------+---------------+--------------+
+         |               |                 |                    |
+         | JNI 直连      | 手工 C bridge   | C API / payload    | NAPI 直连
+         v               v                 v                    v
++----------------+ +----------------+ +------------------+ +-------------------+
+| JNI Bridge     | | Apple Bridge   | | C API Bridge     | | OHOS NAPI Bridge |
+| jni_entry      | | Swift + C      | | extern "C"       | | ArkTS + NAPI     |
++----------------+ +----------------+ +------------------+ +-------------------+
+          \               |                 |                    /
+           \              |                 |                   /
+            +-------------+-----------------+------------------+
+                                  |
+                                  v
+               +--------------------------------------------------+
+               |             SweetEditor Core (C++17)             |
+               | Document / TextLayout / DecorationManager /      |
+               | EditorCore / GestureHandler / UndoManager /      |
+               | LinkedEditing                                    |
+               +--------------------------------------------------+
 ```
 
 当前接入状态（代码现状）：
@@ -70,7 +73,7 @@ SweetEditor 的核心设计理念是 **"计算与渲染的彻底分离"**：
 - Swing / WinForms：已接入（C API）
 - Apple：已接入（Swift Package + 手工 bridge）
 - Web(Emscripten)：目录存在，绑定文件当前为空
-- OHOS：目录存在，当前仅占位
+- OHOS：已接入（ArkTS 组件 + NAPI 直连桥接）
 
 ---
 
@@ -247,12 +250,12 @@ typedef struct {
 - `TextLayout::buildLineRuns()` 在生成 `VisualRun` 时会把需要绘制/测量的装饰文本转换为 UTF-16。
 - 因此装饰管理器保存的是“编辑语义数据”，不是平台可直接消费的绘制对象。
 
-#### StyleRegistry — 样式注册表
+#### TextStyleRegistry — 样式注册表
 
 ```cpp
-class StyleRegistry {
-  void registerStyle(Style&& style);       // 注册：style_id → {color, font_style}
-  Style& getStyle(uint32_t style_id);      // 查询
+class TextStyleRegistry {
+  void registerTextStyle(uint32_t style_id, TextStyle&& style);  // 注册：style_id -> {color, background_color, font_style}
+  TextStyle& getTextStyle(uint32_t style_id);                    // 查询
 };
 ```
 
@@ -300,7 +303,7 @@ class EditorCore {
 | `setSelection()` / `selectAll()` | 选区管理 |
 | `compositionStart/Update/End/Cancel()` | IME 组合输入 |
 | `undo()` / `redo()` | 撤销/重做 |
-| `registerStyle()` / `setLineSpans()` / `setBatchLineSpans()` / `setLineInlayHints()` / `setLinePhantomTexts()` | 装饰设置 |
+| `registerTextStyle()` / `setLineSpans()` / `setBatchLineSpans()` / `setLineInlayHints()` / `setLinePhantomTexts()` | 装饰设置 |
 | `setFoldRegions()` / `foldAt()` / `unfoldAt()` | 代码折叠 |
 | `add*Guide()` | 代码结构线 |
 | `buildRenderModel()` | **核心输出**：生成一帧渲染模型 |
@@ -533,7 +536,7 @@ free_editor(editor);
 | Windows | P/Invoke | `DllImport(\"sweeteditor.dll\")` |
 | Swing | Java FFM | Downcall 到 C API |
 | Web | Emscripten | 目录存在，绑定未完成 |
-| OHOS | - | 目录存在，未接入实现 |
+| OHOS | ArkTS NAPI（`libsweeteditor.so`） | ArkTS 通过 `native` 直连共享 C++，并在 `EditorProtocol.ets` 中解码 binary payload |
 
 注意：Android 目前不是经由 `c_api.h` 调用链路；新增公共能力时需要同步 JNI 路径与 C API 路径。
 
@@ -666,3 +669,4 @@ void free_editor(intptr_t handle) {
 | **Undo 操作合并** | 连续单字符输入/删除自动合并，减少内存占用 |
 | **行高缓存** | `EditorCore` 维护 `HashMap<size_t, float> m_line_heights_` 缓存行高 |
 | **二进制 payload 传递** | 渲染模型、布局度量、事件结果、编辑结果走紧凑二进制协议，减少跨语言解析成本 |
+

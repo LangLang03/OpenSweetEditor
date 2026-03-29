@@ -9,10 +9,10 @@
 **C++17 内核 + 平台原生渲染，面向 IDE、AI 编程工具、云开发工作台等长期演进的编辑基础设施场景。**
 
 [![C++17](https://img.shields.io/badge/C++-17-blue.svg?logo=cplusplus)](https://isocpp.org/)
-[![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows%20%7C%20Swing%20%7C%20Web*%20%7C%20OHOS*-brightgreen.svg)](#平台支持状态)
+[![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows%20%7C%20Swing%20%7C%20OHOS%20%7C%20Web*-brightgreen.svg)](#平台支持状态)
 [![License](https://img.shields.io/badge/License-LGPL--2.1%2B-yellow.svg)](LICENSE)
 
-**Android · iOS · macOS · Windows · Swing · Web\* · OHOS\***
+**Android · iOS · macOS · Windows · Swing · OHOS · Web\***
 
 </div>
 
@@ -20,79 +20,83 @@
 
 ## 项目定位
 
-SweetEditor 是一套跨平台代码编辑器内核，面向需要在 Android、iOS、macOS、Windows 和 Swing 上保持一致编辑行为的产品。
+SweetEditor 是一套跨平台代码编辑器内核，面向需要在 Android、iOS、macOS、Windows、Swing 和 OHOS 上保持一致编辑行为的产品。
 
-它采用“**C++17 内核 + 平台原生渲染**”架构：C++内核负责文档编辑语义、文本布局与装饰模型，各UI平台层负责输入转发与绘制。
+它采用“**C++17 内核 + 平台原生渲染**”架构：C++ 内核负责文档编辑语义、文本布局与装饰模型，各平台层负责输入转发与绘制。
 
 适合用于 IDE、AI 编程工具、云开发工作台等需要长期演进的编辑基础设施场景。
 
 ## 核心特性
 
-* **统一内核，多平台复用**：高亮、折叠、Inlay Hints、Ghost Text、结构线等能力由单一 C++ 内核统一生成
-* **核心与渲染分离**：平台层聚焦输入桥接与原生绘制，降低多平台回归和维护成本
-* **高级编辑能力完整**：支持代码折叠、Snippet、Linked Editing、诊断装饰、补全扩展等能力
-* **性能路径明确**：基于 Piece Table、增量布局、视口渲染、SIMD Unicode 加速与 mmap 大文件加载
-* **原生接入友好**：适配 Android、Apple 平台、Windows、Swing，Web / OHOS 正在接入中
+- **统一内核，多平台复用**：高亮、折叠、Inlay Hints、Ghost Text、结构线等能力由单一 C++ 内核统一生成
+- **核心与渲染分离**：平台层聚焦输入桥接与原生绘制，降低多平台回归和维护成本
+- **高级编辑能力完整**：支持代码折叠、Snippet、Linked Editing、诊断装饰、补全扩展等能力
+- **性能路径明确**：基于 Piece Table、增量布局、视口渲染、SIMD Unicode 加速与 mmap 大文件加载
+- **原生接入友好**：已适配 Android、Apple 平台、Windows、Swing 和 OHOS，Web 接入仍在进行中
 
 ## 平台支持状态
 
-| 平台SDK | 状态 | 渲染技术 | UI框架 |
-|---|---|---|---|
-| Android（官方，[仓库](./platform/Android)） | ✅ 已实现 | Canvas + Paint | Android View |
-| iOS（官方，[仓库](./platform/Apple)） | ✅ 已实现 | CoreText + CoreGraphics | UIKit（已封装） / SwiftUI（正在完善） |
-| macOS（官方，[仓库](./platform/Apple)） | ✅ 已实现 | CoreText + CoreGraphics | AppKit（已封装） / SwiftUI（正在完善） |
-| Windows（官方，[仓库](./platform/WinForms)） | ✅ 已实现 | GDI+ | WinForms |
-| Swing（官方，[仓库](./platform/Swing)） | ✅ 已实现 | Java2D | Swing |
-| Web（官方，[仓库](./platform/Emscripten)） | 🚧 进行中 | - | - |
-| OHOS（官方，[仓库](./platform/OHOS)） | 🚧 进行中 | - | - |
-| Flutter | 🚧 进行中 | - | Flutter |
-| Android Compose | ❌ 待实现 | - | Compose |
-| Qt | ❌ 待实现 | - | Qt |
-| Compose Multiplatform | ❌ 待实现 | - | Compose |
-| C# Avalonia UI | ❌ 待实现 | - | - |
-| C# WinUI | ❌ 待实现 | - | - |
+| 平台 | 状态 | 渲染技术 | UI 框架 | 实现来源 |
+| --- | --- | --- | --- | --- |
+| Android | 已实现 | Canvas + Paint | Android View | 当前仓库：[platform/Android](./platform/Android) |
+| iOS | 已实现 | CoreText + CoreGraphics | UIKit / SwiftUI（正在完善） | 当前仓库：[platform/Apple](./platform/Apple) |
+| macOS | 已实现 | CoreText + CoreGraphics | AppKit / SwiftUI（正在完善） | 当前仓库：[platform/Apple](./platform/Apple) |
+| Windows | 已实现 | GDI+ | WinForms | 当前仓库：[platform/WinForms](./platform/WinForms) |
+| Swing | 已实现 | Java2D | Swing | 当前仓库：[platform/Swing](./platform/Swing) |
+| OHOS | 已实现 | ArkUI Canvas | ArkUI | 当前仓库：[platform/OHOS](./platform/OHOS) |
+| Web | 进行中 | - | - | 当前仓库：[platform/Emscripten](./platform/Emscripten) |
+| Flutter | 进行中 | - | Flutter | - |
+| Compose Multiplatform | 待实现 | - | Compose | - |
+| Android Compose | 待实现 | - | Compose | - |
+| Qt | 待实现 | - | Qt | - |
+| C# Avalonia UI | 待实现 | - | - | - |
+| C# WinUI | 待实现 | - | - | - |
 
 ## 整体架构
 
 ```text
-┌────────────────────────────────────────────────────────────────────┐
-│                      平台层 (Input + Render)                       │
-│                                                                    │
-│ Android        iOS/macOS         Swing/WinForms        Web/OHOS    │
-│ Canvas        CoreText/CG          Java2D / GDI+       (预留目录)  │
-└───────────────┬───────────────────────────────┬────────────────────┘
-                │                               │
-                │ JNI 直连 C++                  │ C ABI / Binary Payload
-                ▼                               ▼
-      ┌─────────────────────┐          ┌──────────────────────────┐
-      │ Android Bridge      │          │ C API Bridge             │
-      │ (jni_entry+jeditor) │          │ extern "C" + intptr_t    │
-      └───────────┬─────────┘          └────────────┬─────────────┘
-                  └──────────────────────┬──────────┘
-                                         ▼
-      ┌──────────────────────────────────────────────────────────┐
-      │                    SweetEditor Core (C++17)              │
-      │  Document · TextLayout · DecorationManager · EditorCore  │
-      │  GestureHandler · UndoManager · LinkedEditing            │
-      └──────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------------------------+
+|                          平台层（Input + Render）                                 |
+|                                                                                   |
+| Android        Apple         Swing / WinForms      OHOS            Web*           |
+| Canvas         CoreText/CG   Java2D / GDI+         ArkUI Canvas    预留目录       |
++----------------+-------------+----------------------+---------------+--------------+
+         |               |                 |                    |
+         | JNI 直连      | 手工 C bridge   | C API / payload    | NAPI 直连
+         v               v                 v                    v
++----------------+ +----------------+ +------------------+ +-------------------+
+| JNI Bridge     | | Apple Bridge   | | C API Bridge     | | OHOS NAPI Bridge |
+| jni_entry      | | Swift + C      | | extern "C"       | | ArkTS + NAPI     |
++----------------+ +----------------+ +------------------+ +-------------------+
+          \               |                 |                    /
+           \              |                 |                   /
+            +-------------+-----------------+------------------+
+                                  |
+                                  v
+               +--------------------------------------------------+
+               |             SweetEditor Core (C++17)             |
+               | Document / TextLayout / DecorationManager /      |
+               | EditorCore / GestureHandler / UndoManager /      |
+               | LinkedEditing                                    |
+               +--------------------------------------------------+
 ```
 
-SweetEditor 采用“核心统一、渲染分离”的架构：C++ 内核负责编辑逻辑与布局，平台层仅处理输入桥接与原生绘制。
+SweetEditor 采用“核心统一、渲染分离”的架构：C++ 内核负责编辑逻辑与布局，平台层只处理输入桥接与原生绘制。
 
 > 完整架构文档请参阅 [架构设计文档](docs/zh/architecture.md)
 
 ## 核心能力
 
-* **文档与编辑模型**：UTF-8 文档模型、Piece Table、大文件加载、插入/删除/替换、撤销重做、行操作
-* **光标与导航**：光标定位、选区控制、单词查询、滚动定位、浮层锚点位置查询
-* **输入系统**：鼠标、触摸、键盘、IME 组合输入全链路
-* **布局与渲染**：自动换行、自动缩进、折叠箭头模式、增量布局、视口裁剪、渲染模型输出
-* **样式与装饰**：语法/语义高亮、Inlay Hints、Ghost Text、诊断装饰、Gutter 图标、四类结构线、括号高亮
-* **高级编辑能力**：代码折叠、Snippet、Linked Editing
-* **平台扩展机制**：DecorationProvider、CompletionProvider、异步刷新与补全 UI 支持
-* **性能基础设施**：SIMD Unicode 转码、测量缓存、字体指标缓存、视口级重建与绘制
+- **文档与编辑模型**：UTF-8 文档模型、Piece Table、大文件加载、插入/删除/替换、撤销重做、行操作
+- **光标与导航**：光标定位、选区控制、单词查询、滚动定位、浮层锚点位置查询
+- **输入系统**：鼠标、触摸、键盘、IME 组合输入全链路
+- **布局与渲染**：自动换行、自动缩进、折叠箭头模式、增量布局、视口裁剪、渲染模型输出
+- **样式与装饰**：语法/语义高亮、Inlay Hints、Ghost Text、诊断装饰、Gutter 图标、四类结构线、括号高亮
+- **高级编辑能力**：代码折叠、Snippet、Linked Editing
+- **平台扩展机制**：DecorationProvider、CompletionProvider、异步刷新与补全 UI 支持
+- **性能基础设施**：SIMD Unicode 转码、测量缓存、字体指标缓存、视口级重建与绘制
 
-完整能力清单见：[EditorCore API（中文）](docs/zh/api-editor-core.md)
+完整能力清单见：[EditorCore API（中文）](docs/zh/api-editor-core.md)。
 
 ## 快速开始
 
@@ -106,12 +110,13 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j
 ```
 
-Android / Swing 快速接入文档请参阅：
+平台快速接入文档：
 
 - Android：[中文](docs/zh/api-platform-android.md#快速开始)
 - Swing：[中文](docs/zh/api-platform-swing.md#快速开始)
+- OHOS：[中文](docs/zh/api-platform-ohos.md)
 
-WebAssembly / 其他平台构建说明请参阅后续文档。
+WebAssembly 及其他平台的构建说明请参阅对应平台文档。
 
 ### 最小集成示例
 
@@ -144,20 +149,20 @@ editor.loadDocument(new Document("Hello, SweetEditor!"));
 
 SweetEditor 坚持最小依赖原则，核心运行时仅依赖少量轻量库：
 
-* [simdutf](https://github.com/simdutf/simdutf)：SIMD 加速 Unicode 编解码
-* [nlohmann/json](https://github.com/nlohmann/json)：JSON 调试导出与内部辅助结构
-* [utfcpp](https://github.com/nemtrif/utfcpp)：UTF-8 迭代与校验
+- [simdutf](https://github.com/simdutf/simdutf)：SIMD 加速 Unicode 编解码
+- [nlohmann/json](https://github.com/nlohmann/json)：JSON 调试导出与内部辅助结构
+- [utfcpp](https://github.com/nemtrif/utfcpp)：UTF-8 迭代与校验
 
 测试使用 [Catch2](https://github.com/catchorg/Catch2)。
 
 ## 文档
 
-| 文档                                                                                                   | 说明                                             |
-| ---------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [架构设计](docs/zh/architecture.md)                   | 核心架构、模块设计、数据流、渲染流水线                            |
-| [EditorCore API（中文）](docs/zh/api-editor-core.md) | C++ 核心层和 C API 参考                              |
-| [平台 API 索引（中文）](docs/zh/api-platform.md)        | Android / Swing / Apple / WinForms 平台 API 文档入口 |
-| [参与共建](docs/zh/join.md)                                   | 仓库结构、阅读入口、平台同步检查点                              |
+| 文档 | 说明 |
+| --- | --- |
+| [架构设计](docs/zh/architecture.md) | 核心架构、模块设计、数据流、渲染流水线 |
+| [EditorCore API（中文）](docs/zh/api-editor-core.md) | C++ 核心层和 C API 参考 |
+| [平台 API 索引（中文）](docs/zh/api-platform.md) | Android、Swing、Apple、WinForms、OHOS 平台 API 文档入口 |
+| [参与共建](docs/zh/join.md) | 仓库结构、阅读入口、平台同步检查点 |
 
 ## 参与共建
 
