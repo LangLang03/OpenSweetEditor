@@ -4,6 +4,7 @@
 
 #ifndef SWEETEDITOR_C_API_H
 #define SWEETEDITOR_C_API_H
+#include <cstddef>
 #include <cstdint>
 
 #if defined(WINDOWS) || defined(_WIN32) || defined(_WIN64)
@@ -12,8 +13,10 @@
   #else
     #define EDITOR_API __declspec(dllimport)
   #endif
+  #define EDITOR_CALL __stdcall
 #else
   #define EDITOR_API __attribute__((visibility("default")))
+  #define EDITOR_CALL
 #endif
 
 extern "C" {
@@ -28,10 +31,10 @@ extern "C" {
 
 /// Text measurement callback set, passed when creating EditorCore
 typedef struct {
-    float (__stdcall* measure_text_width)(const U16Char* text, int32_t font_style);
-    float (__stdcall* measure_inlay_hint_width)(const U16Char* text);
-    float (__stdcall* measure_icon_width)(int32_t icon_id);
-    void  (__stdcall* get_font_metrics)(float* arr, size_t length);
+    float (EDITOR_CALL* measure_text_width)(const U16Char* text, int32_t font_style);
+    float (EDITOR_CALL* measure_inlay_hint_width)(const U16Char* text);
+    float (EDITOR_CALL* measure_icon_width)(int32_t icon_id);
+    void  (EDITOR_CALL* get_font_metrics)(float* arr, size_t length);
 } text_measurer_t;
 
 #pragma region [Core Lifecycle, View & Events]

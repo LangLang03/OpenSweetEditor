@@ -26,13 +26,14 @@
 │   ├── include                      核心头文件与 c_api.h
 │   └── core                         Document / Layout / Decoration / EditorCore / c_api
 ├── tests                            核心回归测试
-└── platform
-    ├── Android                      Android SDK + JNI 直连
-    ├── Swing                        Java FFM + C API
-    ├── WinForms                     C# P/Invoke + C API
-    ├── Apple                        Swift Package + 手工 C bridge
-    ├── Emscripten                   Web 预留目录（bindings 为空）
-    └── OHOS                         预留目录
+├── platform
+│   ├── Android                      Android SDK + JNI 直连
+│   ├── Swing                        Java FFM + C API
+│   ├── WinForms                     C# P/Invoke + C API
+│   ├── Apple                        Swift Package + 手工 C bridge
+│   ├── OHOS                         OHOS SDK + NAPI 直连
+│   └── Emscripten                   留目录
+└── prebuilt                         预构建动态库
 ```
 
 ## 平台目录职责

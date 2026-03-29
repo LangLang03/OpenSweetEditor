@@ -1,5 +1,6 @@
 #!/bin/bash
 # Arguments:
+# -b, --build           Build directory
 # -o, --output          Output directory
 # -s, --src             SweetEditor project source directory
 # -p, --platform        Target platform (all/android/windows/ohos/wasm; all means build everything)
@@ -8,13 +9,18 @@
 
 # Parse arguments
 PROJECT_DIR="../"
-OUTPUT_DIR="../build"
+BUILD_DIR="../build"
+OUTPUT_DIR="../prebuilt"
 ANDROID_NDK="${ANDROID_NDK:-}"
 OHOS_TOOLCHAIN="${OHOS_TOOLCHAIN:-}"
 PLATFORM="all"
 POSITIONAL_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -b|--build)
+      BUILD_DIR="$2"
+      shift 2
+      ;;
     -o|--output)
       OUTPUT_DIR="$2"
       shift 2
@@ -47,6 +53,8 @@ while [[ $# -gt 0 ]]; do
 done
 set -- "${POSITIONAL_ARGS[@]}"
 
+TARGET_NAME=sweeteditor
+WASM_TARGET_NAME=libsweeteditor
 echo "============================= Start building: $PLATFORM ============================="
 
 function resolve_android_strip_tool() {
@@ -76,59 +84,82 @@ function strip_android_outputs() {
   done < <(find "$target_dir" -type f -name "*.so" -print0)
 }
 
+function copy_built_libraries() {
+  local build_dir="$1"
+  local dest_dir="$2"
+  mkdir -p "$dest_dir"
+  find "$build_dir" -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" -o -name "*.wasm" -o -name "*.js" \) -exec cp -f {} "$dest_dir/" \;
+}
+
 function build_windows_msvc() {
   echo "============================= Windows X64 ============================="
-  WINDOWS_OUTPUT=$OUTPUT_DIR/windows
+  WINDOWS_BUILD_DIR="$BUILD_DIR/windows"
+  WINDOWS_PREBUILT_DIR="$OUTPUT_DIR/windows/x64"
   cmake $PROJECT_DIR \
-    -B $WINDOWS_OUTPUT \
+    -B $WINDOWS_BUILD_DIR \
     -G "Visual Studio 17 2022" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_STANDARD=17 \
     -DCMAKE_CXX_STANDARD_REQUIRED=ON \
     -DCMAKE_CXX_FLAGS="/std:c++17 /EHsc /utf-8" \
-    -DCMAKE_INSTALL_PREFIX=$WINDOWS_OUTPUT \
     -DBUILD_STATIC_LIB=OFF \
     -DBUILD_TESTING=OFF
-  cmake --build $WINDOWS_OUTPUT -j 24 --config Release
-  cmake --install $WINDOWS_OUTPUT
+  cmake --build $WINDOWS_BUILD_DIR --target $TARGET_NAME -j 24 --config Release
+  copy_built_libraries "$WINDOWS_BUILD_DIR/bin" "$WINDOWS_PREBUILT_DIR"
 }
 
 function build_osx() {
   OSX_ARCH=$1
   echo "============================= MacOSX $OSX_ARCH ============================="
-  OSX_OUTPUT=$OUTPUT_DIR/osx/$OSX_ARCH
+  OSX_BUILD_DIR="$BUILD_DIR/osx/$OSX_ARCH"
+  OSX_PREBUILT_DIR="$OUTPUT_DIR/osx/$OSX_ARCH"
   cmake $PROJECT_DIR \
-    -B $OSX_OUTPUT \
+    -B $OSX_BUILD_DIR \
     -G "Ninja" \
     -DCMAKE_CXX_FLAGS="-std=c++17" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_STATIC_LIB=OFF \
+    -DBUILD_TESTING=OFF \
     -DCMAKE_OSX_ARCHITECTURES="$OSX_ARCH"
-  cmake --build $OSX_OUTPUT -j 12
-  cmake --install $OSX_OUTPUT
+  cmake --build $OSX_BUILD_DIR --target $TARGET_NAME -j 12
+  copy_built_libraries "$OSX_BUILD_DIR/lib" "$OSX_PREBUILT_DIR"
 }
 
 function build_linux() {
     LINUX_ARCH=$1
-    LINUX_OUTPUT=$OUTPUT_DIR/linux/$LINUX_ARCH
+    LINUX_BUILD_DIR="$BUILD_DIR/linux/$LINUX_ARCH"
+    if [ $LINUX_ARCH = "aarch64" ]; then
+      LINUX_PREBUILT_DIR="$OUTPUT_DIR/linux/aarch64"
+    elif [ $LINUX_ARCH = "x86_64" ]; then
+      LINUX_PREBUILT_DIR="$OUTPUT_DIR/linux/x86_64"
+    else
+      echo "Unsupported arch: $LINUX_ARCH"
+      return 1
+    fi
     cmake $PROJECT_DIR \
-      -B $LINUX_OUTPUT \
+      -B $LINUX_BUILD_DIR \
       -G "Ninja" \
       -DCMAKE_CXX_FLAGS="-std=c++17 -fPIC" \
-      -DCMAKE_BUILD_TYPE=Release
-    cmake --build $LINUX_OUTPUT -j 12
-    cmake --install $LINUX_OUTPUT
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_STATIC_LIB=OFF \
+      -DBUILD_TESTING=OFF
+    cmake --build $LINUX_BUILD_DIR --target $TARGET_NAME -j 12
+    copy_built_libraries "$LINUX_BUILD_DIR/lib" "$LINUX_PREBUILT_DIR"
 }
 
 function build_emscripten() {
   echo "============================= WebAssembly ============================="
-  WASM_OUTPUT=$OUTPUT_DIR/emscripten
+  WASM_BUILD_DIR="$BUILD_DIR/emscripten"
+  WASM_PREBUILT_DIR="$OUTPUT_DIR/wasm"
   emcmake.bat cmake $PROJECT_DIR\
-    -B $WASM_OUTPUT \
+    -B $WASM_BUILD_DIR \
     -G "Ninja" \
     -DCMAKE_CXX_FLAGS="-std=c++17" \
-    -DCMAKE_BUILD_TYPE=Release
-  cmake --build $WASM_OUTPUT -j 24
-  cmake --install $WASM_OUTPUT
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_STATIC_LIB=OFF \
+    -DBUILD_TESTING=OFF
+  cmake --build $WASM_BUILD_DIR --target $WASM_TARGET_NAME -j 24
+  copy_built_libraries "$WASM_BUILD_DIR/bin" "$WASM_PREBUILT_DIR"
 }
 
 function build_android() {
@@ -139,9 +170,10 @@ function build_android() {
   fi
   echo "============================= Android $ANDROID_ARCH ============================="
   echo "============================= NDK: $ANDROID_NDK ============================="
-  ANDROID_OUTPUT=$OUTPUT_DIR/android/$ANDROID_ARCH
+  ANDROID_BUILD_DIR="$BUILD_DIR/android/$ANDROID_ARCH"
+  ANDROID_PREBUILT_DIR="$OUTPUT_DIR/android/$ANDROID_ARCH"
   cmake $PROJECT_DIR \
-    -B $ANDROID_OUTPUT \
+    -B $ANDROID_BUILD_DIR \
     -G "Ninja" \
     -DANDROID_ABI=$ANDROID_ARCH \
     -DCMAKE_ANDROID_ARCH_ABI=$ANDROID_ARCH \
@@ -150,18 +182,21 @@ function build_android() {
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
     -DANDROID_PLATFORM=android-21 \
-    -DCMAKE_CXX_FLAGS="-std=c++17"
-  cmake --build $ANDROID_OUTPUT -j 24
-  cmake --install $ANDROID_OUTPUT
+    -DCMAKE_CXX_FLAGS="-std=c++17" \
+    -DBUILD_STATIC_LIB=OFF \
+    -DBUILD_TESTING=OFF
+  cmake --build $ANDROID_BUILD_DIR --target $TARGET_NAME -j 24
 
   local strip_tool
   strip_tool=$(resolve_android_strip_tool)
   if [ -n "$strip_tool" ]; then
     echo "============================= Stripping Android .so ($ANDROID_ARCH) ============================="
     echo "============================= Strip Tool: $strip_tool ============================="
-    strip_android_outputs "$ANDROID_OUTPUT" "$strip_tool"
+    strip_android_outputs "$ANDROID_BUILD_DIR" "$strip_tool"
+    copy_built_libraries "$ANDROID_BUILD_DIR" "$ANDROID_PREBUILT_DIR"
   else
-    echo "Warning: llvm-strip not found under ANDROID_NDK=$ANDROID_NDK, skip stripping."
+    echo "Error: llvm-strip not found under ANDROID_NDK=$ANDROID_NDK, cannot stripping."
+    return 1
   fi
 }
 
@@ -173,22 +208,25 @@ function build_ohos() {
   fi
   echo "============================= OHOS $OHOS_ARCH ============================="
   echo "============================= Toolchain: $OHOS_TOOLCHAIN ============================="
-  OHOS_OUTPUT=$OUTPUT_DIR/ohos/OHOS_ARCH
+  OHOS_BUILD_DIR="$BUILD_DIR/ohos/$OHOS_ARCH"
+  OHOS_PREBUILT_DIR="$OUTPUT_DIR/ohos/$OHOS_ARCH"
   cmake $PROJECT_DIR \
-    -B $OHOS_OUTPUT \
+    -B $OHOS_BUILD_DIR \
     -G "Ninja" \
     -DOHOS_PLATFORM=OHOS \
     -DOHOS_ARCH=$OHOS_ARCH \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=$OHOS_TOOLCHAIN \
-    -DCMAKE_CXX_FLAGS="-std=c++17"
-  cmake --build $OHOS_OUTPUT -j 24
-  cmake --install $OHOS_OUTPUT
+    -DCMAKE_TOOLCHAIN_FILE="$OHOS_TOOLCHAIN" \
+    -DCMAKE_CXX_FLAGS="-std=c++17" \
+    -DBUILD_STATIC_LIB=OFF \
+    -DBUILD_TESTING=OFF
+  cmake --build $OHOS_BUILD_DIR --target $TARGET_NAME -j 24
+  copy_built_libraries "$OHOS_BUILD_DIR/lib" "$OHOS_PREBUILT_DIR"
 }
 
 if [ $PLATFORM = "all" ]; then
   build_windows_msvc
-  build_linux aarch64
+  build_linux x86_64
   build_android arm64-v8a
   build_android x86_64
   build_ohos arm64-v8a
@@ -201,7 +239,6 @@ elif [ $PLATFORM = "osx" ]; then
   build_osx arm64
   build_osx x86_64
 elif [ $PLATFORM = "linux" ]; then
-  build_linux aarch64
   build_linux x86_64
 elif [ $PLATFORM = "android" ]; then
   build_android arm64-v8a

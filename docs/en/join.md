@@ -26,13 +26,14 @@ This document gives practical development entry points based on the current repo
 │   ├── include                      core headers and c_api.h
 │   └── core                         Document / Layout / Decoration / EditorCore / c_api
 ├── tests                            core regression tests
-└── platform
-    ├── Android                      Android SDK + direct JNI
-    ├── Swing                        Java FFM + C API
-    ├── WinForms                     C# P/Invoke + C API
-    ├── Apple                        Swift Package + manual C bridge
-    ├── Emscripten                   reserved Web directory (bindings empty)
-    └── OHOS                         reserved directory
+├── platform
+│   ├── Android                      Android SDK + direct JNI
+│   ├── Swing                        Java FFM + C API
+│   ├── WinForms                     C# P/Invoke + C API
+│   ├── Apple                        Swift Package + manual C bridge
+│   ├── OHOS                         OHOS SDK + direct NAPI
+│   └── Emscripten                   reserved Web directory (bindings empty)
+└── prebuilt                         prebuilt shared libs
 ```
 
 ## Platform Directory Responsibilities
