@@ -2,6 +2,8 @@
 
 This guide helps migrate from the previous Web v1 API to Web SDK v2.
 
+Applies to current npm line: `2.0.1`.
+
 ## Core Changes
 
 1. v2 main package is `@opensweeteditor/sdk`.
@@ -10,6 +12,8 @@ This guide helps migrate from the previous Web v1 API to Web SDK v2.
 4. Wasm loading options moved under `options.wasm`.
 5. If `options.wasm` is omitted, v2 auto-loads bundled runtime from `@opensweeteditor/sdk/runtime`.
 6. Completion/decoration registration now returns `IDisposable`.
+7. Browser CDN usage is ESM-first (`<script type="module">` + import map).
+8. Bundled syntax path helper is available as `getBundledSyntaxPath(name)`.
 
 ## API Mapping
 
@@ -54,3 +58,8 @@ const editor = await createEditor(container, {
 - Use `@opensweeteditor/providers-sweetline`.
 - Create provider with `createSweetLineDecorationProvider(...)`.
 - Register via `editor.registerDecorationProvider(provider)`.
+
+## 2.0.1 Notes
+
+- Runtime now defaults to Release-style logging behavior in Release builds (`ENABLE_LOG=0`, `ENABLE_PERF_LOG=0`).
+- Input routing around `keydown`/`beforeinput`/`input` was tightened to reduce duplicate edit side effects.

@@ -1,46 +1,50 @@
-# Web Platform API (Emscripten, SDK v2)
+﻿# Web Platform API (Emscripten, SDK v2)
 
-This document describes the current Web SDK v2 implementation.
+This document describes the current Web SDK v2 structure and usage.
 
 ## Status
 
-- Web SDK v2 is now organized as a pnpm workspace under `platform/Emscripten/sdk`.
-- `platform/Emscripten/web` is now a distribution output directory.
-- The old v1 JS entry (`createSweetEditor`) is not the primary API in v2.
+- Web is organized as a pnpm workspace under `platform/Emscripten/sdk`.
+- `platform/Emscripten/web` is build output and static distribution directory.
+- v2 primary API entry is `@opensweeteditor/sdk` (`createEditor`), not v1 `createSweetEditor`.
+
+Current npm packages:
+
+- `@opensweeteditor/core@2.0.1`
+- `@opensweeteditor/widget@2.0.1`
+- `@opensweeteditor/providers-sweetline@2.0.1`
+- `@opensweeteditor/sdk@2.0.1`
 
 ## Workspace Layout
 
 ```text
 platform/Emscripten/sdk
-├── packages
-│   ├── core                    # low-level core + wasm bridge exports
-│   ├── widget                  # browser widget implementation
-│   ├── providers-sweetline     # optional SweetLine provider package
-│   └── sdk                     # stable v2 public API entry
-├── apps
-│   └── demo                    # Vite demo app
-├── assets                      # sweetline + demo runtime assets
-└── scripts/build-web-dist.mjs  # build + sync to platform/Emscripten/web
+|-- packages
+|   |-- core
+|   |-- widget
+|   |-- providers-sweetline
+|   `-- sdk
+|-- apps
+|   `-- demo
+|-- assets
+`-- scripts
 ```
 
 ## Build Flow
 
-1. Build wasm as before:
+### Full Flow (recommended)
 
 ```powershell
-./platform/Emscripten/build-wasm.ps1
+./platform/Emscripten/build-wasm.ps1 -BuildType Release
 ```
 
 ```bash
-bash ./platform/Emscripten/build-wasm.sh
+bash ./platform/Emscripten/build-wasm.sh Release
 ```
 
-2. The wasm build script now also:
-   - installs/updates pnpm workspace dependencies
-   - builds all SDK packages and demo
-   - generates static web dist into `platform/Emscripten/web`
+The wasm script also runs workspace build and writes output to `platform/Emscripten/web`.
 
-You can also run workspace tasks directly:
+### Workspace-only Flow
 
 ```bash
 cd platform/Emscripten/sdk
@@ -51,27 +55,23 @@ pnpm typecheck
 pnpm build:web-dist
 ```
 
-## v2 Public API
-
-Package: `@opensweeteditor/sdk`
+## Public API (`@opensweeteditor/sdk`)
 
 ```ts
 import {
   createEditor,
   createModel,
   getBundledWasmModulePath,
-  type IEditor,
-  type ICompletionProvider,
-  type IDecorationProvider
+  getBundledSyntaxPath
 } from "@opensweeteditor/sdk";
 ```
 
-### `createEditor`
+### `createEditor(container, options)`
 
 ```ts
 const model = createModel("hello", {
-  uri: "inmemory://demo/example.kt",
-  language: "kotlin"
+  uri: "inmemory://demo/example.cpp",
+  language: "cpp"
 });
 
 const editor = await createEditor(container, {
@@ -80,8 +80,11 @@ const editor = await createEditor(container, {
 });
 ```
 
-`createEditor` uses the bundled runtime from `@opensweeteditor/sdk/runtime` by default.
-Override it only when you need custom hosting/CDN:
+Default wasm behavior:
+
+- If `options.wasm` is omitted, bundled runtime in `@opensweeteditor/sdk/runtime` is used.
+
+Optional explicit wasm path:
 
 ```ts
 const editor = await createEditor(container, {
@@ -92,40 +95,31 @@ const editor = await createEditor(container, {
 });
 ```
 
-### `createModel`
+### `createModel(text, { uri, language })`
 
-- Creates a text model decoupled from the editor instance.
-- Supports `uri`, `language`, `versionId`, and text mutation APIs.
+- Editor/model decoupling.
+- Easy model switch with `editor.setModel(...)`.
 
-### Providers
+### Provider registration
 
 ```ts
-const completionDisposable = editor.registerCompletionProvider({
+const c = editor.registerCompletionProvider({
   triggerCharacters: ["."],
   provideCompletions(context, model) {
     return [{ label: "print" }];
   }
 });
 
-const decorationDisposable = editor.registerDecorationProvider({
+const d = editor.registerDecorationProvider({
   provideDecorations(context, model) {
     return null;
   }
 });
 ```
 
-Both registration calls return `IDisposable`.
+Both return `IDisposable`.
 
-## Runtime Files in npm
-
-`@opensweeteditor/sdk` npm tarball includes:
-
-- `runtime/sweeteditor.js`
-- `runtime/sweeteditor.wasm`
-- `runtime/libs/sweetline/*`
-- `runtime/syntaxes/*.json`
-
-## Optional SweetLine Package
+## SweetLine (optional package)
 
 Package: `@opensweeteditor/providers-sweetline`
 
@@ -139,27 +133,72 @@ const provider = createSweetLineDecorationProvider({
 editor.registerDecorationProvider(provider);
 ```
 
-## Runtime Output (`platform/Emscripten/web`)
+## Runtime Files Included in npm
+
+`@opensweeteditor/sdk` tarball includes:
+
+- `runtime/sweeteditor.js`
+- `runtime/sweeteditor.wasm`
+- `runtime/libs/sweetline/*`
+- `runtime/syntaxes/*.json`
+
+Syntax helper:
+
+```ts
+const cppSyntax = getBundledSyntaxPath("cpp.json");
+```
+
+## CDN Usage
+
+Use ESM (`<script type="module">`), not global-IIFE API:
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "@opensweeteditor/core": "https://cdn.jsdelivr.net/npm/@opensweeteditor/core@2.0.1/dist/index.js",
+    "@opensweeteditor/widget": "https://cdn.jsdelivr.net/npm/@opensweeteditor/widget@2.0.1/dist/index.js",
+    "@opensweeteditor/sdk": "https://cdn.jsdelivr.net/npm/@opensweeteditor/sdk@2.0.1/dist/index.js"
+  }
+}
+</script>
+```
+
+## Distribution Output (`platform/Emscripten/web`)
 
 After `build:web-dist`:
 
 ```text
 platform/Emscripten/web
-├── index.html
-├── assets/*                     # demo bundles
-└── runtime
-    ├── sweeteditor.js
-    ├── sweeteditor.wasm
-    ├── libs/sweetline/*
-    ├── syntaxes/*.json
-    └── files/*
+├─ index.html
+├─ assets/*
+└─ runtime
+   ├─ sweeteditor.js
+   ├─ sweeteditor.wasm
+   ├─ libs/sweetline/*
+   ├─ syntaxes/*.json
+   └─ files/*
 ```
 
-Serve this folder with any static server:
+Serve with any static server:
 
 ```bash
 cd platform/Emscripten/web
 python -m http.server 8080
 ```
 
-Open `http://localhost:8080/`.
+Open: `http://localhost:8080/`
+
+## Build-type Logging Defaults
+
+CMake defaults:
+
+- `Debug`: `ENABLE_LOG=1`, `ENABLE_PERF_LOG=1`, `SWEETEDITOR_DEBUG=1`
+- `Release`: `ENABLE_LOG=0`, `ENABLE_PERF_LOG=0`, `SWEETEDITOR_DEBUG=0`
+
+Override flags:
+
+- `SWEETEDITOR_ENABLE_LOG`
+- `SWEETEDITOR_ENABLE_PERF_LOG`
+- `SWEETEDITOR_DEBUG_MODE`
+

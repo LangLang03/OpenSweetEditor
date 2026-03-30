@@ -1326,6 +1326,7 @@ export class SweetEditorWidget {
     this._compositionEndFallbackData = "";
     this._compositionEndTimer = 0;
     this._suppressNextInputEvent = false;
+    this._suppressNextInputResetTimer = 0;
     this._printableFallbackEpoch = 0;
     this._pendingPrintableFallbackTimers = new Set();
     this._documentKeyRouteActive = false;
@@ -2022,6 +2023,10 @@ export class SweetEditorWidget {
 
     this._invalidatePrintableFallback();
     this._suppressNextInputEvent = false;
+    if (this._suppressNextInputResetTimer) {
+      clearTimeout(this._suppressNextInputResetTimer);
+      this._suppressNextInputResetTimer = 0;
+    }
 
     if (this._compositionEndTimer) {
       clearTimeout(this._compositionEndTimer);
@@ -3566,9 +3571,14 @@ export class SweetEditorWidget {
 
   _suppressNextInputOnce() {
     this._suppressNextInputEvent = true;
-    Promise.resolve().then(() => {
+    if (this._suppressNextInputResetTimer) {
+      clearTimeout(this._suppressNextInputResetTimer);
+      this._suppressNextInputResetTimer = 0;
+    }
+    this._suppressNextInputResetTimer = setTimeout(() => {
       this._suppressNextInputEvent = false;
-    });
+      this._suppressNextInputResetTimer = 0;
+    }, 0);
   }
 
   _extractInputText(event:IAnyRecord, allowValueFallback:IAnyValue = true) {
@@ -4035,6 +4045,9 @@ export class SweetEditorWidget {
     if (!keyCode) {
       keyCode = this._mapLegacyKeyCode(event);
     }
+    if (keyCode && !this._shouldSchedulePrintableFallback(event)) {
+      this._invalidatePrintableFallback();
+    }
     this._debugInputLog("keydown.map", {
       key: event?.key ?? "",
       mappedKeyCode,
@@ -4064,6 +4077,8 @@ export class SweetEditorWidget {
       });
       if (result && (result.handled ?? result.Handled)) {
         this._handleKeyEventResult(result, { action: TextChangeAction.KEY });
+        this._input.value = "";
+        this._suppressNextInputOnce();
         event.preventDefault();
         return;
       }
@@ -4072,6 +4087,8 @@ export class SweetEditorWidget {
     if (event.key === "Backspace") {
       const edit = this._core.backspace();
       this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
+      this._input.value = "";
+      this._suppressNextInputOnce();
       this._debugInputLog("keydown.fallback.backspace", {
         changed: !!edit?.changed,
       });
@@ -4082,6 +4099,8 @@ export class SweetEditorWidget {
     if (event.key === "Delete") {
       const edit = this._core.deleteForward();
       this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
+      this._input.value = "";
+      this._suppressNextInputOnce();
       this._debugInputLog("keydown.fallback.deleteForward", {
         changed: !!edit?.changed,
       });

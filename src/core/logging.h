@@ -9,7 +9,7 @@
 #define __FILE_NAME__ (strrchr("\\" __FILE__, '\\') + 1)
 #endif
 
-#ifdef ENABLE_LOG
+#if defined(ENABLE_LOG) && ENABLE_LOG
   #define LOG_TAG "SWEETEDITOR"
 #include "buffer.h"
 #if defined(ANDROID)
@@ -54,7 +54,7 @@
 #endif
 
 
-#ifdef ENABLE_PERF_LOG
+#if defined(ENABLE_PERF_LOG) && ENABLE_PERF_LOG
   #include <chrono>
   #include <cstdio>
 
