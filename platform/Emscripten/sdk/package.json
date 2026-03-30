@@ -8,6 +8,7 @@
     "pnpm": ">=10.30.0 <11"
   },
   "scripts": {
+    "clean": "node ./scripts/clean-workspace.mjs",
     "build:packages": "pnpm --filter @opensweeteditor/core run build && pnpm --filter @opensweeteditor/widget run build && pnpm --filter @opensweeteditor/providers-sweetline run build && pnpm --filter @opensweeteditor/sdk run build",
     "build": "pnpm run build:packages && pnpm --filter @opensweeteditor/demo run build",
     "test": "pnpm -r --if-present run test",
