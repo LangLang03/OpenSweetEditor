@@ -9,6 +9,8 @@
 - [Apple 平台 API](./api-platform-apple.md)
 - [WinForms 平台 API](./api-platform-winforms.md)
 - [OHOS 平台 API](./api-platform-ohos.md)
+- [Web 平台 API（使用指南）](./api-platform-web.md)
+- [Web SDK v2 完整 API 参考（100%）](./api-platform-web-sdk-v2-reference.md)
 - [C++ 核心 / C API](./api-editor-core.md)
 
 ## 当前平台状态

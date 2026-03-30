@@ -2,15 +2,19 @@
 
 This guide helps migrate from the previous Web v1 API to Web SDK v2.
 
-Applies to current npm line: `2.0.1`.
+Applies to current npm line: `0.0.1`.
+
+Full API reference:
+
+- [Web SDK v2 Full API Reference (100%)](./api-platform-web-sdk-v2-reference.md)
 
 ## Core Changes
 
-1. v2 main package is `@opensweeteditor/sdk`.
+1. v2 main package is `@sweeteditor/sdk`.
 2. Main entry changed from `createSweetEditor(...)` to `createEditor(...)`.
 3. Model is now explicit and decoupled via `createModel(...)`.
 4. Wasm loading options moved under `options.wasm`.
-5. If `options.wasm` is omitted, v2 auto-loads bundled runtime from `@opensweeteditor/sdk/runtime`.
+5. If `options.wasm` is omitted, v2 auto-loads bundled runtime from `@sweeteditor/sdk/runtime`.
 6. Completion/decoration registration now returns `IDisposable`.
 7. Browser CDN usage is ESM-first (`<script type="module">` + import map).
 8. Bundled syntax path helper is available as `getBundledSyntaxPath(name)`.
@@ -40,7 +44,7 @@ editor.loadText("hello");
 ## After (v2)
 
 ```ts
-import { createEditor, createModel } from "@opensweeteditor/sdk";
+import { createEditor, createModel } from "@sweeteditor/sdk";
 
 const model = createModel("hello", {
   uri: "inmemory://demo/main.txt",
@@ -55,11 +59,12 @@ const editor = await createEditor(container, {
 
 ## SweetLine Migration
 
-- Use `@opensweeteditor/providers-sweetline`.
+- Use `@sweeteditor/providers-sweetline`.
 - Create provider with `createSweetLineDecorationProvider(...)`.
 - Register via `editor.registerDecorationProvider(provider)`.
 
-## 2.0.1 Notes
+## 0.0.1 Notes
 
 - Runtime now defaults to Release-style logging behavior in Release builds (`ENABLE_LOG=0`, `ENABLE_PERF_LOG=0`).
 - Input routing around `keydown`/`beforeinput`/`input` was tightened to reduce duplicate edit side effects.
+

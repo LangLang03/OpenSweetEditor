@@ -1,6 +1,6 @@
 {
-  "name": "@opensweeteditor/sdk",
-  "version": "2.0.1",
+  "name": "@sweeteditor/sdk",
+  "version": "0.0.1",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,12 +17,12 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node ../../scripts/prepare-sdk-runtime.mjs",
-    "typecheck": "pnpm --filter @opensweeteditor/core run build && pnpm --filter @opensweeteditor/widget run build && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm --filter @sweeteditor/core run build && pnpm --filter @sweeteditor/widget run build && tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "pnpm --filter @opensweeteditor/core run build && pnpm --filter @opensweeteditor/widget run build && vitest run"
+    "test": "pnpm --filter @sweeteditor/core run build && pnpm --filter @sweeteditor/widget run build && vitest run"
   },
   "dependencies": {
-    "@opensweeteditor/core": "workspace:*",
-    "@opensweeteditor/widget": "workspace:*"
+    "@sweeteditor/core": "workspace:*",
+    "@sweeteditor/widget": "workspace:*"
   }
 }

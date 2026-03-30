@@ -1,6 +1,6 @@
 {
-  "name": "@opensweeteditor/widget",
-  "version": "2.0.1",
+  "name": "@sweeteditor/widget",
+  "version": "0.0.1",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,6 +19,6 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "@opensweeteditor/core": "workspace:*"
+    "@sweeteditor/core": "workspace:*"
   }
 }

@@ -38,10 +38,10 @@ importers:
 
   apps/demo:
     dependencies:
-      '@opensweeteditor/providers-sweetline':
+      '@sweeteditor/providers-sweetline':
         specifier: workspace:*
         version: link:../../packages/providers-sweetline
-      '@opensweeteditor/sdk':
+      '@sweeteditor/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
 
@@ -49,22 +49,22 @@ importers:
 
   packages/providers-sweetline:
     dependencies:
-      '@opensweeteditor/core':
+      '@sweeteditor/core':
         specifier: workspace:*
         version: link:../core
 
   packages/sdk:
     dependencies:
-      '@opensweeteditor/core':
+      '@sweeteditor/core':
         specifier: workspace:*
         version: link:../core
-      '@opensweeteditor/widget':
+      '@sweeteditor/widget':
         specifier: workspace:*
         version: link:../widget
 
   packages/widget:
     dependencies:
-      '@opensweeteditor/core':
+      '@sweeteditor/core':
         specifier: workspace:*
         version: link:../core
 
@@ -2240,3 +2240,4 @@ snapshots:
   xmlchars@2.2.0: {}
 
   yocto-queue@0.1.0: {}
+

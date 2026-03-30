@@ -25,4 +25,5 @@ export {
   toDisposable,
   type IDisposable,
   type ITextModel,
-} from "@opensweeteditor/core";
+} from "@sweeteditor/core";
+

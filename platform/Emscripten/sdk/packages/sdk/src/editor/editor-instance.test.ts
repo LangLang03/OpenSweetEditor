@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { describe, expect, it, vi } from "vitest";
-import type { ISweetEditorWasmModule } from "@opensweeteditor/core";
-import type { SweetEditorWidget } from "@opensweeteditor/widget";
+import type { ISweetEditorWasmModule } from "@sweeteditor/core";
+import type { SweetEditorWidget } from "@sweeteditor/widget";
 
 import { createEditor, createModel, getBundledSyntaxPath, getBundledWasmModulePath } from "./editor-instance.js";
 
@@ -129,3 +129,4 @@ describe("editor instance", () => {
     expect(widget.decorationProviders.length).toBe(0);
   });
 });
+

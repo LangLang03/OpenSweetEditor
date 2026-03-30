@@ -40,7 +40,7 @@ function resolveWasmPath(explicitPath, fallbackName) {
 
 async function main() {
   run("pnpm", ["run", "build:packages"], sdkRoot);
-  run("pnpm", ["--filter", "@opensweeteditor/demo", "run", "build"], sdkRoot);
+  run("pnpm", ["--filter", "@sweeteditor/demo", "run", "build"], sdkRoot);
 
   const wasmJs = resolveWasmPath(parseArg("wasm-js"), "sweeteditor.js");
   const wasmWasm = resolveWasmPath(parseArg("wasm-wasm"), "sweeteditor.wasm");
@@ -85,3 +85,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+

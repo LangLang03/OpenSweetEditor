@@ -167,6 +167,8 @@ Testing uses [Catch2](https://github.com/catchorg/Catch2).
 | [Architecture](docs/en/architecture.md) | Core architecture, module design, data flow, and rendering pipeline |
 | [EditorCore API](docs/en/api-editor-core.md) | Reference for the C++ core layer and C API |
 | [Platform API Index](docs/en/api-platform.md) | Entry point for Android, Swing, Apple, WinForms, and OHOS platform API docs |
+| [Web Platform API (Guide)](docs/en/api-platform-web.md) | Web SDK v2 usage guide, build flow, runtime bundling, and CDN integration |
+| [Web SDK v2 Full API Reference](docs/en/api-platform-web-sdk-v2-reference.md) | 100% declaration coverage for `@sweeteditor/sdk`, `@sweeteditor/core`, `@sweeteditor/widget`, and `@sweeteditor/providers-sweetline` |
 | [Contributing](docs/en/join.md) | Repository structure, reading entry points, and platform synchronization checkpoints |
 
 ## Contributing
@@ -208,3 +210,4 @@ SweetEditor is licensed under the [GNU Lesser General Public License v2.1 or lat
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=FinalScave/OpenSweetEditor&type=date&legend=top-left" />
  </picture>
 </a>
+

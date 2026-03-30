@@ -1,4 +1,4 @@
-import { SweetLineIncrementalDecorationProvider, toDisposable, type IDisposable } from "@opensweeteditor/core";
+import { SweetLineIncrementalDecorationProvider, toDisposable, type IDisposable } from "@sweeteditor/core";
 
 export type ISweetLineProvider = InstanceType<typeof SweetLineIncrementalDecorationProvider>;
 
@@ -26,3 +26,4 @@ export function registerSweetLineDecorationProvider(
     }),
   };
 }
+

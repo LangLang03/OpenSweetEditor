@@ -1,17 +1,17 @@
-# @opensweeteditor/providers-sweetline
+# @sweeteditor/providers-sweetline
 
 Optional SweetLine decoration provider package for OpenSweetEditor Web SDK v2.
 
 ## Install
 
 ```bash
-npm i @opensweeteditor/providers-sweetline
+npm i @sweeteditor/providers-sweetline
 ```
 
 ## Usage
 
 ```ts
-import { createSweetLineDecorationProvider } from "@opensweeteditor/providers-sweetline";
+import { createSweetLineDecorationProvider } from "@sweeteditor/providers-sweetline";
 
 const provider = createSweetLineDecorationProvider({
   sweetLine,
@@ -20,4 +20,5 @@ const provider = createSweetLineDecorationProvider({
 
 editor.registerDecorationProvider(provider);
 ```
+
 

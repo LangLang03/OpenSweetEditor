@@ -2,15 +2,19 @@
 
 本文档用于将旧版 Web v1 API 迁移到 Web SDK v2。
 
-当前适用版本线：`2.0.1`。
+当前适用版本线：`0.0.1`。
+
+完整 API 参考：
+
+- [Web SDK v2 完整 API 参考（100%）](./api-platform-web-sdk-v2-reference.md)
 
 ## 关键变化
 
-1. v2 主包为 `@opensweeteditor/sdk`。
+1. v2 主包为 `@sweeteditor/sdk`。
 2. 主入口从 `createSweetEditor(...)` 改为 `createEditor(...)`。
 3. 引入显式模型层：`createModel(...)`，编辑器与模型解耦。
 4. wasm 加载参数统一放入 `options.wasm`。
-5. 不传 `options.wasm` 时，v2 默认自动加载 `@opensweeteditor/sdk/runtime` 内置运行时。
+5. 不传 `options.wasm` 时，v2 默认自动加载 `@sweeteditor/sdk/runtime` 内置运行时。
 6. completion/decoration 注册统一返回 `IDisposable`。
 7. CDN 使用方式改为 ESM（`<script type="module">` + import map）。
 8. 新增内置语法路径辅助：`getBundledSyntaxPath(name)`。
@@ -40,7 +44,7 @@ editor.loadText("hello");
 ## v2 示例
 
 ```ts
-import { createEditor, createModel } from "@opensweeteditor/sdk";
+import { createEditor, createModel } from "@sweeteditor/sdk";
 
 const model = createModel("hello", {
   uri: "inmemory://demo/main.txt",
@@ -55,11 +59,12 @@ const editor = await createEditor(container, {
 
 ## SweetLine 迁移
 
-- 使用 `@opensweeteditor/providers-sweetline`。
+- 使用 `@sweeteditor/providers-sweetline`。
 - 通过 `createSweetLineDecorationProvider(...)` 创建 provider。
 - 使用 `editor.registerDecorationProvider(provider)` 注册。
 
-## 2.0.1 说明
+## 0.0.1 说明
 
 - Release 构建默认关闭日志（`ENABLE_LOG=0`、`ENABLE_PERF_LOG=0`）。
 - `keydown`/`beforeinput`/`input` 输入链路做了收敛，减少重复编辑副作用。
+

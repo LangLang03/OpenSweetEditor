@@ -10,7 +10,7 @@ import {
   createEditor,
   createModel,
   normalizeNewlines,
-} from "@opensweeteditor/sdk";
+} from "@sweeteditor/sdk";
 
 type SweetLineModuleLoader = (options?: Record<string, unknown>) => Promise<any>;
 type LanguageKind = "cpp" | "java" | "kotlin" | "lua";
@@ -784,3 +784,4 @@ bootstrap().catch((error) => {
   console.error(error);
   setStatus(`Error: ${String(error)}`);
 });
+

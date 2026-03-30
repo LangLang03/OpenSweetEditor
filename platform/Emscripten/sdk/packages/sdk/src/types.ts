@@ -1,5 +1,5 @@
-import type { IAnyRecord, IDisposable, ISweetEditorWasmModule, ITextModel } from "@opensweeteditor/core";
-import type { SweetEditorWidget } from "@opensweeteditor/widget";
+import type { IAnyRecord, IDisposable, ISweetEditorWasmModule, ITextModel } from "@sweeteditor/core";
+import type { SweetEditorWidget } from "@sweeteditor/widget";
 
 export interface ICompletionContext {
   readonly triggerKind: number;
@@ -77,3 +77,4 @@ export interface IEditor {
   getNativeWidget(): SweetEditorWidget;
   dispose(): void;
 }
+

@@ -1,4 +1,4 @@
-﻿# Web Platform API (Emscripten, SDK v2)
+# Web Platform API (Emscripten, SDK v2)
 
 This document describes the current Web SDK v2 structure and usage.
 
@@ -6,14 +6,22 @@ This document describes the current Web SDK v2 structure and usage.
 
 - Web is organized as a pnpm workspace under `platform/Emscripten/sdk`.
 - `platform/Emscripten/web` is build output and static distribution directory.
-- v2 primary API entry is `@opensweeteditor/sdk` (`createEditor`), not v1 `createSweetEditor`.
+- v2 primary API entry is `@sweeteditor/sdk` (`createEditor`), not v1 `createSweetEditor`.
 
 Current npm packages:
 
-- `@opensweeteditor/core@2.0.1`
-- `@opensweeteditor/widget@2.0.1`
-- `@opensweeteditor/providers-sweetline@2.0.1`
-- `@opensweeteditor/sdk@2.0.1`
+- `@sweeteditor/core@0.0.1`
+- `@sweeteditor/widget@0.0.1`
+- `@sweeteditor/providers-sweetline@0.0.1`
+- `@sweeteditor/sdk@0.0.1`
+
+## Full API Coverage
+
+This page is a usage-oriented guide.
+
+For complete API coverage (100% public declarations across all Web v2 packages), see:
+
+- [Web SDK v2 Full API Reference](./api-platform-web-sdk-v2-reference.md)
 
 ## Workspace Layout
 
@@ -55,7 +63,7 @@ pnpm typecheck
 pnpm build:web-dist
 ```
 
-## Public API (`@opensweeteditor/sdk`)
+## Public API (`@sweeteditor/sdk`)
 
 ```ts
 import {
@@ -63,7 +71,7 @@ import {
   createModel,
   getBundledWasmModulePath,
   getBundledSyntaxPath
-} from "@opensweeteditor/sdk";
+} from "@sweeteditor/sdk";
 ```
 
 ### `createEditor(container, options)`
@@ -82,7 +90,7 @@ const editor = await createEditor(container, {
 
 Default wasm behavior:
 
-- If `options.wasm` is omitted, bundled runtime in `@opensweeteditor/sdk/runtime` is used.
+- If `options.wasm` is omitted, bundled runtime in `@sweeteditor/sdk/runtime` is used.
 
 Optional explicit wasm path:
 
@@ -121,10 +129,10 @@ Both return `IDisposable`.
 
 ## SweetLine (optional package)
 
-Package: `@opensweeteditor/providers-sweetline`
+Package: `@sweeteditor/providers-sweetline`
 
 ```ts
-import { createSweetLineDecorationProvider } from "@opensweeteditor/providers-sweetline";
+import { createSweetLineDecorationProvider } from "@sweeteditor/providers-sweetline";
 
 const provider = createSweetLineDecorationProvider({
   sweetLine,
@@ -135,7 +143,7 @@ editor.registerDecorationProvider(provider);
 
 ## Runtime Files Included in npm
 
-`@opensweeteditor/sdk` tarball includes:
+`@sweeteditor/sdk` tarball includes:
 
 - `runtime/sweeteditor.js`
 - `runtime/sweeteditor.wasm`
@@ -156,9 +164,9 @@ Use ESM (`<script type="module">`), not global-IIFE API:
 <script type="importmap">
 {
   "imports": {
-    "@opensweeteditor/core": "https://cdn.jsdelivr.net/npm/@opensweeteditor/core@2.0.1/dist/index.js",
-    "@opensweeteditor/widget": "https://cdn.jsdelivr.net/npm/@opensweeteditor/widget@2.0.1/dist/index.js",
-    "@opensweeteditor/sdk": "https://cdn.jsdelivr.net/npm/@opensweeteditor/sdk@2.0.1/dist/index.js"
+    "@sweeteditor/core": "https://cdn.jsdelivr.net/npm/@sweeteditor/core@0.0.1/dist/index.js",
+    "@sweeteditor/widget": "https://cdn.jsdelivr.net/npm/@sweeteditor/widget@0.0.1/dist/index.js",
+    "@sweeteditor/sdk": "https://cdn.jsdelivr.net/npm/@sweeteditor/sdk@0.0.1/dist/index.js"
   }
 }
 </script>
@@ -201,4 +209,5 @@ Override flags:
 - `SWEETEDITOR_ENABLE_LOG`
 - `SWEETEDITOR_ENABLE_PERF_LOG`
 - `SWEETEDITOR_DEBUG_MODE`
+
 

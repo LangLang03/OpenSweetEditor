@@ -9,6 +9,8 @@ This document describes the current repository code state (2026-03). If the docu
 - [Apple Platform API](./api-platform-apple.md)
 - [WinForms Platform API](./api-platform-winforms.md)
 - [OHOS Platform API](./api-platform-ohos.md)
+- [Web Platform API (Guide)](./api-platform-web.md)
+- [Web SDK v2 Full API Reference (100%)](./api-platform-web-sdk-v2-reference.md)
 - [C++ Core / C API](./api-editor-core.md)
 
 ## Current Platform Status

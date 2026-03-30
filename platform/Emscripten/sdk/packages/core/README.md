@@ -1,4 +1,4 @@
-# @opensweeteditor/core
+# @sweeteditor/core
 
 Low-level core package for OpenSweetEditor Web SDK v2.
 
@@ -8,5 +8,6 @@ Includes:
 - wasm loader bridge
 - legacy core/provider infrastructure used by higher-level packages
 
-Most users should prefer `@opensweeteditor/sdk`.
+Most users should prefer `@sweeteditor/sdk`.
+
 

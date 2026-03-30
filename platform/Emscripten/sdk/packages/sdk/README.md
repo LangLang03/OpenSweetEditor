@@ -1,17 +1,17 @@
-# @opensweeteditor/sdk
+# @sweeteditor/sdk
 
 Stable public entry for OpenSweetEditor Web SDK v2.
 
 ## Install
 
 ```bash
-npm i @opensweeteditor/sdk
+npm i @sweeteditor/sdk
 ```
 
 ## Quick Start
 
 ```ts
-import { createEditor, createModel } from "@opensweeteditor/sdk";
+import { createEditor, createModel } from "@sweeteditor/sdk";
 
 const model = createModel("int main() {\n  return 0;\n}\n", {
   uri: "inmemory://demo/main.cpp",
@@ -37,5 +37,6 @@ Helpers:
 
 ## Optional SweetLine
 
-Use with `@opensweeteditor/providers-sweetline`.
+Use with `@sweeteditor/providers-sweetline`.
+
 

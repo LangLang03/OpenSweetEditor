@@ -1,4 +1,4 @@
-﻿# SweetEditor Web Platform (Emscripten, SDK v2)
+# SweetEditor Web Platform (Emscripten, SDK v2)
 
 > Status: Testing phase. API may continue evolving.
 
@@ -8,8 +8,8 @@ This platform now ships a pnpm + TypeScript Web SDK workspace and a static web d
 
 - Web implementation moved to `platform/Emscripten/sdk` workspace.
 - `platform/Emscripten/web` is now build output only.
-- Public API now comes from `@opensweeteditor/sdk` (`createEditor`, `createModel`).
-- SweetLine integration is available via `@opensweeteditor/providers-sweetline`.
+- Public API now comes from `@sweeteditor/sdk` (`createEditor`, `createModel`).
+- SweetLine integration is available via `@sweeteditor/providers-sweetline`.
 
 ## Workspace Layout
 
@@ -69,7 +69,7 @@ Then open `http://localhost:8080/`.
 ## v2 API Quick Example
 
 ```ts
-import { createEditor, createModel, getBundledWasmModulePath } from "@opensweeteditor/sdk";
+import { createEditor, createModel, getBundledWasmModulePath } from "@sweeteditor/sdk";
 
 const model = createModel("Hello", {
   uri: "inmemory://demo/main.kt",
@@ -78,7 +78,7 @@ const model = createModel("Hello", {
 
 const editor = await createEditor(container, {
   model,
-  // Optional: v2 defaults to bundled runtime from @opensweeteditor/sdk/runtime.
+  // Optional: v2 defaults to bundled runtime from @sweeteditor/sdk/runtime.
   wasm: {
     modulePath: getBundledWasmModulePath(),
   },
@@ -91,3 +91,4 @@ const editor = await createEditor(container, {
 - `docs/zh/api-platform-web.md`
 - `docs/en/web-sdk-v2-migration.md`
 - `docs/zh/web-sdk-v2-migration.md`
+

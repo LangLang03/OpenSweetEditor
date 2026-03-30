@@ -211,8 +211,11 @@ namespace NS_SWEETEDITOR {
         // Check whether long-press threshold is reached
         if (m_is_tap_ && current_time - m_down_time_ > m_config_.long_press_ms) {
           m_is_tap_ = false;
-          // Do not set m_is_dragging_ to avoid tiny move after long press
-          // triggering DRAG_SELECT and selecting multiple lines
+          // Enter drag-select mode after long-press so follow-up touch move
+          // extends selection instead of starting a scroll.
+          m_is_dragging_ = true;
+          m_is_scrolling_ = false;
+          m_last_move_point_ = m_down_points_[0];
           return {GestureType::LONG_PRESS, m_down_points_[0]};
         }
       } else if (event.points.size() == 2) {

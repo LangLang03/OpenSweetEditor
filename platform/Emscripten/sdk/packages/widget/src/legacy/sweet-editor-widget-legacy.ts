@@ -19,7 +19,7 @@ import {
   type ITextPosition,
   type ITextRange,
   type IVisibleLineRange,
-} from "@opensweeteditor/core";
+} from "@sweeteditor/core";
 
 type IWidgetLocale = "en" | "zh-CN";
 
@@ -122,6 +122,9 @@ const FALLBACK_HIT_TARGET_TYPE = {
   FOLD_GUTTER: 5,
   INLAY_HINT_COLOR: 6,
 };
+
+const DEFAULT_TOUCH_LONG_PRESS_MS = 520;
+const DEFAULT_TOUCH_LONG_PRESS_SLOP_PX = 10;
 
 function resolveEnum(moduleObj:IAnyValue, enumName:string, fallback:IAnyValue) {
   const enumObj = moduleObj && moduleObj[enumName];
@@ -1244,6 +1247,14 @@ export class SweetEditorWidget {
     this._metadata = options.metadata || null;
 
     this._activeTouches = new Map();
+    const rawLongPressMs = options.editorOptions?.longPressMs ?? options.editorOptions?.long_press_ms;
+    const rawTouchSlop = options.editorOptions?.touchSlop ?? options.editorOptions?.touch_slop;
+    this._touchLongPressMs = Math.max(120, toInt(rawLongPressMs, DEFAULT_TOUCH_LONG_PRESS_MS));
+    this._touchLongPressSlopPx = Math.max(2, toInt(rawTouchSlop, DEFAULT_TOUCH_LONG_PRESS_SLOP_PX));
+    this._touchLongPressTimer = 0;
+    this._touchLongPressPointerId = -1;
+    this._touchLongPressStartPoint = null;
+    this._mousePrimaryDown = false;
     this._edgeTimer = null;
     this._rafHandle = 0;
     this._dirty = false;
@@ -1359,6 +1370,8 @@ export class SweetEditorWidget {
     this._onDocumentKeyDown = (event:IAnyRecord) => this._handleDocumentKeyDown(event);
     this._onWindowBlur = () => {
       this._documentKeyRouteActive = false;
+      this._mousePrimaryDown = false;
+      this._clearTouchLongPressTimer();
       this._hideContextMenu();
       this.dismissCompletion();
     };
@@ -2022,6 +2035,7 @@ export class SweetEditorWidget {
     this._disposed = true;
 
     this._invalidatePrintableFallback();
+    this._clearTouchLongPressTimer();
     this._suppressNextInputEvent = false;
     if (this._suppressNextInputResetTimer) {
       clearTimeout(this._suppressNextInputResetTimer);
@@ -2549,8 +2563,28 @@ export class SweetEditorWidget {
           nativeEvent,
         });
         this._emitCursorChanged(cursor, true);
-        this._lastHasSelection = hasSelection;
-        this._lastSelection = hasSelection ? cloneRange(selection) : null;
+        // Runtime compatibility: older wasm may only place cursor on long-press.
+        // Select word at cursor in widget as fallback to match expected UX.
+        let resolvedHasSelection = hasSelection;
+        let resolvedSelection = cloneRange(selection);
+        if (!resolvedHasSelection && typeof this._core.getWordRangeAtCursor === "function") {
+          try {
+            const wordRange = cloneRange(this._core.getWordRangeAtCursor());
+            if (wordRange && !this._isEmptyRange(wordRange)) {
+              this._core.setSelection(wordRange);
+              resolvedHasSelection = true;
+              resolvedSelection = wordRange;
+            }
+          } catch (_) {
+            // ignore fallback errors; keep runtime result
+          }
+        }
+        if (resolvedHasSelection) {
+          this._emitSelectionChanged(true, resolvedSelection, cursor, true);
+        } else {
+          this._lastHasSelection = false;
+          this._lastSelection = null;
+        }
         break;
       case this._gestureType.DOUBLE_TAP:
         this._emitEvent(EditorEventType.DOUBLE_TAP, {
@@ -2585,6 +2619,7 @@ export class SweetEditorWidget {
         this._emitScrollScaleFromGestureResult(result, false, true);
         break;
       case this._gestureType.DRAG_SELECT:
+        this._emitCursorChanged(cursor, true);
         this._emitSelectionChanged(hasSelection, selection, cursor, true);
         break;
       case this._gestureType.CONTEXT_MENU:
@@ -2649,6 +2684,9 @@ export class SweetEditorWidget {
     this._input.tabIndex = -1;
     this._input.spellcheck = false;
     this._input.autocomplete = "off";
+    this._input.autocapitalize = "off";
+    this._input.setAttribute("autocapitalize", "off");
+    this._input.setAttribute("autocorrect", "off");
     this._input.style.position = "absolute";
     this._input.style.left = "0";
     this._input.style.top = "0";
@@ -3630,6 +3668,34 @@ export class SweetEditorWidget {
       return true;
     }
 
+    if (inputType === "insertLineBreak" || inputType === "insertParagraph") {
+      if (preventDefault && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      const enterResult = this._core.handleKeyEvent({
+        key_code: this._keyCode.ENTER,
+        text: "",
+        modifiers: this._modifiers(event),
+      });
+      this._input.value = "";
+      if (enterResult && (enterResult.handled ?? enterResult.Handled)) {
+        this._handleKeyEventResult(enterResult, { action: TextChangeAction.KEY });
+        this._debugInputLog("applyDomTextInput.enter", {
+          inputType,
+          handled: true,
+          changed: Boolean(enterResult.content_changed ?? enterResult.contentChanged),
+        });
+        return true;
+      }
+      const fallbackResult = this._core.insert("\n");
+      this._handleTextEditResult(fallbackResult, { action: TextChangeAction.KEY });
+      this._debugInputLog("applyDomTextInput.enterFallback", {
+        inputType,
+        changed: !!fallbackResult?.changed,
+      });
+      return true;
+    }
+
     const text = this._extractInputText(event, allowValueFallback);
     this._input.value = "";
     if (!text) {
@@ -3798,6 +3864,7 @@ export class SweetEditorWidget {
     this._hideContextMenu();
     this._documentKeyRouteActive = true;
     this._input.focus();
+    this._clearTouchLongPressTimer();
 
     if (typeof this._canvas.setPointerCapture === "function") {
       try {
@@ -3809,6 +3876,7 @@ export class SweetEditorWidget {
 
     const point = this._eventPoint(event);
     if (event.pointerType === "mouse") {
+      this._mousePrimaryDown = event.button === 0;
       const type = event.button === 2 ? this._eventType.MOUSE_RIGHT_DOWN : this._eventType.MOUSE_DOWN;
       this._dispatchGesture(type, [point], event);
       event.preventDefault();
@@ -3818,13 +3886,18 @@ export class SweetEditorWidget {
     this._activeTouches.set(event.pointerId, point);
     const type = this._activeTouches.size === 1 ? this._eventType.TOUCH_DOWN : this._eventType.TOUCH_POINTER_DOWN;
     this._dispatchGesture(type, Array.from(this._activeTouches.values()), event);
+    if (this._activeTouches.size === 1) {
+      this._scheduleTouchLongPressCheck(event.pointerId, point, event);
+    } else {
+      this._clearTouchLongPressTimer();
+    }
     event.preventDefault();
   }
 
   _onPointerMove(event:IAnyRecord) {
     const point = this._eventPoint(event);
     if (event.pointerType === "mouse") {
-      if ((event.buttons & 1) !== 0) {
+      if (this._mousePrimaryDown || (event.buttons & 1) !== 0) {
         this._dispatchGesture(this._eventType.MOUSE_MOVE, [point], event);
       }
       return;
@@ -3832,6 +3905,9 @@ export class SweetEditorWidget {
 
     if (!this._activeTouches.has(event.pointerId)) return;
     this._activeTouches.set(event.pointerId, point);
+    if (this._touchLongPressPointerId === event.pointerId && this._hasTouchMovedBeyondLongPressSlop(point)) {
+      this._clearTouchLongPressTimer();
+    }
     this._dispatchGesture(this._eventType.TOUCH_MOVE, Array.from(this._activeTouches.values()), event);
     event.preventDefault();
   }
@@ -3847,11 +3923,13 @@ export class SweetEditorWidget {
     }
 
     if (event.pointerType === "mouse") {
+      this._mousePrimaryDown = false;
       this._dispatchGesture(this._eventType.MOUSE_UP, [point], event);
       return;
     }
 
     if (!this._activeTouches.has(event.pointerId)) return;
+    this._clearTouchLongPressTimer();
     const type = this._activeTouches.size > 1 ? this._eventType.TOUCH_POINTER_UP : this._eventType.TOUCH_UP;
     this._dispatchGesture(type, Array.from(this._activeTouches.values()), event);
     this._activeTouches.delete(event.pointerId);
@@ -3859,11 +3937,14 @@ export class SweetEditorWidget {
   }
 
   _onPointerCancel(event:IAnyRecord) {
-    if (event.pointerType !== "mouse") {
-      this._dispatchGesture(this._eventType.TOUCH_CANCEL, Array.from(this._activeTouches.values()), event);
-      this._activeTouches.delete(event.pointerId);
-      event.preventDefault();
+    if (event.pointerType === "mouse") {
+      this._mousePrimaryDown = false;
+      return;
     }
+    this._clearTouchLongPressTimer();
+    this._dispatchGesture(this._eventType.TOUCH_CANCEL, Array.from(this._activeTouches.values()), event);
+    this._activeTouches.delete(event.pointerId);
+    event.preventDefault();
   }
 
   _onWheel(event:IAnyRecord) {
@@ -4223,6 +4304,57 @@ export class SweetEditorWidget {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
     };
+  }
+
+  _clearTouchLongPressTimer() {
+    if (this._touchLongPressTimer) {
+      clearTimeout(this._touchLongPressTimer);
+      this._touchLongPressTimer = 0;
+    }
+    this._touchLongPressPointerId = -1;
+    this._touchLongPressStartPoint = null;
+  }
+
+  _hasTouchMovedBeyondLongPressSlop(point:IAnyValue) {
+    if (!point || !this._touchLongPressStartPoint) {
+      return true;
+    }
+    const dx = (Number(point.x) || 0) - (Number(this._touchLongPressStartPoint.x) || 0);
+    const dy = (Number(point.y) || 0) - (Number(this._touchLongPressStartPoint.y) || 0);
+    const slop = Number(this._touchLongPressSlopPx) || DEFAULT_TOUCH_LONG_PRESS_SLOP_PX;
+    return (dx * dx + dy * dy) > (slop * slop);
+  }
+
+  _scheduleTouchLongPressCheck(pointerId:number, point:IAnyValue, sourceEvent:IAnyRecord) {
+    this._clearTouchLongPressTimer();
+    this._touchLongPressPointerId = pointerId;
+    this._touchLongPressStartPoint = {
+      x: Number(point?.x) || 0,
+      y: Number(point?.y) || 0,
+    };
+    const modifierSnapshot = {
+      shiftKey: !!sourceEvent?.shiftKey,
+      ctrlKey: !!sourceEvent?.ctrlKey,
+      altKey: !!sourceEvent?.altKey,
+      metaKey: !!sourceEvent?.metaKey,
+    };
+    this._touchLongPressTimer = setTimeout(() => {
+      this._touchLongPressTimer = 0;
+      if (this._disposed) {
+        return;
+      }
+      if (this._touchLongPressPointerId !== pointerId) {
+        return;
+      }
+      if (this._activeTouches.size !== 1 || !this._activeTouches.has(pointerId)) {
+        return;
+      }
+      const currentPoint = this._activeTouches.get(pointerId);
+      if (!currentPoint || this._hasTouchMovedBeyondLongPressSlop(currentPoint)) {
+        return;
+      }
+      this._dispatchGesture(this._eventType.TOUCH_MOVE, [currentPoint], modifierSnapshot);
+    }, this._touchLongPressMs);
   }
 
   _syncInputAnchor(model:IAnyValue, viewportWidth:number, viewportHeight:number) {
@@ -4968,3 +5100,4 @@ export class SweetEditorWidget {
     event.preventDefault();
   }
 }
+

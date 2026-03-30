@@ -1,4 +1,4 @@
-﻿# Web 平台 API（Emscripten，SDK v2）
+# Web 平台 API（Emscripten，SDK v2）
 
 本文档说明当前 Web SDK v2 的结构与使用方式。
 
@@ -6,14 +6,22 @@
 
 - Web 端采用 pnpm workspace，目录位于 `platform/Emscripten/sdk`。
 - `platform/Emscripten/web` 是构建产物与静态分发目录。
-- v2 主入口为 `@opensweeteditor/sdk`（`createEditor`），不再以 v1 `createSweetEditor` 作为主 API。
+- v2 主入口为 `@sweeteditor/sdk`（`createEditor`），不再以 v1 `createSweetEditor` 作为主 API。
 
 当前 npm 包版本：
 
-- `@opensweeteditor/core@2.0.1`
-- `@opensweeteditor/widget@2.0.1`
-- `@opensweeteditor/providers-sweetline@2.0.1`
-- `@opensweeteditor/sdk@2.0.1`
+- `@sweeteditor/core@0.0.1`
+- `@sweeteditor/widget@0.0.1`
+- `@sweeteditor/providers-sweetline@0.0.1`
+- `@sweeteditor/sdk@0.0.1`
+
+## 完整 API 覆盖
+
+本文档偏向使用说明。
+
+若需要 Web v2 四个包的 100% 对外 API 声明覆盖，请查看：
+
+- [Web SDK v2 完整 API 参考](./api-platform-web-sdk-v2-reference.md)
 
 ## 工作区结构
 
@@ -55,7 +63,7 @@ pnpm typecheck
 pnpm build:web-dist
 ```
 
-## v2 公开 API（`@opensweeteditor/sdk`）
+## v2 公开 API（`@sweeteditor/sdk`）
 
 ```ts
 import {
@@ -63,7 +71,7 @@ import {
   createModel,
   getBundledWasmModulePath,
   getBundledSyntaxPath
-} from "@opensweeteditor/sdk";
+} from "@sweeteditor/sdk";
 ```
 
 ### `createEditor(container, options)`
@@ -82,7 +90,7 @@ const editor = await createEditor(container, {
 
 默认 wasm 行为：
 
-- 不传 `options.wasm` 时，自动使用 `@opensweeteditor/sdk/runtime` 内置运行时。
+- 不传 `options.wasm` 时，自动使用 `@sweeteditor/sdk/runtime` 内置运行时。
 
 如需显式指定路径：
 
@@ -121,10 +129,10 @@ const d = editor.registerDecorationProvider({
 
 ## SweetLine（可选包）
 
-包名：`@opensweeteditor/providers-sweetline`
+包名：`@sweeteditor/providers-sweetline`
 
 ```ts
-import { createSweetLineDecorationProvider } from "@opensweeteditor/providers-sweetline";
+import { createSweetLineDecorationProvider } from "@sweeteditor/providers-sweetline";
 
 const provider = createSweetLineDecorationProvider({
   sweetLine,
@@ -135,7 +143,7 @@ editor.registerDecorationProvider(provider);
 
 ## npm 内置运行时文件
 
-`@opensweeteditor/sdk` 发布包包含：
+`@sweeteditor/sdk` 发布包包含：
 
 - `runtime/sweeteditor.js`
 - `runtime/sweeteditor.wasm`
@@ -156,9 +164,9 @@ const cppSyntax = getBundledSyntaxPath("cpp.json");
 <script type="importmap">
 {
   "imports": {
-    "@opensweeteditor/core": "https://cdn.jsdelivr.net/npm/@opensweeteditor/core@2.0.1/dist/index.js",
-    "@opensweeteditor/widget": "https://cdn.jsdelivr.net/npm/@opensweeteditor/widget@2.0.1/dist/index.js",
-    "@opensweeteditor/sdk": "https://cdn.jsdelivr.net/npm/@opensweeteditor/sdk@2.0.1/dist/index.js"
+    "@sweeteditor/core": "https://cdn.jsdelivr.net/npm/@sweeteditor/core@0.0.1/dist/index.js",
+    "@sweeteditor/widget": "https://cdn.jsdelivr.net/npm/@sweeteditor/widget@0.0.1/dist/index.js",
+    "@sweeteditor/sdk": "https://cdn.jsdelivr.net/npm/@sweeteditor/sdk@0.0.1/dist/index.js"
   }
 }
 </script>
@@ -201,4 +209,5 @@ CMake 默认行为：
 - `SWEETEDITOR_ENABLE_LOG`
 - `SWEETEDITOR_ENABLE_PERF_LOG`
 - `SWEETEDITOR_DEBUG_MODE`
+
 

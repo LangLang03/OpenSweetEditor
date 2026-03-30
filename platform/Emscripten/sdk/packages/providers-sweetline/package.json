@@ -1,6 +1,6 @@
 {
-  "name": "@opensweeteditor/providers-sweetline",
-  "version": "2.0.1",
+  "name": "@sweeteditor/providers-sweetline",
+  "version": "0.0.1",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,10 +15,10 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "pnpm --filter @opensweeteditor/core run build && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm --filter @sweeteditor/core run build && tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "@opensweeteditor/core": "workspace:*"
+    "@sweeteditor/core": "workspace:*"
   }
 }

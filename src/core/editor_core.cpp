@@ -765,7 +765,9 @@ m_fling_ = makeUPtr<FlingAnimator>(tc);
       selectWordAt(result.tap_point);
       break;
     case GestureType::LONG_PRESS:
-      placeCursorAt(result.tap_point);
+      // Match editor UX expectation: long-press should select word and allow
+      // follow-up drag-select expansion.
+      selectWordAt(result.tap_point);
       break;
     case GestureType::DRAG_SELECT: {
       // Mouse events (MOUSE_MOVE) should not apply touch y-offset

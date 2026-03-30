@@ -8,8 +8,8 @@ import {
   type ISweetEditorWasmModule,
   type ITextModel,
   type IDisposable,
-} from "@opensweeteditor/core";
-import { SweetEditorWidget } from "@opensweeteditor/widget";
+} from "@sweeteditor/core";
+import { SweetEditorWidget } from "@sweeteditor/widget";
 
 import type {
   ICompletionContext,
@@ -276,3 +276,4 @@ export async function createEditor(
   editor.setModel(model);
   return editor;
 }
+

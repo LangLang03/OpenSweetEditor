@@ -1,13 +1,20 @@
-﻿# OpenSweetEditor Web SDK Workspace
+# OpenSweetEditor Web SDK Workspace
 
 TypeScript-based Web SDK v2 workspace (pnpm).
 
 Current npm line:
 
-- `@opensweeteditor/core@2.0.1`
-- `@opensweeteditor/widget@2.0.1`
-- `@opensweeteditor/providers-sweetline@2.0.1`
-- `@opensweeteditor/sdk@2.0.1`
+- `@sweeteditor/core@0.0.1`
+- `@sweeteditor/widget@0.0.1`
+- `@sweeteditor/providers-sweetline@0.0.1`
+- `@sweeteditor/sdk@0.0.1`
+
+## Documentation
+
+- Usage guide (EN): [docs/en/api-platform-web.md](../../../docs/en/api-platform-web.md)
+- Full API reference (EN, 100%): [docs/en/api-platform-web-sdk-v2-reference.md](../../../docs/en/api-platform-web-sdk-v2-reference.md)
+- 使用指南（中文）: [docs/zh/api-platform-web.md](../../../docs/zh/api-platform-web.md)
+- 完整 API 参考（中文，100%）: [docs/zh/api-platform-web-sdk-v2-reference.md](../../../docs/zh/api-platform-web-sdk-v2-reference.md)
 
 ## Workspace Layout
 
@@ -32,6 +39,7 @@ pnpm clean
 pnpm lint
 pnpm test
 pnpm typecheck
+pnpm docs:api
 pnpm build
 pnpm build:web-dist
 ```
@@ -45,18 +53,18 @@ pnpm build:web-dist
 ```bash
 cd platform/Emscripten/sdk
 pnpm install
-pnpm --filter @opensweeteditor/demo dev
+pnpm --filter @sweeteditor/demo dev
 ```
 
 Build demo only:
 
 ```bash
-pnpm --filter @opensweeteditor/demo build
+pnpm --filter @sweeteditor/demo build
 ```
 
 ## Runtime Bundling
 
-`@opensweeteditor/sdk` includes bundled runtime files for npm consumers:
+`@sweeteditor/sdk` includes bundled runtime files for npm consumers:
 
 - `packages/sdk/runtime/sweeteditor.js`
 - `packages/sdk/runtime/sweeteditor.wasm`
@@ -65,7 +73,7 @@ pnpm --filter @opensweeteditor/demo build
 
 By default, `createEditor(...)` uses the bundled runtime automatically when `options.wasm` is omitted.
 
-Helpers exported by `@opensweeteditor/sdk`:
+Helpers exported by `@sweeteditor/sdk`:
 
 - `getBundledWasmModulePath()`
 - `getBundledSyntaxPath(name)`
@@ -78,9 +86,9 @@ Web CDN usage is ESM-first (`<script type="module">`), not global-IIFE style.
 <script type="importmap">
 {
   "imports": {
-    "@opensweeteditor/core": "https://cdn.jsdelivr.net/npm/@opensweeteditor/core@2.0.1/dist/index.js",
-    "@opensweeteditor/widget": "https://cdn.jsdelivr.net/npm/@opensweeteditor/widget@2.0.1/dist/index.js",
-    "@opensweeteditor/sdk": "https://cdn.jsdelivr.net/npm/@opensweeteditor/sdk@2.0.1/dist/index.js"
+    "@sweeteditor/core": "https://cdn.jsdelivr.net/npm/@sweeteditor/core@0.0.1/dist/index.js",
+    "@sweeteditor/widget": "https://cdn.jsdelivr.net/npm/@sweeteditor/widget@0.0.1/dist/index.js",
+    "@sweeteditor/sdk": "https://cdn.jsdelivr.net/npm/@sweeteditor/sdk@0.0.1/dist/index.js"
   }
 }
 </script>
@@ -107,4 +115,5 @@ Override flags:
 - `SWEETEDITOR_ENABLE_LOG`
 - `SWEETEDITOR_ENABLE_PERF_LOG`
 - `SWEETEDITOR_DEBUG_MODE`
+
 

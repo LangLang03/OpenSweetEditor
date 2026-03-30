@@ -1,5 +1,5 @@
 {
-  "name": "@opensweeteditor/web-sdk-workspace",
+  "name": "@sweeteditor/web-sdk-workspace",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
@@ -9,11 +9,12 @@
   },
   "scripts": {
     "clean": "node ./scripts/clean-workspace.mjs",
-    "build:packages": "pnpm --filter @opensweeteditor/core run build && pnpm --filter @opensweeteditor/widget run build && pnpm --filter @opensweeteditor/providers-sweetline run build && pnpm --filter @opensweeteditor/sdk run build",
-    "build": "pnpm run build:packages && pnpm --filter @opensweeteditor/demo run build",
+    "build:packages": "pnpm --filter @sweeteditor/core run build && pnpm --filter @sweeteditor/widget run build && pnpm --filter @sweeteditor/providers-sweetline run build && pnpm --filter @sweeteditor/sdk run build",
+    "build": "pnpm run build:packages && pnpm --filter @sweeteditor/demo run build",
     "test": "pnpm -r --if-present run test",
     "lint": "pnpm -r --if-present run lint",
     "typecheck": "pnpm -r --if-present run typecheck",
+    "docs:api": "node ./scripts/generate-web-api-reference.mjs",
     "build:web-dist": "node ./scripts/build-web-dist.mjs"
   },
   "devDependencies": {
@@ -28,3 +29,4 @@
     "vitest": "^3.2.4"
   }
 }
+
