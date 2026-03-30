@@ -8,7 +8,8 @@
 2. 主入口从 `createSweetEditor(...)` 变为 `createEditor(...)`。
 3. 引入显式模型层：`createModel(...)`，编辑器与模型解耦。
 4. wasm 加载参数统一放入 `options.wasm`。
-5. completion/decoration 注册统一返回 `IDisposable`。
+5. 不传 `options.wasm` 时，v2 会默认加载 `@opensweeteditor/sdk/runtime` 内置运行时。
+6. completion/decoration 注册统一返回 `IDisposable`。
 
 ## API 对照
 
@@ -44,10 +45,7 @@ const model = createModel("hello", {
 
 const editor = await createEditor(container, {
   model,
-  locale: "zh-CN",
-  wasm: {
-    modulePath: "./runtime/sweeteditor.js"
-  }
+  locale: "zh-CN"
 });
 ```
 

@@ -8,7 +8,8 @@ This guide helps migrate from the previous Web v1 API to Web SDK v2.
 2. Main entry changed from `createSweetEditor(...)` to `createEditor(...)`.
 3. Model is now explicit and decoupled via `createModel(...)`.
 4. Wasm loading options moved under `options.wasm`.
-5. Completion/decoration registration now returns `IDisposable`.
+5. If `options.wasm` is omitted, v2 auto-loads bundled runtime from `@opensweeteditor/sdk/runtime`.
+6. Completion/decoration registration now returns `IDisposable`.
 
 ## API Mapping
 
@@ -44,10 +45,7 @@ const model = createModel("hello", {
 
 const editor = await createEditor(container, {
   model,
-  locale: "en",
-  wasm: {
-    modulePath: "./runtime/sweeteditor.js"
-  }
+  locale: "en"
 });
 ```
 

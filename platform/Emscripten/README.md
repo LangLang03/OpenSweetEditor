@@ -69,7 +69,7 @@ Then open `http://localhost:8080/`.
 ## v2 API Quick Example
 
 ```ts
-import { createEditor, createModel } from "@opensweeteditor/sdk";
+import { createEditor, createModel, getBundledWasmModulePath } from "@opensweeteditor/sdk";
 
 const model = createModel("Hello", {
   uri: "inmemory://demo/main.kt",
@@ -78,8 +78,9 @@ const model = createModel("Hello", {
 
 const editor = await createEditor(container, {
   model,
+  // Optional: v2 defaults to bundled runtime from @opensweeteditor/sdk/runtime.
   wasm: {
-    modulePath: "./runtime/sweeteditor.js",
+    modulePath: getBundledWasmModulePath(),
   },
 });
 ```

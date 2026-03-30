@@ -76,6 +76,9 @@ async function main() {
     }
 
     removedDirs += await removeIfExists(path.resolve(packageRoot, "dist"));
+    if (packageName === "sdk") {
+      removedDirs += await removeIfExists(path.resolve(packageRoot, "runtime"));
+    }
     removedFiles += await removeBuildArtifactsInSource(path.resolve(packageRoot, "src"));
     removedFiles += await removeTsBuildInfoFiles(packageRoot);
   }

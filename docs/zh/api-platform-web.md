@@ -59,6 +59,7 @@ pnpm build:web-dist
 import {
   createEditor,
   createModel,
+  getBundledWasmModulePath,
   type ICompletionProvider,
   type IDecorationProvider
 } from "@opensweeteditor/sdk";
@@ -74,9 +75,18 @@ const model = createModel("hello", {
 
 const editor = await createEditor(container, {
   model,
-  locale: "zh-CN",
+  locale: "zh-CN"
+});
+```
+
+`createEditor` 默认会使用 `@opensweeteditor/sdk/runtime` 中打包的 wasm 运行时。  
+只有在你需要自定义静态资源地址/CDN 时才需要覆盖：
+
+```ts
+const editor = await createEditor(container, {
+  model,
   wasm: {
-    modulePath: "./runtime/sweeteditor.js"
+    modulePath: getBundledWasmModulePath()
   }
 });
 ```
@@ -104,6 +114,14 @@ const decorationDisposable = editor.registerDecorationProvider({
 ```
 
 两类注册统一返回 `IDisposable`。
+
+## npm 包内运行时文件
+
+`@opensweeteditor/sdk` 发布包会携带：
+
+- `runtime/sweeteditor.js`
+- `runtime/sweeteditor.wasm`
+- `runtime/libs/sweetline/*`
 
 ## SweetLine 可选包
 

@@ -17,12 +17,15 @@ import type {
   ICreateEditorOptions,
   IDecorationProvider,
   IEditor,
+  IWasmOptions,
 } from "../types.js";
 
 interface ICreateEditorOverrides {
   createWidget?: (container: HTMLElement, wasmModule: unknown, options: Record<string, unknown>) => unknown;
   loadWasm?: (options: ICreateEditorOptions["wasm"]) => Promise<unknown>;
 }
+
+const BUNDLED_RUNTIME_MODULE_RELATIVE_PATH = "../../runtime/sweeteditor.js";
 
 function normalizeCompletionResult(result: ICompletionList | ICompletionItem[] | null | undefined): ICompletionList {
   if (!result) {
@@ -52,7 +55,11 @@ function mapCompletionContext(context: Record<string, unknown> | null | undefine
   };
 }
 
-function makeLegacyOptions(options: ICreateEditorOptions, model: ITextModel): Record<string, unknown> {
+function makeLegacyOptions(
+  options: ICreateEditorOptions,
+  model: ITextModel,
+  resolvedModulePath: string | undefined,
+): Record<string, unknown> {
   return {
     ...(options.widgetOptions ?? {}),
     locale: options.locale,
@@ -60,10 +67,24 @@ function makeLegacyOptions(options: ICreateEditorOptions, model: ITextModel): Re
     decorationOptions: options.decorationOptions,
     performanceOverlay: options.performanceOverlay,
     text: model.getValue(),
-    modulePath: options.wasm?.modulePath,
+    modulePath: options.wasm?.modulePath ?? resolvedModulePath,
     moduleFactory: options.wasm?.moduleFactory,
     moduleOptions: options.wasm?.moduleOptions,
   };
+}
+
+export function getBundledWasmModulePath(): string {
+  return new URL(BUNDLED_RUNTIME_MODULE_RELATIVE_PATH, import.meta.url).href;
+}
+
+function resolveWasmModulePath(wasmOptions: IWasmOptions | undefined): string | undefined {
+  if (wasmOptions?.modulePath) {
+    return wasmOptions.modulePath;
+  }
+  if (wasmOptions?.module || wasmOptions?.moduleFactory) {
+    return undefined;
+  }
+  return getBundledWasmModulePath();
 }
 
 class EditorInstance implements IEditor {
@@ -200,14 +221,15 @@ export async function createEditor(
     modelOptions.language = options.language;
   }
   const model = options.model ?? createModel(options.value ?? "", modelOptions);
+  const resolvedModulePath = resolveWasmModulePath(options.wasm);
 
   const wasmLoader = overrides.loadWasm ?? (async (wasmOptions?: ICreateEditorOptions["wasm"]) => {
     if (wasmOptions?.module) {
       return wasmOptions.module;
     }
     const loadOptions: { modulePath?: string; moduleFactory?: unknown; moduleOptions?: Record<string, unknown> } = {};
-    if (wasmOptions?.modulePath !== undefined) {
-      loadOptions.modulePath = wasmOptions.modulePath;
+    if (resolvedModulePath !== undefined) {
+      loadOptions.modulePath = resolvedModulePath;
     }
     if (wasmOptions?.moduleFactory !== undefined) {
       loadOptions.moduleFactory = wasmOptions.moduleFactory;
@@ -219,7 +241,7 @@ export async function createEditor(
   });
 
   const wasmModule = await wasmLoader(options.wasm);
-  const legacyOptions = makeLegacyOptions(options, model);
+  const legacyOptions = makeLegacyOptions(options, model, resolvedModulePath);
 
   const widgetFactory = overrides.createWidget ?? ((host, moduleObj, widgetOptions) => new SweetEditorWidget(host, moduleObj, widgetOptions));
   const widget = widgetFactory(container, wasmModule, legacyOptions) as SweetEditorWidget;

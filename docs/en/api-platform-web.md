@@ -59,6 +59,7 @@ Package: `@opensweeteditor/sdk`
 import {
   createEditor,
   createModel,
+  getBundledWasmModulePath,
   type IEditor,
   type ICompletionProvider,
   type IDecorationProvider
@@ -75,9 +76,18 @@ const model = createModel("hello", {
 
 const editor = await createEditor(container, {
   model,
-  locale: "en",
+  locale: "en"
+});
+```
+
+`createEditor` uses the bundled runtime from `@opensweeteditor/sdk/runtime` by default.
+Override it only when you need custom hosting/CDN:
+
+```ts
+const editor = await createEditor(container, {
+  model,
   wasm: {
-    modulePath: "./runtime/sweeteditor.js"
+    modulePath: getBundledWasmModulePath()
   }
 });
 ```
@@ -105,6 +115,14 @@ const decorationDisposable = editor.registerDecorationProvider({
 ```
 
 Both registration calls return `IDisposable`.
+
+## Runtime Files in npm
+
+`@opensweeteditor/sdk` npm tarball includes:
+
+- `runtime/sweeteditor.js`
+- `runtime/sweeteditor.wasm`
+- `runtime/libs/sweetline/*`
 
 ## Optional SweetLine Package
 

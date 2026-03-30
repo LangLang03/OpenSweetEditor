@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { describe, expect, it, vi } from "vitest";
 
-import { createEditor, createModel } from "./editor-instance.js";
+import { createEditor, createModel, getBundledWasmModulePath } from "./editor-instance.js";
 
 class FakeWidget {
   private readonly listeners = new Map<string, Set<() => void>>();
@@ -63,6 +63,10 @@ class FakeWidget {
 }
 
 describe("editor instance", () => {
+  it("resolves bundled wasm module path", () => {
+    expect(getBundledWasmModulePath()).toContain("/runtime/sweeteditor.js");
+  });
+
   it("creates editor and syncs model content changes", async () => {
     const widget = new FakeWidget();
     const model = createModel("hello", { uri: "inmemory://demo", language: "txt" });

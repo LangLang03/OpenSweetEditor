@@ -1,4 +1,4 @@
-export { createEditor, createModel } from "./editor/editor-instance.js";
+export { createEditor, createModel, getBundledWasmModulePath } from "./editor/editor-instance.js";
 export type {
   ICompletionContext,
   ICompletionItem,

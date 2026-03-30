@@ -583,9 +583,6 @@ async function bootstrap(): Promise<void> {
       language: resolveLanguageKind(initialFileName),
     }),
     locale,
-    wasm: {
-      modulePath: new URL(`sweeteditor.js?v=${wasmVersion}`, runtimeBase).href,
-    },
     performanceOverlay: {
       enabled: true,
       visible: true,
