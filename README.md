@@ -18,6 +18,10 @@
 
 ---
 
+> This repository is an unofficial fork maintained by [LangLang03](https://github.com/LangLang03), and is **not** the official OpenSweetEditor repository.
+>
+> Official upstream repository: [FinalScave/OpenSweetEditor](https://github.com/FinalScave/OpenSweetEditor)
+
 ## Project Positioning
 
 SweetEditor is a cross-platform code editor core designed for products that need consistent editing behavior across Android, iOS, macOS, Windows, Swing, and OHOS.
@@ -105,7 +109,7 @@ For the complete capability list, see [EditorCore API](docs/en/api-editor-core.m
 ### Build
 
 ```bash
-git clone https://github.com/FinalScave/OpenSweetEditor.git
+git clone https://github.com/LangLang03/OpenSweetEditor-Web.git
 cd OpenSweetEditor
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
