@@ -122,6 +122,7 @@ const decorationDisposable = editor.registerDecorationProvider({
 - `runtime/sweeteditor.js`
 - `runtime/sweeteditor.wasm`
 - `runtime/libs/sweetline/*`
+- `runtime/syntaxes/*.json`
 
 ## SweetLine 可选包
 

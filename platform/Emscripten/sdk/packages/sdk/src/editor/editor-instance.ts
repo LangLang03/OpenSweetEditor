@@ -26,6 +26,7 @@ interface ICreateEditorOverrides {
 }
 
 const BUNDLED_RUNTIME_MODULE_RELATIVE_PATH = "../../runtime/sweeteditor.js";
+const BUNDLED_RUNTIME_SYNTAX_ROOT_RELATIVE_PATH = "../../runtime/syntaxes/";
 
 function normalizeCompletionResult(result: ICompletionList | ICompletionItem[] | null | undefined): ICompletionList {
   if (!result) {
@@ -75,6 +76,22 @@ function makeLegacyOptions(
 
 export function getBundledWasmModulePath(): string {
   return new URL(BUNDLED_RUNTIME_MODULE_RELATIVE_PATH, import.meta.url).href;
+}
+
+export function getBundledSyntaxPath(name: string): string {
+  const normalizedName = String(name ?? "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.?\//, "");
+
+  if (!normalizedName) {
+    throw new Error("syntax name is required");
+  }
+  if (normalizedName.includes("..")) {
+    throw new Error(`invalid syntax name: ${name}`);
+  }
+
+  return new URL(`${BUNDLED_RUNTIME_SYNTAX_ROOT_RELATIVE_PATH}${normalizedName}`, import.meta.url).href;
 }
 
 function resolveWasmModulePath(wasmOptions: IWasmOptions | undefined): string | undefined {

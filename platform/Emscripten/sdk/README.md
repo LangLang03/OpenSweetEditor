@@ -34,3 +34,4 @@ pnpm build:web-dist
 - `packages/sdk/runtime/sweeteditor.js`
 - `packages/sdk/runtime/sweeteditor.wasm`
 - `packages/sdk/runtime/libs/sweetline/*`
+- `packages/sdk/runtime/syntaxes/*.json`

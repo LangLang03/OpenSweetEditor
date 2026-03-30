@@ -123,6 +123,7 @@ Both registration calls return `IDisposable`.
 - `runtime/sweeteditor.js`
 - `runtime/sweeteditor.wasm`
 - `runtime/libs/sweetline/*`
+- `runtime/syntaxes/*.json`
 
 ## Optional SweetLine Package
 

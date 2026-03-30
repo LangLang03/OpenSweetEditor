@@ -10,6 +10,7 @@ const repoRoot = path.resolve(emscriptenRoot, "..", "..");
 
 const sdkPackageRuntimeRoot = path.resolve(sdkRoot, "packages", "sdk", "runtime");
 const sweetlineAssetsRoot = path.resolve(sdkRoot, "assets", "sweetline");
+const syntaxAssetsRoot = path.resolve(sdkRoot, "assets", "demo-syntaxes");
 
 function firstExistingPath(paths) {
   for (const candidate of paths) {
@@ -45,6 +46,9 @@ async function main() {
   if (!(await fs.pathExists(sweetlineAssetsRoot))) {
     throw new Error(`Missing SweetLine assets: ${sweetlineAssetsRoot}`);
   }
+  if (!(await fs.pathExists(syntaxAssetsRoot))) {
+    throw new Error(`Missing syntax assets: ${syntaxAssetsRoot}`);
+  }
 
   await fs.emptyDir(sdkPackageRuntimeRoot);
   await fs.copy(wasmJsPath, path.resolve(sdkPackageRuntimeRoot, "sweeteditor.js"));
@@ -52,6 +56,10 @@ async function main() {
   await fs.copy(
     sweetlineAssetsRoot,
     path.resolve(sdkPackageRuntimeRoot, "libs", "sweetline"),
+  );
+  await fs.copy(
+    syntaxAssetsRoot,
+    path.resolve(sdkPackageRuntimeRoot, "syntaxes"),
   );
 
   console.log(`[sdk] runtime prepared at ${sdkPackageRuntimeRoot}`);

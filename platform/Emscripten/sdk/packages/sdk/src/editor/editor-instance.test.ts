@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { describe, expect, it, vi } from "vitest";
 
-import { createEditor, createModel, getBundledWasmModulePath } from "./editor-instance.js";
+import { createEditor, createModel, getBundledSyntaxPath, getBundledWasmModulePath } from "./editor-instance.js";
 
 class FakeWidget {
   private readonly listeners = new Map<string, Set<() => void>>();
@@ -65,6 +65,12 @@ class FakeWidget {
 describe("editor instance", () => {
   it("resolves bundled wasm module path", () => {
     expect(getBundledWasmModulePath()).toContain("/runtime/sweeteditor.js");
+  });
+
+  it("resolves bundled syntax path", () => {
+    expect(getBundledSyntaxPath("kotlin.json")).toContain("/runtime/syntaxes/kotlin.json");
+    expect(getBundledSyntaxPath("./lua.json")).toContain("/runtime/syntaxes/lua.json");
+    expect(() => getBundledSyntaxPath("../escape.json")).toThrowError("invalid syntax name");
   });
 
   it("creates editor and syncs model content changes", async () => {
