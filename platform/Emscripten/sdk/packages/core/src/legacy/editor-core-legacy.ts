@@ -230,6 +230,32 @@ function ensureRange(range:IAnyValue, fallbackPosition:IAnyValue = null) {
   };
 }
 
+function comparePosition(a:ITextPosition, b:ITextPosition) {
+  if (a.line !== b.line) {
+    return a.line - b.line;
+  }
+  return a.column - b.column;
+}
+
+function ensureEditRange(range:IAnyValue, fallbackPosition:IAnyValue = null) {
+  const normalized = ensureRange(range, fallbackPosition);
+  const start = normalized.start;
+  const end = normalized.end;
+  if (comparePosition(start, end) <= 0) {
+    return normalized;
+  }
+  return {
+    start: {
+      line: end.line,
+      column: end.column,
+    },
+    end: {
+      line: start.line,
+      column: start.column,
+    },
+  };
+}
+
 export function clampVisibleLineRange(
   start: number,
   end: number,
@@ -862,13 +888,13 @@ export class WebEditorCore {
   }
 
   replaceText(range:ITextRange, newText:string) {
-    const result = this._native.replaceText(ensureRange(range), String(newText ?? ""));
+    const result = this._native.replaceText(ensureEditRange(range), String(newText ?? ""));
     this._notifyMutate();
     return result;
   }
 
   deleteText(range:ITextRange) {
-    const result = this._native.deleteText(ensureRange(range));
+    const result = this._native.deleteText(ensureEditRange(range));
     this._notifyMutate();
     return result;
   }
