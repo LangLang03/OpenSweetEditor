@@ -8,6 +8,8 @@
 #include <visual.h>
 #include <gesture.h>
 #include <layout.h>
+#include <interaction.h>
+#include <render_composer.h>
 #include <undo.h>
 #include <linked_editing.h>
 
@@ -36,6 +38,8 @@ namespace NS_SWEETEDITOR {
     float fling_max_velocity {8000.0f};
     /// Max undo stack size (0 = unlimited)
     size_t max_undo_stack_size {512};
+    /// Multi-chord key binding timeout in milliseconds
+    int64_t key_chord_timeout_ms {2000};
 
     TouchConfig simpleAsTouchConfig() const;
     U8String dump() const;
@@ -162,6 +166,8 @@ namespace NS_SWEETEDITOR {
     bool selection_changed {false};
     /// Exact text edit info (valid when content_changed is true)
     TextEditResult edit_result;
+    /// Resolved command (for platform-handled commands like COPY/PASTE/CUT)
+    EditorCommand command {EditorCommand::NONE};
   };
 
   /// IME composition state
@@ -301,6 +307,9 @@ namespace NS_SWEETEDITOR {
     /// @return Keyboard event handling result
     KeyEventResult handleKeyEvent(const KeyEvent& event);
 
+    /// Replace the current key map with a custom one
+    void setKeyMap(KeyMap key_map);
+
 #pragma endregion
 
 #pragma region [Editing & Cursor/IME]
@@ -425,6 +434,14 @@ namespace NS_SWEETEDITOR {
     /// Move cursor to line end
     /// @param extend_selection Whether to extend selection
     void moveCursorToLineEnd(bool extend_selection = false);
+
+    /// Move cursor up by one page (viewport height / line height)
+    /// @param extend_selection Whether to extend selection
+    void moveCursorPageUp(bool extend_selection = false);
+
+    /// Move cursor down by one page (viewport height / line height)
+    /// @param extend_selection Whether to extend selection
+    void moveCursorPageDown(bool extend_selection = false);
     /// Notify editor that IME composition starts
     /// Called by platform side when compositionstart / composingText starts
     void compositionStart();
@@ -657,80 +674,24 @@ namespace NS_SWEETEDITOR {
 #pragma endregion
 
   private:
+    friend class EditorInteraction;
+
     Ptr<TextMeasurer> m_measurer_;
     EditorOptions m_options_;
     EditorSettings m_settings_;
     Ptr<Document> m_document_;
     Ptr<DecorationManager> m_decorations_;
-    UPtr<GestureHandler> m_gesture_handler_;
     UPtr<TextLayout> m_text_layout_;
+    UPtr<EditorInteraction> m_interaction_;
+    UPtr<RenderComposer> m_render_composer_;
     UPtr<UndoManager> m_undo_manager_;
-    UPtr<FlingAnimator> m_fling_;
-    // Cache of render height for each logical line
-    HashMap<size_t, float> m_line_heights_;
+    KeyResolver m_key_resolver_;
 
     Viewport m_viewport_;
     ViewState m_view_state_;
 
     /// Logical cursor position in text
     TextPosition m_cursor_position_;
-    /// Selection range (start = anchor, end = active end/cursor end)
-    TextRange m_selection_;
-    /// Whether selection is active
-    bool m_has_selection_ {false};
-
-    /// Drag target for selection handle
-    enum class HandleDragTarget { NONE, START, END };
-    HandleDragTarget m_dragging_handle_ {HandleDragTarget::NONE};
-
-    /// Drag target for scrollbar interaction
-    enum class ScrollbarDragTarget { NONE, VERTICAL, HORIZONTAL };
-    /// Last user-scroll interaction time in ms (used by TRANSIENT scrollbar mode)
-    int64_t m_scrollbar_last_interaction_ms_ {0};
-    /// Start timestamp of current transient scrollbar cycle (used by fade-in)
-    int64_t m_scrollbar_cycle_start_ms_ {0};
-    ScrollbarDragTarget m_dragging_scrollbar_ {ScrollbarDragTarget::NONE};
-    /// Scrollbar drag start pointer position (screen coordinates)
-    PointF m_scrollbar_drag_start_point_;
-    /// Scroll value at drag start
-    float m_scrollbar_drag_start_scroll_x_ {0};
-    float m_scrollbar_drag_start_scroll_y_ {0};
-    /// Thumb travel distance in pixels
-    float m_scrollbar_drag_travel_x_ {0};
-    float m_scrollbar_drag_travel_y_ {0};
-    /// Max scroll range cached at drag start
-    float m_scrollbar_drag_max_scroll_x_ {0};
-    float m_scrollbar_drag_max_scroll_y_ {0};
-
-    /// Pending focal anchor captured during exact scale handling.
-    /// Applied in onFontMetricsChanged() after platform text metrics catch up.
-    struct PendingScaleAnchor {
-      bool active {false};
-      PointF focus_screen;
-      TextPosition anchor_position;
-      float offset_x {0};
-      float offset_y {0};
-    };
-    PendingScaleAnchor m_pending_scale_anchor_;
-    bool m_scale_gesture_active_ {false};
-
-    /// Cached screen positions of selection handles (for hit test, updated each buildRenderModel frame)
-    PointF m_cached_start_handle_pos_;
-    PointF m_cached_end_handle_pos_;
-    float m_cached_handle_height_ {0};
-    bool m_cached_handles_valid_ {false};
-
-    /// Edge-scroll state: saved when finger is near viewport edge during drag.
-    /// The platform timer calls tickEdgeScroll() which uses this state to scroll + update selection.
-    struct EdgeScrollState {
-      bool active {false};         ///< Whether edge scrolling is needed
-      float speed {0};             ///< Scroll speed in pixels per second (positive = down, negative = up)
-      PointF last_screen_point;    ///< Last finger position (used to re-run hitTest after scroll)
-      bool is_handle_drag {false}; ///< true = handle drag, false = select drag
-      bool is_mouse {false};       ///< Mouse drag (no y-offset)
-      int64_t last_tick_time {0};  ///< Monotonic timestamp of last tick (for dt calculation)
-    };
-    EdgeScrollState m_edge_scroll_;
 
     /// IME composition state
     CompositionState m_composition_;
@@ -755,26 +716,12 @@ namespace NS_SWEETEDITOR {
     /// Max character distance for built-in bracket scan
     static constexpr size_t kMaxBracketScanChars = 10000;
 
-    /// Check whether touch point hits a selection handle
-    /// @return Hit drag target (NONE / START / END)
-    HandleDragTarget hitTestHandle(const PointF& screen_point) const;
-    /// Drag selection handle to target position
-    void dragHandleTo(HandleDragTarget target, const PointF& screen_point);
-    /// Mark scrollbar interaction timestamp for transient visibility/alpha timeline
-    void markScrollbarInteraction();
-
     /// Delete selection and place cursor at selection start
     void deleteSelection();
     /// Place cursor by screen coordinates
     void placeCursorAt(const PointF& screen_point);
     /// Select word at screen coordinates
     void selectWordAt(const PointF& screen_point);
-    /// Drag selection to screen coordinates
-    /// @param is_mouse true for mouse drag (no y-offset), false for touch long-press drag (apply y-offset)
-    void dragSelectTo(const PointF& screen_point, bool is_mouse = false);
-    /// Compute edge-scroll state from finger position (does NOT scroll; just updates m_edge_scroll_).
-    /// Called from dragHandleTo / dragSelectTo to decide whether edge scrolling is needed.
-    void updateEdgeScrollState(const PointF& screen_point, bool is_handle_drag, bool is_mouse);
     /// Update cursor movement (handle selection extension logic)
     void moveCursorTo(const TextPosition& new_pos, bool extend_selection);
     /// Get normalized selection (start < end)
@@ -792,46 +739,12 @@ namespace NS_SWEETEDITOR {
     /// @return Exact change info
     TextEditResult applyEdit(const TextRange& range, const U8String& new_text, bool record_undo = true);
 
-    /// Fill cursor render data (position, height, current line background)
-    void buildCursorModel(EditorRenderModel& model, float line_height);
-
-    /// Fill IME composition decoration (underline area)
-    void buildCompositionDecoration(EditorRenderModel& model, float line_height, float font_height);
-
-    /// Fill selection highlight rects and selection handles
-    void buildSelectionRects(EditorRenderModel& model, float line_height);
-
-    /// Fill linked editing highlight rects
-    void buildLinkedEditingRects(EditorRenderModel& model, float line_height);
-
-    /// Fill bracket match highlight rects (built-in char scan + external override)
-    void buildBracketHighlightRects(EditorRenderModel& model, float line_height);
-
-    /// Generate render primitives from guide data in DecorationManager
-    void buildGuideSegments(EditorRenderModel& model, float line_height);
-
-    /// Generate render decorations from diagnostic data in DecorationManager
-    void buildDiagnosticDecorations(EditorRenderModel& model, float line_height);
-
-    /// Handle scrollbar click/drag gestures in core; return true when consumed
-    bool handleScrollbarGesture(const GestureEvent& event, GestureResult& result);
-
-    /// Compute vertical/horizontal scrollbar models from current view state
-    void computeScrollbarModels(ScrollbarModel& vertical, ScrollbarModel& horizontal) const;
-
-    /// Build scrollbar geometry in render model
-    void buildScrollbarModel(EditorRenderModel& model) const;
-
     /// Sync fold state in DecorationManager to each LogicalLine.is_fold_hidden
     void syncFoldState();
 
     /// Auto unfold when edit range overlaps folded region
     void autoUnfoldForEdit(const TextRange& range);
 
-    /// Fill current editor state into GestureResult (remove duplicate assignments)
-    void fillGestureResult(GestureResult& result) const;
-    /// Resolve focal point for scale gestures.
-    PointF resolveScaleFocus(const GestureEvent& event) const;
     /// Mark all logical lines as layout dirty
     void markAllLinesDirty(bool reset_heights = false);
     /// Reset composition state (clear composing flag and text)
@@ -850,7 +763,7 @@ namespace NS_SWEETEDITOR {
 
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TextChange, range, old_text, new_text)
   NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TextEditResult, changed, changes, cursor_before, cursor_after)
-  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(KeyEventResult, handled, content_changed, cursor_changed, selection_changed, edit_result)
+  NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(KeyEventResult, handled, content_changed, cursor_changed, selection_changed, edit_result, command)
 }
 
 #endif //SWEETEDITOR_EDITOR_CORE_H
