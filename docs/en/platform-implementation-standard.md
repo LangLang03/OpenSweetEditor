@@ -996,7 +996,9 @@ If the platform exposes `KeyCode`, `KeyModifier`, or built-in `EditorCommand` co
 
 - `SweetEditor` MUST support `setKeyMap(keyMap)` and SHOULD expose `getKeyMap()`
 - Platforms MUST expose `EditorKeyMap` as a widget-layer extension of `KeyMap` so host code can additionally bind command ids to host-side handlers
-- `EditorKeyMap` MUST support both `registerCommand(commandId, binding, handler)` and `registerCommand(binding, handler)`
+- `EditorKeyMap` MUST support `registerCommand(binding, handler)`
+- If `binding.command == EditorCommand.NONE`, `registerCommand(binding, handler)` MUST auto-assign a custom command id and return it
+- Platforms MAY additionally expose convenience APIs for custom-command registration, but `registerCommand(binding, handler)` remains the canonical contract
 - Auto-assigned custom command ids MUST be greater than `BUILT_IN_MAX`
 - Platforms MUST provide `defaultKeyMap()` as the default binding factory
 - Platforms MUST provide `vscode()`, and `defaultKeyMap()` MUST be semantically equivalent to `vscode()`

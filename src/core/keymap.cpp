@@ -38,75 +38,73 @@ namespace NS_SWEETEDITOR {
     return &it->second;
   }
 
-  static void addCmd(KeyMap& km, KeyModifier mods, KeyCode key, EditorCommand cmd) {
-    km.addBinding({{mods, key}, {}, cmd});
-  }
-
   KeyMap KeyMap::createDefault() {
     KeyMap km;
-    using KC = KeyCode;
-    using KM = KeyModifier;
-    using EC = EditorCommand;
+    const auto addCmd = [&km](KeyModifier mods, KeyCode key, EditorCommand cmd) {
+      km.addBinding({{mods, key}, {}, cmd});
+    };
 
     // Cursor movement
-    addCmd(km, KM::NONE,  KC::LEFT,  EC::CURSOR_LEFT);
-    addCmd(km, KM::NONE,  KC::RIGHT, EC::CURSOR_RIGHT);
-    addCmd(km, KM::NONE,  KC::UP,    EC::CURSOR_UP);
-    addCmd(km, KM::NONE,  KC::DOWN,  EC::CURSOR_DOWN);
-    addCmd(km, KM::NONE,  KC::HOME,  EC::CURSOR_LINE_START);
-    addCmd(km, KM::NONE,  KC::END,   EC::CURSOR_LINE_END);
-    addCmd(km, KM::NONE, KC::PAGE_UP,   EC::CURSOR_PAGE_UP);
-    addCmd(km, KM::NONE, KC::PAGE_DOWN, EC::CURSOR_PAGE_DOWN);
+    addCmd(KeyModifier::NONE,  KeyCode::LEFT,  EditorCommand::CURSOR_LEFT);
+    addCmd(KeyModifier::NONE,  KeyCode::RIGHT, EditorCommand::CURSOR_RIGHT);
+    addCmd(KeyModifier::NONE,  KeyCode::UP,    EditorCommand::CURSOR_UP);
+    addCmd(KeyModifier::NONE,  KeyCode::DOWN,  EditorCommand::CURSOR_DOWN);
+    addCmd(KeyModifier::NONE,  KeyCode::HOME,  EditorCommand::CURSOR_LINE_START);
+    addCmd(KeyModifier::NONE,  KeyCode::END,   EditorCommand::CURSOR_LINE_END);
+    addCmd(KeyModifier::NONE, KeyCode::PAGE_UP,   EditorCommand::CURSOR_PAGE_UP);
+    addCmd(KeyModifier::NONE, KeyCode::PAGE_DOWN, EditorCommand::CURSOR_PAGE_DOWN);
 
     // Selection (Shift + movement)
-    addCmd(km, KM::SHIFT, KC::LEFT,  EC::SELECT_LEFT);
-    addCmd(km, KM::SHIFT, KC::RIGHT, EC::SELECT_RIGHT);
-    addCmd(km, KM::SHIFT, KC::UP,    EC::SELECT_UP);
-    addCmd(km, KM::SHIFT, KC::DOWN,  EC::SELECT_DOWN);
-    addCmd(km, KM::SHIFT, KC::HOME,  EC::SELECT_LINE_START);
-    addCmd(km, KM::SHIFT, KC::END,   EC::SELECT_LINE_END);
-    addCmd(km, KM::SHIFT, KC::PAGE_UP,   EC::SELECT_PAGE_UP);
-    addCmd(km, KM::SHIFT, KC::PAGE_DOWN, EC::SELECT_PAGE_DOWN);
+    addCmd(KeyModifier::SHIFT, KeyCode::LEFT,  EditorCommand::SELECT_LEFT);
+    addCmd(KeyModifier::SHIFT, KeyCode::RIGHT, EditorCommand::SELECT_RIGHT);
+    addCmd(KeyModifier::SHIFT, KeyCode::UP,    EditorCommand::SELECT_UP);
+    addCmd(KeyModifier::SHIFT, KeyCode::DOWN,  EditorCommand::SELECT_DOWN);
+    addCmd(KeyModifier::SHIFT, KeyCode::HOME,  EditorCommand::SELECT_LINE_START);
+    addCmd(KeyModifier::SHIFT, KeyCode::END,   EditorCommand::SELECT_LINE_END);
+    addCmd(KeyModifier::SHIFT, KeyCode::PAGE_UP,   EditorCommand::SELECT_PAGE_UP);
+    addCmd(KeyModifier::SHIFT, KeyCode::PAGE_DOWN, EditorCommand::SELECT_PAGE_DOWN);
 
     // Editing
-    addCmd(km, KM::NONE, KC::BACKSPACE,  EC::BACKSPACE);
-    addCmd(km, KM::NONE, KC::DELETE_KEY, EC::DELETE_FORWARD);
-    addCmd(km, KM::NONE,  KC::TAB,   EC::INSERT_TAB);
-    addCmd(km, KM::NONE,  KC::ENTER, EC::INSERT_NEWLINE);
+    addCmd(KeyModifier::NONE, KeyCode::BACKSPACE,  EditorCommand::BACKSPACE);
+    addCmd(KeyModifier::NONE, KeyCode::DELETE_KEY, EditorCommand::DELETE_FORWARD);
+    addCmd(KeyModifier::NONE,  KeyCode::TAB,   EditorCommand::INSERT_TAB);
+    addCmd(KeyModifier::NONE,  KeyCode::ENTER, EditorCommand::INSERT_NEWLINE);
 
     // Ctrl/Cmd shortcuts
-    addCmd(km, KM::CTRL, KC::A, EC::SELECT_ALL);
-    addCmd(km, KM::META, KC::A, EC::SELECT_ALL);
-    addCmd(km, KM::CTRL, KC::Z, EC::UNDO);
-    addCmd(km, KM::META, KC::Z, EC::UNDO);
-    addCmd(km, KM::CTRL | KM::SHIFT, KC::Z, EC::REDO);
-    addCmd(km, KM::META | KM::SHIFT, KC::Z, EC::REDO);
-    addCmd(km, KM::CTRL, KC::Y, EC::REDO);
-    addCmd(km, KM::META, KC::Y, EC::REDO);
+    addCmd(KeyModifier::CTRL, KeyCode::A, EditorCommand::SELECT_ALL);
+    addCmd(KeyModifier::META, KeyCode::A, EditorCommand::SELECT_ALL);
+    addCmd(KeyModifier::CTRL, KeyCode::Z, EditorCommand::UNDO);
+    addCmd(KeyModifier::META, KeyCode::Z, EditorCommand::UNDO);
+    addCmd(KeyModifier::CTRL | KeyModifier::SHIFT, KeyCode::Z, EditorCommand::REDO);
+    addCmd(KeyModifier::META | KeyModifier::SHIFT, KeyCode::Z, EditorCommand::REDO);
+    addCmd(KeyModifier::CTRL, KeyCode::Y, EditorCommand::REDO);
+    addCmd(KeyModifier::META, KeyCode::Y, EditorCommand::REDO);
 
     // Clipboard (platform-handled)
-    addCmd(km, KM::CTRL, KC::C, EC::COPY);
-    addCmd(km, KM::META, KC::C, EC::COPY);
-    addCmd(km, KM::CTRL, KC::V, EC::PASTE);
-    addCmd(km, KM::META, KC::V, EC::PASTE);
-    addCmd(km, KM::CTRL, KC::X, EC::CUT);
-    addCmd(km, KM::META, KC::X, EC::CUT);
+    addCmd(KeyModifier::CTRL, KeyCode::C, EditorCommand::COPY);
+    addCmd(KeyModifier::META, KeyCode::C, EditorCommand::COPY);
+    addCmd(KeyModifier::CTRL, KeyCode::V, EditorCommand::PASTE);
+    addCmd(KeyModifier::META, KeyCode::V, EditorCommand::PASTE);
+    addCmd(KeyModifier::CTRL, KeyCode::X, EditorCommand::CUT);
+    addCmd(KeyModifier::META, KeyCode::X, EditorCommand::CUT);
+    addCmd(KeyModifier::CTRL, KeyCode::SPACE, EditorCommand::TRIGGER_COMPLETION);
+    addCmd(KeyModifier::META, KeyCode::SPACE, EditorCommand::TRIGGER_COMPLETION);
 
     // Line operations (Ctrl/Cmd + Enter)
-    addCmd(km, KM::CTRL, KC::ENTER, EC::INSERT_LINE_BELOW);
-    addCmd(km, KM::META, KC::ENTER, EC::INSERT_LINE_BELOW);
-    addCmd(km, KM::CTRL | KM::SHIFT, KC::ENTER, EC::INSERT_LINE_ABOVE);
-    addCmd(km, KM::META | KM::SHIFT, KC::ENTER, EC::INSERT_LINE_ABOVE);
+    addCmd(KeyModifier::CTRL, KeyCode::ENTER, EditorCommand::INSERT_LINE_BELOW);
+    addCmd(KeyModifier::META, KeyCode::ENTER, EditorCommand::INSERT_LINE_BELOW);
+    addCmd(KeyModifier::CTRL | KeyModifier::SHIFT, KeyCode::ENTER, EditorCommand::INSERT_LINE_ABOVE);
+    addCmd(KeyModifier::META | KeyModifier::SHIFT, KeyCode::ENTER, EditorCommand::INSERT_LINE_ABOVE);
 
     // Line operations (Alt + arrow)
-    addCmd(km, KM::ALT, KC::UP,   EC::MOVE_LINE_UP);
-    addCmd(km, KM::ALT, KC::DOWN, EC::MOVE_LINE_DOWN);
-    addCmd(km, KM::ALT | KM::SHIFT, KC::UP,   EC::COPY_LINE_UP);
-    addCmd(km, KM::ALT | KM::SHIFT, KC::DOWN, EC::COPY_LINE_DOWN);
+    addCmd(KeyModifier::ALT, KeyCode::UP,   EditorCommand::MOVE_LINE_UP);
+    addCmd(KeyModifier::ALT, KeyCode::DOWN, EditorCommand::MOVE_LINE_DOWN);
+    addCmd(KeyModifier::ALT | KeyModifier::SHIFT, KeyCode::UP,   EditorCommand::COPY_LINE_UP);
+    addCmd(KeyModifier::ALT | KeyModifier::SHIFT, KeyCode::DOWN, EditorCommand::COPY_LINE_DOWN);
 
     // Delete line (Ctrl/Cmd + Shift + K)
-    addCmd(km, KM::CTRL | KM::SHIFT, KC::K, EC::DELETE_LINE);
-    addCmd(km, KM::META | KM::SHIFT, KC::K, EC::DELETE_LINE);
+    addCmd(KeyModifier::CTRL | KeyModifier::SHIFT, KeyCode::K, EditorCommand::DELETE_LINE);
+    addCmd(KeyModifier::META | KeyModifier::SHIFT, KeyCode::K, EditorCommand::DELETE_LINE);
 
     return km;
   }

@@ -7,15 +7,16 @@ import java.util.Map;
 
 /**
  * Pure data container for keyboard shortcut bindings.
- * Maps {@link KeyBinding} to command id (int). Platform-specific command handlers
+ * Stores {@link KeyBinding} entries whose {@code command} field points to the target command id.
+ * Platform-specific command handlers
  * are managed by subclasses (e.g. EditorKeyMap in the widget layer).
  */
 public class KeyMap {
 
     private final Map<KeyBinding, Integer> mBindings = new HashMap<>();
 
-    public void addBinding(@NonNull KeyBinding binding, int commandId) {
-        mBindings.put(binding, commandId);
+    public void addBinding(@NonNull KeyBinding binding) {
+        mBindings.put(binding, binding.command);
     }
 
     public void removeBinding(@NonNull KeyBinding binding) {

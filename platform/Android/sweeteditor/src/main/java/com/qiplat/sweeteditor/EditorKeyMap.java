@@ -21,25 +21,25 @@ public class EditorKeyMap extends KeyMap {
     private int mNextCustomId = EditorCommand.BUILT_IN_MAX + 1;
 
     /**
-     * Register a command with an explicit command id (typically for built-in platform commands).
-     */
-    public void registerCommand(int commandId, @NonNull KeyBinding binding,
-                                @NonNull EditorCommand<SweetEditor> handler) {
-        mCommands.put(commandId, handler);
-        addBinding(binding, commandId);
-    }
-
-    /**
-     * Register a custom command with an auto-assigned id.
+     * Register a command handler for the given binding.
+     * <p>
+     * If {@code binding.command == EditorCommand.NONE}, a custom command id is auto-assigned.
      *
-     * @return the assigned command id
+     * @return the resolved command id
      */
     public int registerCommand(@NonNull KeyBinding binding,
                                @NonNull EditorCommand<SweetEditor> handler) {
-        int id = mNextCustomId++;
-        mCommands.put(id, handler);
-        addBinding(binding, id);
-        return id;
+        int commandId = binding.command;
+        KeyBinding resolvedBinding = binding;
+        if (commandId == EditorCommand.NONE) {
+            commandId = mNextCustomId++;
+            resolvedBinding = new KeyBinding(binding.first, binding.second, commandId);
+        } else if (commandId >= mNextCustomId) {
+            mNextCustomId = commandId + 1;
+        }
+        mCommands.put(commandId, handler);
+        addBinding(resolvedBinding);
+        return commandId;
     }
 
     @Nullable
@@ -48,7 +48,7 @@ public class EditorKeyMap extends KeyMap {
     }
 
     private static void bind(EditorKeyMap km, int modifiers, int keyCode, int command) {
-        km.addBinding(new KeyBinding(modifiers, keyCode, command), command);
+        km.addBinding(new KeyBinding(modifiers, keyCode, command));
     }
 
     private static void addCommonBindings(EditorKeyMap km) {
@@ -81,29 +81,29 @@ public class EditorKeyMap extends KeyMap {
         bind(km, KeyModifier.CTRL, KeyCode.Z, EditorCommand.UNDO);
         bind(km, KeyModifier.META, KeyCode.Z, EditorCommand.UNDO);
 
-        km.registerCommand(EditorCommand.COPY,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.CTRL, KeyCode.C, EditorCommand.COPY),
                 (binding, editor) -> editor.copyToClipboard());
-        km.registerCommand(EditorCommand.COPY,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.META, KeyCode.C, EditorCommand.COPY),
                 (binding, editor) -> editor.copyToClipboard());
-        km.registerCommand(EditorCommand.PASTE,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.CTRL, KeyCode.V, EditorCommand.PASTE),
                 (binding, editor) -> editor.pasteFromClipboard());
-        km.registerCommand(EditorCommand.PASTE,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.META, KeyCode.V, EditorCommand.PASTE),
                 (binding, editor) -> editor.pasteFromClipboard());
-        km.registerCommand(EditorCommand.CUT,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.CTRL, KeyCode.X, EditorCommand.CUT),
                 (binding, editor) -> editor.cutToClipboard());
-        km.registerCommand(EditorCommand.CUT,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.META, KeyCode.X, EditorCommand.CUT),
                 (binding, editor) -> editor.cutToClipboard());
 
-        km.registerCommand(EditorCommand.TRIGGER_COMPLETION,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.CTRL, KeyCode.SPACE, EditorCommand.TRIGGER_COMPLETION),
                 (binding, editor) -> editor.triggerCompletion());
-        km.registerCommand(EditorCommand.TRIGGER_COMPLETION,
+        km.registerCommand(
                 new KeyBinding(KeyModifier.META, KeyCode.SPACE, EditorCommand.TRIGGER_COMPLETION),
                 (binding, editor) -> editor.triggerCompletion());
     }

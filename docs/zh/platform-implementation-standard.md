@@ -997,7 +997,9 @@ interface SelectionMenuListener {
 
 - `SweetEditor` MUST 支持 `setKeyMap(keyMap)`，并 SHOULD 暴露 `getKeyMap()`
 - 平台 MUST 暴露 `EditorKeyMap` 作为 `KeyMap` 的 widget 层扩展，使宿主代码可以额外将 commandId 绑定到宿主侧 handler
-- `EditorKeyMap` MUST 同时支持 `registerCommand(commandId, binding, handler)` 与 `registerCommand(binding, handler)`
+- `EditorKeyMap` MUST 支持 `registerCommand(binding, handler)`
+- 若 `binding.command == EditorCommand.NONE`，`registerCommand(binding, handler)` MUST 自动分配自定义 commandId 并返回
+- 平台 MAY 额外提供自定义命令注册的便捷 API，但 `registerCommand(binding, handler)` 仍是标准契约
 - 自动分配的自定义 commandId MUST 大于 `BUILT_IN_MAX`
 - 平台 MUST 提供 `defaultKeyMap()` 作为默认绑定工厂
 - 平台 MUST 提供 `vscode()`，并且 `defaultKeyMap()` MUST 在语义上等价于 `vscode()`
