@@ -1093,12 +1093,12 @@ Public APIs adopt defensive handling for invalid inputs without throwing excepti
 | Invalid enum values | **MUST** | Use default value (e.g. `WrapMode.NONE`); MUST NOT throw exceptions |
 | Calls when widget not mounted | **SHOULD** | Getters return null or default values; imperative methods SHOULD queue or silently ignore (consistent with Section 3.0.3) |
 
-### 14.2 Provider Exception Isolation
+### 14.2 Provider Exception Handling
 
 | Rule | Constraint | Description |
 |---|---|---|
-| Exception capture | **MUST** | The Manager MUST wrap Provider method calls in try-catch (or equivalent); a single Provider throwing an exception MUST NOT affect other Providers or crash the editor |
-| Exception logging | **MUST** | Caught exceptions MUST be logged to the platform logging system (including Provider class name and exception message) |
+| Exception capture | **SHOULD** | Platforms SHOULD isolate Provider exceptions where practical so a single Provider does not affect other Providers or crash the editor; for Providers on the synchronous input hot path (such as `NewLineActionProvider`), platforms MAY skip a uniform try-catch wrapper and use a lighter or platform-native strategy instead |
+| Exception logging | **MAY** | Platforms MAY log caught exceptions; the standard does not require any specific log format or fields such as Provider class name |
 | Post-exception behavior | **SHOULD** | The failing Provider's result for this cycle SHOULD be discarded; subsequent refresh cycles SHOULD continue calling the Provider (no automatic disabling) |
 
 ### 14.3 C++ Core Error Propagation
