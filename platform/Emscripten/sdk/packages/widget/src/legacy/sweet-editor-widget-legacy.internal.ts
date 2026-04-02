@@ -8,6 +8,9 @@ import {
   DecorationContext,
   DecorationApplyMode,
   DecorationProviderManager,
+  EditorCommand,
+  KeyCode,
+  KeyModifier,
   SweetLineIncrementalDecorationProvider,
   type IAnyRecord,
   type IAnyValue,
@@ -17,6 +20,11 @@ import {
   type ITextRange,
   type IVisibleLineRange,
 } from "@sweeteditor/core";
+import {
+  EditorKeyMap,
+  defaultKeyMap,
+  type EditorCommandContext,
+} from "../keymap.js";
 
 type IWidgetLocale = "en" | "zh-CN";
 
@@ -76,10 +84,12 @@ const FALLBACK_GESTURE_TYPE = {
 };
 
 const FALLBACK_KEY_CODE = {
+  NONE: 0,
   BACKSPACE: 8,
   TAB: 9,
   ENTER: 13,
   ESCAPE: 27,
+  SPACE: 32,
   DELETE_KEY: 46,
   LEFT: 37,
   UP: 38,
@@ -91,6 +101,7 @@ const FALLBACK_KEY_CODE = {
   PAGE_DOWN: 34,
   A: 65,
   C: 67,
+  D: 68,
   V: 86,
   X: 88,
   Z: 90,
@@ -99,6 +110,7 @@ const FALLBACK_KEY_CODE = {
 };
 
 const FALLBACK_MODIFIER = {
+  NONE: 0,
   SHIFT: 1,
   CTRL: 2,
   ALT: 4,
@@ -1411,6 +1423,7 @@ export class SweetEditorWidget {
     this._newLineActionProviders = [];
     this._ownedDecorationProviders = new Set();
     this._listeners = new Map();
+    this._editorKeyMap = EditorKeyMap.from(options.keyMap || defaultKeyMap());
 
     this._lastCursorPosition = null;
     this._lastSelection = null;
@@ -1554,6 +1567,14 @@ export class SweetEditorWidget {
 
   getSettings() {
     return this._settingsFacade;
+  }
+
+  setKeyMap(keyMap:IAnyValue) {
+    this._editorKeyMap = EditorKeyMap.from(keyMap || defaultKeyMap());
+  }
+
+  getKeyMap() {
+    return this._editorKeyMap.clone();
   }
 
   applyTheme(theme:IAnyRecord = {}) {
@@ -4493,29 +4514,6 @@ export class SweetEditorWidget {
       return;
     }
 
-    const cmd = event.ctrlKey || event.metaKey;
-    if (cmd && !event.altKey) {
-      const key = (event.key || "").toLowerCase();
-      if (key === "c") {
-        this._debugInputLog("keydown.handled.copy", {});
-        void this._copySelectionToClipboard(false);
-        event.preventDefault();
-        return;
-      }
-      if (key === "x") {
-        this._debugInputLog("keydown.handled.cut", {});
-        void this._copySelectionToClipboard(true);
-        event.preventDefault();
-        return;
-      }
-      if (key === " ") {
-        this._debugInputLog("keydown.handled.triggerCompletion", {});
-        this.triggerCompletion();
-        event.preventDefault();
-        return;
-      }
-    }
-
     if (hasCompositionFlow || event.isComposing || event.key === "Process") {
       this._debugInputLog("keydown.skip.composing", {
         flowComposing: hasCompositionFlow,
@@ -4550,6 +4548,28 @@ export class SweetEditorWidget {
       this._debugInputLog("keydown.noop.unhandledNoKeyCode", {
         key: event?.key ?? "",
       });
+    }
+
+    if (keyCode) {
+      const keyMapResult = this._dispatchKeyMapCommand(keyCode, mods, event);
+      if (keyMapResult !== "no_match") {
+        this._debugInputLog("keydown.keyMapResult", {
+          keyCode,
+          result: keyMapResult,
+        });
+      }
+      if (keyMapResult === "pending") {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (keyMapResult === "handled") {
+        this._input.value = "";
+        this._suppressNextInputOnce();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
     }
 
     if (keyCode) {
@@ -4592,6 +4612,182 @@ export class SweetEditorWidget {
       });
       event.preventDefault();
     }
+  }
+
+  _dispatchKeyMapCommand(keyCode:number, modifiers:number, event:IAnyRecord): "handled" | "pending" | "no_match" {
+    const resolved = this._editorKeyMap.resolve({ keyCode, modifiers });
+    if (resolved.status === "pending") {
+      return "pending";
+    }
+    if (resolved.status !== "matched") {
+      return "no_match";
+    }
+
+    const commandId = toInt(resolved.command, EditorCommand.NONE);
+    if (commandId === EditorCommand.NONE) {
+      return "no_match";
+    }
+
+    const binding = resolved.binding || {
+      first: { keyCode, modifiers },
+      second: { keyCode: KeyCode.NONE, modifiers: KeyModifier.NONE },
+      command: commandId,
+    };
+
+    const handler = this._editorKeyMap.getCommandHandler(commandId);
+    if (handler) {
+      const handlerHandled = this._invokeEditorCommandHandler(handler, commandId, binding, event);
+      if (handlerHandled) {
+        return "handled";
+      }
+    }
+
+    if (this._executeEditorCommand(commandId)) {
+      return "handled";
+    }
+    return "no_match";
+  }
+
+  _invokeEditorCommandHandler(handler:IAnyValue, commandId:number, binding:IAnyValue, event:IAnyValue): boolean {
+    if (typeof handler !== "function") {
+      return false;
+    }
+    const context: EditorCommandContext = {
+      commandId,
+      binding,
+      widget: this,
+      event: event || null,
+    };
+
+    try {
+      const result = handler(context);
+      if (result && typeof result.then === "function") {
+        Promise.resolve(result).catch((error:IAnyValue) => {
+          console.error("EditorKeyMap command handler failed.", error);
+        });
+        return true;
+      }
+      return result !== false;
+    } catch (error) {
+      console.error("EditorKeyMap command handler failed.", error);
+      return true;
+    }
+  }
+
+  _executeEditorCommand(commandId:number): boolean {
+    switch (commandId) {
+      case EditorCommand.CURSOR_LEFT:
+        this.moveCursorLeft(false);
+        return true;
+      case EditorCommand.CURSOR_RIGHT:
+        this.moveCursorRight(false);
+        return true;
+      case EditorCommand.CURSOR_UP:
+        this.moveCursorUp(false);
+        return true;
+      case EditorCommand.CURSOR_DOWN:
+        this.moveCursorDown(false);
+        return true;
+      case EditorCommand.CURSOR_LINE_START:
+        this.moveCursorToLineStart(false);
+        return true;
+      case EditorCommand.CURSOR_LINE_END:
+        this.moveCursorToLineEnd(false);
+        return true;
+      case EditorCommand.CURSOR_PAGE_UP:
+        return this._runCommandThroughCoreKeyEvent(this._keyCode.PAGE_UP, this._modifier.NONE);
+      case EditorCommand.CURSOR_PAGE_DOWN:
+        return this._runCommandThroughCoreKeyEvent(this._keyCode.PAGE_DOWN, this._modifier.NONE);
+      case EditorCommand.SELECT_LEFT:
+        this.moveCursorLeft(true);
+        return true;
+      case EditorCommand.SELECT_RIGHT:
+        this.moveCursorRight(true);
+        return true;
+      case EditorCommand.SELECT_UP:
+        this.moveCursorUp(true);
+        return true;
+      case EditorCommand.SELECT_DOWN:
+        this.moveCursorDown(true);
+        return true;
+      case EditorCommand.SELECT_LINE_START:
+        this.moveCursorToLineStart(true);
+        return true;
+      case EditorCommand.SELECT_LINE_END:
+        this.moveCursorToLineEnd(true);
+        return true;
+      case EditorCommand.SELECT_PAGE_UP:
+        return this._runCommandThroughCoreKeyEvent(this._keyCode.PAGE_UP, this._modifier.SHIFT);
+      case EditorCommand.SELECT_PAGE_DOWN:
+        return this._runCommandThroughCoreKeyEvent(this._keyCode.PAGE_DOWN, this._modifier.SHIFT);
+      case EditorCommand.SELECT_ALL:
+        this.selectAll();
+        return true;
+      case EditorCommand.BACKSPACE: {
+        const edit = this._core.backspace();
+        this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
+        return true;
+      }
+      case EditorCommand.DELETE_FORWARD: {
+        const edit = this._core.deleteForward();
+        this._handleTextEditResult(edit, { action: TextChangeAction.KEY });
+        return true;
+      }
+      case EditorCommand.INSERT_TAB:
+        return this._runCommandThroughCoreKeyEvent(this._keyCode.TAB, this._modifier.NONE);
+      case EditorCommand.INSERT_NEWLINE:
+        return this._runCommandThroughCoreKeyEvent(this._keyCode.ENTER, this._modifier.NONE);
+      case EditorCommand.INSERT_LINE_ABOVE:
+        this.insertLineAbove();
+        return true;
+      case EditorCommand.INSERT_LINE_BELOW:
+        this.insertLineBelow();
+        return true;
+      case EditorCommand.UNDO:
+        this.undo();
+        return true;
+      case EditorCommand.REDO:
+        this.redo();
+        return true;
+      case EditorCommand.MOVE_LINE_UP:
+        this.moveLineUp();
+        return true;
+      case EditorCommand.MOVE_LINE_DOWN:
+        this.moveLineDown();
+        return true;
+      case EditorCommand.COPY_LINE_UP:
+        this.copyLineUp();
+        return true;
+      case EditorCommand.COPY_LINE_DOWN:
+        this.copyLineDown();
+        return true;
+      case EditorCommand.DELETE_LINE:
+        this.deleteLine();
+        return true;
+      case EditorCommand.COPY:
+        this.copyToClipboard();
+        return true;
+      case EditorCommand.PASTE:
+        this.pasteFromClipboard();
+        return true;
+      case EditorCommand.CUT:
+        this.cutToClipboard();
+        return true;
+      case EditorCommand.TRIGGER_COMPLETION:
+        this.triggerCompletion();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  _runCommandThroughCoreKeyEvent(keyCode:number, modifiers:number): boolean {
+    const result = this._core.handleKeyEvent({ keyCode, text: "", modifiers });
+    if (!result || !(result.handled ?? result.Handled)) {
+      return false;
+    }
+    this._handleKeyEventResult(result, { action: TextChangeAction.KEY });
+    return true;
   }
 
   _dispatchGesture(type:string, points:IAnyValue[], domEvent:IAnyRecord, wheelX:number = 0, wheelY:number = 0, directScale:number = 1.0) {
@@ -4657,6 +4853,10 @@ export class SweetEditorWidget {
       case "Tab": return this._keyCode.TAB;
       case "Enter": return this._keyCode.ENTER;
       case "Escape": return this._keyCode.ESCAPE;
+      case " ":
+      case "Space":
+      case "Spacebar":
+        return this._keyCode.SPACE || KeyCode.SPACE;
       case "Delete": return this._keyCode.DELETE_KEY;
       case "ArrowLeft": return this._keyCode.LEFT;
       case "ArrowUp": return this._keyCode.UP;
@@ -4670,7 +4870,8 @@ export class SweetEditorWidget {
         break;
     }
 
-    if ((event.ctrlKey || event.metaKey) && event.key.length === 1) {
+    const allowPlainCharacterChord = this._editorKeyMap.isPendingSequence();
+    if ((event.ctrlKey || event.metaKey || allowPlainCharacterChord) && event.key.length === 1) {
       const upper = event.key.toUpperCase();
       if (this._keyCode[upper]) {
         return this._keyCode[upper];
@@ -4697,7 +4898,16 @@ export class SweetEditorWidget {
       case 38: return this._keyCode.UP;
       case 39: return this._keyCode.RIGHT;
       case 40: return this._keyCode.DOWN;
+      case 32: return this._keyCode.SPACE || KeyCode.SPACE;
       case 46: return this._keyCode.DELETE_KEY;
+      case 65: return this._keyCode.A;
+      case 67: return this._keyCode.C;
+      case 68: return this._keyCode.D;
+      case 75: return this._keyCode.K;
+      case 86: return this._keyCode.V;
+      case 88: return this._keyCode.X;
+      case 89: return this._keyCode.Y;
+      case 90: return this._keyCode.Z;
       default:
         return 0;
     }

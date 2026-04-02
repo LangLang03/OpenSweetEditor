@@ -73,6 +73,8 @@ export class SweetEditorController {
   applyTheme(theme:IAnyValue = {}) { this.invoke("applyTheme", theme); }
   getTheme() { return this._read("getTheme", {}); }
   getSettings() { return this._read("getSettings", null); }
+  setKeyMap(keyMap:IAnyValue) { this.invoke("setKeyMap", keyMap); }
+  getKeyMap() { return this._read("getKeyMap", null); }
   setEditorIconProvider(provider:IAnyValue) { this.invoke("setEditorIconProvider", provider); }
   getEditorIconProvider() { return this._read("getEditorIconProvider", null); }
 

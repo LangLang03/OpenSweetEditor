@@ -1,5 +1,8 @@
 import type {
   IAnyValue,
+  KeyBinding as CoreKeyBinding,
+  KeyChord as CoreKeyChord,
+  KeyMap as CoreKeyMap,
   CompletionContext as CoreCompletionContext,
   CompletionItem as CoreCompletionItem,
   CompletionProvider as CoreCompletionProvider,
@@ -11,10 +14,19 @@ import type {
   DecorationResult as CoreDecorationResult,
   TextStyle as CoreTextStyle,
 } from "@sweeteditor/core";
-import { DecorationType as CoreDecorationType } from "@sweeteditor/core";
+import {
+  DecorationType as CoreDecorationType,
+  EditorCommand,
+  KeyCode,
+  KeyModifier,
+} from "@sweeteditor/core";
 
 export type EditorColor = number | string;
 export type TextStyle = CoreTextStyle;
+export type KeyChord = CoreKeyChord;
+export type KeyBinding = CoreKeyBinding;
+export type KeyMap = CoreKeyMap;
+export { KeyCode, KeyModifier, EditorCommand };
 
 export interface EditorTheme extends Record<string, unknown> {
   backgroundColor?: EditorColor;

@@ -2,12 +2,13 @@ import { SweetEditorWidget } from "./legacy/sweet-editor-widget-legacy.js";
 import type { ISweetEditorWasmModule } from "@sweeteditor/core";
 import type { SweetEditorController } from "./sweet-editor-controller.js";
 import { SweetEditor } from "./sweet-editor.js";
-import type { EditorTheme } from "./platform-standard-types.js";
+import type { EditorTheme, KeyMap } from "./platform-standard-types.js";
 
 export { EditorEventType, SweetEditorWidget } from "./legacy/sweet-editor-widget-legacy.js";
 export { SweetEditor } from "./sweet-editor.js";
 export { SweetEditorController } from "./sweet-editor-controller.js";
 export * from "./platform-standard-types.js";
+export * from "./keymap.js";
 
 export interface IWidgetCreateOptions extends Record<string, unknown> {
   locale?: string;
@@ -15,6 +16,7 @@ export interface IWidgetCreateOptions extends Record<string, unknown> {
   decorationOptions?: Record<string, unknown>;
   performanceOverlay?: boolean | Record<string, unknown>;
   text?: string;
+  keyMap?: KeyMap;
   controller?: SweetEditorController;
   modulePath?: string;
   moduleFactory?: ((options?: Record<string, unknown>) => unknown | Promise<unknown>) | unknown;
