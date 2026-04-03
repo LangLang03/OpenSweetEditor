@@ -980,9 +980,11 @@ All platforms MUST expose the following settings through getter/setter pairs (or
 > Effect classification:
 > - `repaint`: MUST trigger an immediate repaint or equivalent visual refresh, without requiring text relayout.
 > - `relayout`: MUST trigger layout invalidation and rebuild the render model or an equivalent relayout path immediately.
-> - `runtime-transition`: MUST apply immediately and safely handle active runtime state transitions required by the setting.
+> - `runtime-transition`: MUST apply immediately and safely handle active runtime state transitions required by the setting. A `runtime-transition` setting does not require repaint or relayout unless the current visible state actually changes.
 >
 > `compositionEnabled` is the canonical example of `runtime-transition`: when switching from enabled to disabled while an IME composition is active, the platform MUST cancel or otherwise safely terminate the active composition before the new setting takes effect.
+>
+> `autoIndentMode`, `backspaceUnindent`, and `readOnly` are also `runtime-transition` settings. They MUST affect subsequent editing behavior immediately, but they do not require `flush()`, repaint, or relayout if no visible state changes at the moment of the setter call.
 
 ---
 
@@ -1068,7 +1070,7 @@ Event payloads MUST be defined per-event. Platforms MUST NOT assume or require a
 | `DocumentLoadedEvent` | — | No payload fields are required |
 | `FoldToggleEvent` | `line: int`, `isGutter: boolean`, `screenPoint: PointF` | Toggled fold line, whether the click came from gutter, and screen position |
 | `GutterIconClickEvent` | `line: int`, `iconId: int`, `screenPoint: PointF` | Clicked gutter icon line, icon id, and screen position |
-| `InlayHintClickEvent` | `line: int`, `column: int`, `type: InlayType`, `intValue: int`, `screenPoint: PointF` | Clicked inlay hint position, inlay type, type-specific value, optional text payload, and screen position |
+| `InlayHintClickEvent` | `line: int`, `column: int`, `type: InlayType`, `intValue: int`, `screenPoint: PointF` | Clicked inlay hint position, inlay type, type-specific value, and screen position |
 | `LongPressEvent` | `cursorPosition: TextPosition`, `screenPoint: PointF` | Long-press target position and screen position |
 | `DoubleTapEvent` | `cursorPosition: TextPosition`, `hasSelection: boolean`, `selection: TextRange?`, `screenPoint: PointF` | Double-tap target position, resulting selection state, and screen position |
 | `ContextMenuEvent` | `cursorPosition: TextPosition`, `screenPoint: PointF` | Context-menu target position and screen position |
