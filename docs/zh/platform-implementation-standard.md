@@ -45,7 +45,7 @@ Widget 层负责平台原生渲染、用户交互和扩展系统。
 | **Selection** *(MAY, 仅移动端)* | `SelectionMenuController`、`SelectionMenuItem`、`SelectionMenuItemProvider`、宿主可见的 custom item 点击回调机制；MAY: `SelectionMenuListener` | 选区菜单（桌面端 MAY 省略） |
 | **Perf** *(SHOULD)* | `PerfOverlay`, `MeasurePerfStats`, `PerfStepRecorder` | 性能浮层 |
 
-> TextChangeAction 为 SHOULD 级辅助事件枚举。平台 MAY 暴露它用于粗粒度标识一次文本变更周期（如 INSERT / DELETE / UNDO / REDO / KEY / COMPOSITION），但 MUST NOT 用它替代 changes: List<TextChange> 这一主增量载荷。
+> `TextChangeAction` 为 SHOULD 级辅助事件枚举。平台 MAY 暴露它用于粗粒度标识一次文本变更周期（如 `INSERT` / `DELETE` / `UNDO` / `REDO` / `KEY` / `COMPOSITION`），但 MUST NOT 用它替代 `changes: List<TextChange>` 这一主增量载荷。
 
 ### 1.3 推荐内部实现模式（SHOULD）
 
@@ -1590,4 +1590,5 @@ Core 层定义了大量装饰数据类型，各平台 MUST 实现完全一致的
 - 当 Core 发布新的主版本（如 `2.0.0`）时，所有平台包 MUST 在同一发布周期内升级主版本号。
 - 平台包 MAY 在 Core 版本不变的情况下独立发布修订版本（`c` 段递增），用于修复平台特定问题。
 - 次版本号（`b` 段）的建议上限是为了避免平台包版本号与 Core 版本号差距过大，造成版本对应关系混乱。
+
 
