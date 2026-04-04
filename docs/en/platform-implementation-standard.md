@@ -133,6 +133,15 @@ Data model fields MUST use the same semantic names across platforms, adapted to 
 
 Public API methods MUST follow each language's casing convention. Canonical names use Java/ArkTS camelCase as the baseline; each language adapts per its own convention (e.g. C# PascalCase, Go capitalized exports). See Section 3 for the full method list and allowed variants.
 
+### 2.4 Geometry Carrier Types (MUST)
+
+For simple geometry carriers used in public APIs and event payloads, platforms MAY use either the canonical SweetEditor geometry names or platform-native equivalents when the semantics are identical.
+
+- Point types: `PointF` or a platform-native point type (e.g. Android `android.graphics.PointF`, Apple `CGPoint`)
+- Rect types: `RectF` or a platform-native rect type (e.g. Android `android.graphics.RectF`, Apple `CGRect`)
+
+If a platform-native geometry type is used, coordinate basis, axis direction, and field semantics MUST remain identical to the canonical SweetEditor model.
+
 ---
 
 ## 3. Public API Contract (MUST)
@@ -348,7 +357,7 @@ controller.applyTheme(EditorTheme.dark());
 | Previous tab stop | `linkedEditingPrev()` | — |
 | Cancel linked editing | `cancelLinkedEditing()` | — |
 
-> Payload-level APIs (e.g. `setLineSpans`, `setBatchLineSpans`) — all platforms MUST also provide high-level wrappers (e.g. `setLineSpans(line, layer, spans: List<StyleSpan>)`). The high-level API parameter names and semantics MUST be consistent; internal encoding into payload calls to Core is an implementation detail.
+> Payload-level APIs (e.g. `setLineSpans`, `setBatchLineSpans`) — all platforms MUST provide high-level typed wrappers (e.g. `setLineSpans(line, layer, spans: List<StyleSpan>)`). Platforms SHOULD additionally expose raw/binary payload APIs when the host language has a natural public binary carrier (e.g. `ByteBuffer`, `NSData`, `byte[]`, `Uint8List`). If both typed and payload APIs are exposed, their parameter semantics and final Core behavior MUST be identical. Payload encoding format remains platform-defined.
 
 ### 3.2 `SweetEditor` Public API
 
@@ -963,9 +972,9 @@ All platforms MUST expose the following settings through getter/setter pairs (or
 | `compositionEnabled` | boolean | Platform-dependent | `setCompositionEnabled(enabled)` | `isCompositionEnabled()` | `runtime-transition` | Whether IME composition mode is enabled |
 | `lineSpacingAdd` | float | 0 | `setLineSpacing(add, mult)` | `getLineSpacingAdd()` | `relayout` | Line spacing extra (pixels) |
 | `lineSpacingMult` | float | 1.0 | *(same as above)* | `getLineSpacingMult()` | `relayout` | Line spacing multiplier |
-| `contentStartPadding` | float | 0 | `setContentStartPadding(padding)` | `getContentStartPadding()` | `relayout` | Extra horizontal padding between gutter split and text rendering start (pixels) |
+| `contentStartPadding` | float | Platform-dependent | `setContentStartPadding(padding)` | `getContentStartPadding()` | `relayout` | Extra horizontal padding between gutter split and text rendering start (pixels) |
 | `showSplitLine` | boolean | true | `setShowSplitLine(show)` | `isShowSplitLine()` | `repaint` | Whether to render the gutter split line |
-| `gutterSticky` | boolean | true | `setGutterSticky(sticky)` | `isGutterSticky()` | `repaint` | Whether gutter stays fixed during horizontal scroll (true=fixed, false=scrolls with content) |
+| `gutterSticky` | boolean | Platform-dependent | `setGutterSticky(sticky)` | `isGutterSticky()` | `repaint` | Whether gutter stays fixed during horizontal scroll (true=fixed, false=scrolls with content) |
 | `gutterVisible` | boolean | true | `setGutterVisible(visible)` | `isGutterVisible()` | `relayout` | Whether gutter area is visible (false=hide line numbers, icons, fold arrows) |
 | `currentLineRenderMode` | CurrentLineRenderMode | BACKGROUND | `setCurrentLineRenderMode(mode)` | `getCurrentLineRenderMode()` | `repaint` | Current line render mode |
 | `autoIndentMode` | AutoIndentMode | KEEP_INDENT | `setAutoIndentMode(mode)` | `getAutoIndentMode()` | `runtime-transition` | Auto indent mode |
@@ -983,6 +992,10 @@ All platforms MUST expose the following settings through getter/setter pairs (or
 > - `runtime-transition`: MUST apply immediately and safely handle active runtime state transitions required by the setting. A `runtime-transition` setting does not require repaint or relayout unless the current visible state actually changes.
 >
 > `compositionEnabled` is the canonical example of `runtime-transition`: when switching from enabled to disabled while an IME composition is active, the platform MUST cancel or otherwise safely terminate the active composition before the new setting takes effect.
+>
+> `contentStartPadding` is platform-dependent by default. It MUST be `>= 0`. `0` is the neutral baseline, but platforms MAY choose a non-zero visual default.
+>
+> `gutterSticky` is platform-dependent by default. Desktop-style platforms SHOULD default to `true`; mobile / touch-first platforms SHOULD default to `false`.
 >
 > `autoIndentMode`, `backspaceUnindent`, and `readOnly` are also `runtime-transition` settings. They MUST affect subsequent editing behavior immediately, but they do not require `flush()`, repaint, or relayout if no visible state changes at the moment of the setter call.
 
@@ -1068,12 +1081,12 @@ Event payloads MUST be defined per-event. Platforms MUST NOT assume or require a
 | `ScrollChangedEvent` | `scrollX: float`, `scrollY: float` | Current view scroll offset |
 | `ScaleChangedEvent` | `scale: float` | Current editor scale |
 | `DocumentLoadedEvent` | — | No payload fields are required |
-| `FoldToggleEvent` | `line: int`, `isGutter: boolean`, `screenPoint: PointF` | Toggled fold line, whether the click came from gutter, and screen position |
-| `GutterIconClickEvent` | `line: int`, `iconId: int`, `screenPoint: PointF` | Clicked gutter icon line, icon id, and screen position |
-| `InlayHintClickEvent` | `line: int`, `column: int`, `type: InlayType`, `intValue: int`, `screenPoint: PointF` | Clicked inlay hint position, inlay type, type-specific value, and screen position |
-| `LongPressEvent` | `cursorPosition: TextPosition`, `screenPoint: PointF` | Long-press target position and screen position |
-| `DoubleTapEvent` | `cursorPosition: TextPosition`, `hasSelection: boolean`, `selection: TextRange?`, `screenPoint: PointF` | Double-tap target position, resulting selection state, and screen position |
-| `ContextMenuEvent` | `cursorPosition: TextPosition`, `screenPoint: PointF` | Context-menu target position and screen position |
+| `FoldToggleEvent` | `line: int`, `isGutter: boolean`, `screenPoint: PointF or platform-native point type` | Toggled fold line, whether the click came from gutter, and screen position |
+| `GutterIconClickEvent` | `line: int`, `iconId: int`, `screenPoint: PointF or platform-native point type` | Clicked gutter icon line, icon id, and screen position |
+| `InlayHintClickEvent` | `line: int`, `column: int`, `type: InlayType`, `intValue: int`, `screenPoint: PointF or platform-native point type` | Clicked inlay hint position, inlay type, type-specific value, and screen position |
+| `LongPressEvent` | `cursorPosition: TextPosition`, `screenPoint: PointF or platform-native point type` | Long-press target position and screen position |
+| `DoubleTapEvent` | `cursorPosition: TextPosition`, `hasSelection: boolean`, `selection: TextRange?`, `screenPoint: PointF or platform-native point type` | Double-tap target position, resulting selection state, and screen position |
+| `ContextMenuEvent` | `cursorPosition: TextPosition`, `screenPoint: PointF or platform-native point type` | Context-menu target position and screen position |
 | `SelectionMenuItemClickEvent` *(platform-specific)* | `item: SelectionMenuItem` | Clicked custom selection-menu item |
 
 ---
